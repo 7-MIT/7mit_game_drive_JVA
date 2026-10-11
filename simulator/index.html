@@ -97,9 +97,10 @@
   #lanes i[data-l]{cursor:pointer;transition:background-color .2s,border-color .2s}
   #lanes i.pick{outline:2px solid var(--color-accent);outline-offset:1px}
 
-  /* Tampilan bersih: only the road, the speed and the controls (like slowroads.io) */
-  body.clean #top, body.clean #mapbox, body.clean #guide, body.clean #ctrl, body.clean .keys, body.clean #dash .dright{display:none!important}
-  body.clean #dash{opacity:.85}
+  /* Tampilan ringkas: every instrument stays, just smaller and lighter, so more road is visible */
+  body.clean #top, body.clean #mapbox, body.clean #guide, body.clean #dash, body.clean #drive{zoom:.8}
+  body.clean #top, body.clean #mapbox, body.clean #guide > *, body.clean #dash{opacity:.9}
+  body.clean .keys{display:none!important}
   body.clean #hudb{background:var(--color-text);color:var(--color-bg)}
   /* motion: panels slide in, dialogs scale in, buttons respond to presses */
   @keyframes pop{from{opacity:0;transform:translateY(-8px) scale(.98)}to{opacity:1;transform:none}}
@@ -409,13 +410,13 @@
       <button id="auto" class="dbtn" aria-pressed="false">Autopilot</button>
       <button id="camb" class="dbtn">Kamera</button>
       <button id="mapb" class="dbtn">Peta</button>
-      <button id="hudb" class="dbtn" aria-pressed="false" aria-label="Tampilan bersih">HUD</button>
+      <button id="hudb" class="dbtn" aria-pressed="false" aria-label="HUD ringkas">HUD</button>
     </div>
     <button id="lft" class="dbtn" aria-label="Setir ke kiri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"><path d="M15 5l-7 7 7 7"/></svg></button>
     <button id="rgt" class="dbtn" aria-label="Setir ke kanan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"><path d="M9 5l7 7-7 7"/></svg></button>
     <button id="brake" class="dbtn">REM</button>
     <button id="gas" class="dbtn">GAS</button>
-    <div class="keys">↑/W gas · ↓/S rem (tahan saat berhenti = mundur) · tahan ←/→ setir · P autopilot · C kamera · M peta · H tampilan bersih</div>
+    <div class="keys">↑/W gas · ↓/S rem (tahan saat berhenti = mundur) · tahan ←/→ setir · P autopilot · C kamera · M peta · H HUD ringkas</div>
   </div>
 </div>
 
