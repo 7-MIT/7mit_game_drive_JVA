@@ -7,7 +7,7 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
 ## What it does
 
 - **Route planner.** Choose a trip type: *Rute (A → B)* or *Keliling bebas* (free driving, see below). For a route, pick where you start and where you end: a toll gate or a town. You can also use a preset (Jakarta → Surabaya by Pantura, Bandung → Yogyakarta by the Lintas Selatan, Merak → Banyuwangi …).
-  - The network in `network.js` has 46 toll roads with their exits and junctions (simpang susun), 29 Jalan Nasional corridors and 147 access roads, about 300 places in all.
+  - The network in `network.js` has 47 toll roads, including the complete JORR 2 ring (Cengkareng–Kunciran, Kunciran–Serpong, Serpong–Cinere, Cinere–Jagorawi, Cimanggis–Cibitung, Cibitung–Cilincing, about 111 km), with their exits and junctions (simpang susun), plus 29 Jalan Nasional corridors and 147 access roads, about 300 places in all.
   - Every toll exit links to the nearest town by an access road.
   - Routes are found with Dijkstra on travel time. You choose the road type: toll + national roads (fastest), toll preferred, or national roads only.
 - **Keliling bebas (free driving).** There is no fixed route. The road ahead is planned as you go: at each junction, exit or town intersection a panel ("Arah di …") lists the roads you can take, for example *Kiri: Tol JORR → Tj. Priok* or *Keluar: Keluar tol → Bekasi*. Tap one and the road ahead is re-planned from that point; the choice closes about 1 km (world distance) before the place. If you choose nothing, you keep going straight. The world keeps extending as you drive, so you can tour the whole island.
@@ -17,6 +17,14 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
   - Search for any place by name.
   - Tap a place for its details: type, roads through it, and distance and time from where you are. Tap a road for its name, length, lanes and speed limit.
   - "Navigasi ke sini" turns on GPS-style navigation to that place, in both trip types. The route is recalculated if you miss an exit or leave the planned road. "Hapus navigasi" returns to free driving, and "Mulai keliling dari sini" starts a new free drive from that place.
+- **Day and night.** The game has its own clock, shown on the dashboard. Light follows the in-game hour, blending smoothly through dawn (about 05:45), morning, noon, afternoon, sunset (about 18:00) and night.
+  - The sun moves across the sky, so shadows change.
+  - Street lights, headlights and illuminated signs switch on as it gets dark.
+  - "Jalannya jam" sets how fast the clock runs (stopped, 1 hour = 2 min, 1 hour = 1 min, 1 hour = 10 s).
+  - "Atur jam" jumps to morning, noon, evening or night.
+- **Lane guidance (panduan lajur).** Before an exit you need, a closed lane or a lane that ends, a panel shows every lane with its arrow. The lanes to be in are highlighted and animated, closed lanes are hatched, and a marker slides along with your car's real position. A hint tells you which way to move, or confirms you're in the right lane. Trucks and buses are kept in the left lanes.
+  - Tap a lane, in the panel or in the small lane strip on the dashboard, to pick it. Autopilot moves there and holds it for a while; in manual driving the lane stays marked until you reach it.
+- **Animated interface.** Panels slide in, dialogs scale in, list rows rise in as new places come up, the speed-limit sign pops when it changes, and the speed blinks when you're over the limit. Buttons respond to presses. Animations are switched off when the system asks for reduced motion.
 - **Drive it.** ↑/W gas, ↓/S brake (hold it at a standstill to reverse), hold ←/→ to steer, P autopilot, C camera, M map. On a phone there are on-screen buttons.
   - **Manual driving is free.** Steering is continuous, so you can drive anywhere the road physically allows: the shoulder, off the road, closed lanes, or the oncoming lane on national roads (to overtake, or head-on into traffic). The toll road's median barrier and guard rail stop you except at openings. Collisions come from real vehicle positions (rear-end, side swipe, head-on). Running red lights or toll gates is possible; it's recorded as a violation, not prevented.
   - **Autopilot always follows the route and the rules.** Turning it on hands the car back into a legal lane.

@@ -13,7 +13,7 @@ import {CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, w
 
 const MOBILE = matchMedia('(pointer:coarse)').matches || innerWidth < 700;
 const LW = 3.6, MED = 1.2, CH = 120, OPEN_HW = 35, OVH = 7.5, PRC = 328, BACK = 460, FWD = 720;
-const DEF = {mode:'mix', cam:'chase', den:1, tod:'day', lanes:'auto', closed:{'1':[1], '-1':[]}, cf:0, cfk:2, ovl:2, scale:5, veh:'car',
+const DEF = {mode:'mix', cam:'chase', den:1, tod:'day', lanes:'auto', closed:{'1':[1], '-1':[]}, cf:0, cfk:2, ovl:2, scale:5, veh:'car', tspd:1,
   from:'Bekasi Barat', to:'Pasteur', auto:false, trip:'route'};
 let cfg; try { cfg = {...DEF, ...JSON.parse(localStorage.getItem('tj_cfg1') || '{}')}; } catch(e) { cfg = {...DEF}; }
 const saveCfg = () => { try { localStorage.setItem('tj_cfg1', JSON.stringify(cfg)); } catch(e) {} };
@@ -1412,6 +1412,9 @@ function sim(dt){
       if (t > lim[0] && t < lim[1] && v.lane >= 0) { v.cd = 0.5; const nl = v.lane + 1;
         if (nl < n && spanFree(v.sd, nl, v.p - v.len/2 - 3, front + 3) && blockAhead(v.sd, nl, front) > 80 && gapsOK(v, nl, t > lim[1] - 120)) v.lane = nl;
         continue; } }
+    // a lane picked by the player: autopilot moves there and holds it for a while
+    if (v.player && v.prefLane != null) { if (clock > v.prefT) { v.prefLane = null; hudLane(); }
+      else { const tl = clamp(v.prefLane, 0, n - 1); if (tl !== v.lane) { const nl = v.lane + Math.sign(tl - v.lane); v.cd = 0.4; if (tryNormal(v, nl)) { v.lane = nl; hudLane(); } } continue; } }
     if (v.player && cfg.auto && v.lane === 0 && n > 1 && Math.random() < 0.3) { if (tryNormal(v, 1)) { v.lane = 1; continue; } }
     discretionary(v, lead, nearEntry);
   }
@@ -1623,13 +1626,52 @@ const TOD = {
 const sunOff = new THREE.Vector3(60,90,40);
 const lampLights = [];
 for (let i=0;i<(MOBILE?4:6);i++){ const p = new THREE.PointLight(0xffc98a, 0, 40, 1.6); scene.add(p); lampLights.push(p); }
-function setTod(k){
-  const t = TOD[k]; scene.background.set(t.sky); scene.fog.color.set(t.sky); scene.fog.near=t.fog[0]; scene.fog.far=t.fog[1];
-  hemi.intensity=t.hemi; sun.intensity=t.sun; sun.color.set(t.sunCol); sunOff.set(...t.sunPos);
-  headMat.emissiveIntensity=t.head; tailMat.emissiveIntensity=t.tail; lampHeadMat.emissiveIntensity=t.lamp; lampI = t.lamp*60;
-  bloom.strength = MOBILE ? t.bloom*0.7 : t.bloom; renderer.toneMappingExposure=t.exp; signI = t.sign; applySign();
-  ground.material.color.set(k==='night'?0x2c3a24:0x6f8a4a);
+// ---------- game clock: morning, noon, afternoon, evening and night follow the in-game hour ----------
+const TODK = {
+  dawn: {sky:0xc9a49a, fog:[110,470], hemi:0.6, sun:1.3, sunCol:0xffb07a, head:1.6, tail:1.2, lamp:1.0, bloom:0.45, exp:1.0, sign:0.3},
+  morning: {sky:0xc2d2dc, fog:[180,600], hemi:0.95, sun:2.1, sunCol:0xffe8c8, head:0.15, tail:0.3, lamp:0, bloom:0.18, exp:1.0, sign:0.12},
+  afternoon: {sky:0xc9c5b4, fog:[180,600], hemi:0.95, sun:2.2, sunCol:0xffd9a4, head:0.15, tail:0.3, lamp:0, bloom:0.2, exp:1.0, sign:0.12},
+};
+// [hour, preset]; between two keys the light is blended
+const TOD_KEYS = [[0, 'night'], [4.7, 'night'], [5.6, 'dawn'], [6.7, 'morning'], [9, 'day'], [15, 'day'], [16.5, 'afternoon'], [17.6, 'dusk'], [18.6, 'dusk'], [19.4, 'night'], [24, 'night']];
+const TOD_NAME = h => h < 4 ? 'Dini hari' : h < 10 ? 'Pagi' : h < 15 ? 'Siang' : h < 18.5 ? 'Sore' : 'Malam';
+const TOD_JUMP = {day: 12, dusk: 17.8, night: 21, morning: 7, dawn: 5.8};
+let gameH = cfg.gh ?? 7.5, todT = 0, lastSign = -1;
+const cA = new THREE.Color(), cB = new THREE.Color();
+function todAt(h){
+  const P = k => TODK[k] || TOD[k];
+  let j = 0; while (j < TOD_KEYS.length - 2 && TOD_KEYS[j + 1][0] <= h) j++;
+  const [h0, k0] = TOD_KEYS[j], [h1, k1] = TOD_KEYS[j + 1], f = clamp((h - h0)/((h1 - h0) || 1), 0, 1), a = P(k0), b = P(k1), L = (x, y) => x + (y - x)*f;
+  const col = (x, y) => cA.set(x).lerp(cB.set(y), f).getHex();
+  const t = {sky: col(a.sky, b.sky), fog: [L(a.fog[0], b.fog[0]), L(a.fog[1], b.fog[1])], sunCol: col(a.sunCol, b.sunCol)};
+  for (const k of ['hemi', 'sun', 'head', 'tail', 'lamp', 'bloom', 'exp', 'sign']) t[k] = L(a[k], b[k]);
+  // the sun rises in the east around 05:45 and sets around 18:00 (near the equator); the moon lights the night
+  const e = Math.sin(Math.PI*(h - 5.9)/12.2);
+  if (e > 0.02) { const az = Math.PI*(h - 5.9)/12.2; t.sunPos = [Math.cos(az)*150, 25 + e*110, 50]; }
+  else t.sunPos = [40, 90, 60];
+  t.night = clamp(t.lamp/4, 0, 1);
+  return t;
 }
+function applyTod(t){
+  scene.background.set(t.sky); scene.fog.color.set(t.sky); scene.fog.near = t.fog[0]; scene.fog.far = t.fog[1];
+  hemi.intensity = t.hemi; sun.intensity = t.sun; sun.color.set(t.sunCol); sunOff.set(...t.sunPos);
+  headMat.emissiveIntensity = t.head; tailMat.emissiveIntensity = t.tail; lampHeadMat.emissiveIntensity = t.lamp; lampI = t.lamp*60;
+  bloom.strength = MOBILE ? t.bloom*0.7 : t.bloom; renderer.toneMappingExposure = t.exp;
+  signI = t.sign; if (Math.abs(signI - lastSign) > 0.02) { lastSign = signI; applySign(); }
+  ground.material.color.set(cA.set(0x6f8a4a).lerp(cB.set(0x2c3a24), t.night));
+}
+const hhmm = h => { const m = Math.floor(mod(h, 24)*60); return `${String(Math.floor(m/60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
+function tickClock(dt){
+  gameH = mod(gameH + dt*(+cfg.tspd || 0)/60, 24);
+  todT -= dt; if (todT > 0) return; todT = 0.5;
+  applyTod(todAt(gameH));
+  const el = $('clockt'), nm = TOD_NAME(gameH); if (el.textContent !== hhmm(gameH)) el.textContent = hhmm(gameH);
+  if ($('todn').textContent !== nm) { $('todn').textContent = nm; document.body.dataset.tod = nm; }
+  cfg.gh = Math.round(gameH*100)/100; saveCfgSoon();
+}
+let saveT = 0; function saveCfgSoon(){ if (clock - saveT > 10) { saveT = clock; saveCfg(); } }
+// legacy presets jump the clock
+function setTod(k){ if (k in TOD_JUMP) gameH = TOD_JUMP[k]; todT = 0; lastSign = -1; tickClock(0); }
 function applySign(list){ const f = o => { if (o.material && o.material.userData && o.material.userData.sign) o.material.emissiveIntensity = signI; };
   if (list) list.forEach(g => g.traverse(f)); else scene.traverse(f); }
 
@@ -1691,7 +1733,7 @@ function hudAuto(){ $('auto').setAttribute('aria-pressed', cfg.auto ? 'true' : '
 function hudLane(){ const v = PLR; if (!v) return; const n = Math.round(nAvail(v.sd, v.p)), el = $('lanes'); el.innerHTML = '';
   const neg = []; for (const z of CFA) if (z.A === v.sd && Math.abs(v.p - z.o1) < 900) for (let j = z.k; j >= 1; j--) neg.push(-j);
   const all = [...Array.from({length: n}, (_, i) => n - 1 - i), ...neg.sort((a, b) => b - a)];
-  for (const l of all) { const d = document.createElement('i'); if (l < 0) d.className = 'cf'; if (v.rp ? false : l === v.lane) d.className += ' on'; el.append(d); } }
+  for (const l of all) { const d = document.createElement('i'); if (l < 0) d.className = 'cf'; else d.dataset.l = l; if (v.rp ? false : l === v.lane) d.className += ' on'; if (l === v.prefLane) d.className += ' pick'; el.append(d); } }
 let rest = false;
 function setRest(on){ rest = on; $('resume').hidden = !on; if (on) toast('Parkir di rest area. Tekan "Lanjut perjalanan" saat siap.'); }
 function nextEvents(){
@@ -1707,7 +1749,7 @@ function updateHud(dt){
   const v = PLR, u = uOfV(v), rk = rkAt(u), dest = EV[trip.destIdx];
   $('spd').textContent = v.vel < -0.3 ? 'R ' + KMH(-v.vel) : KMH(Math.abs(v.vel));
   const lim = Math.min(limitAt(u), postedCap(v.sd, v.p + v.len/2), v.lane < 0 ? 16.7 : 99);
-  const limK = Math.round(KMH(lim)/10)*10; if ($('lim').dataset.v !== String(limK)) { $('lim').dataset.v = limK; $('lim').textContent = limK; }
+  const limK = Math.round(KMH(lim)/10)*10; if ($('lim').dataset.v !== String(limK)) { $('lim').dataset.v = limK; $('lim').textContent = limK; replay($('lim'), 'chg'); }
   $('spdbox').classList.toggle('over', v.vel > lim + 1.4);
   $('corr').textContent = CORR[corrAt(u)].name;
   $('kmpost').textContent = `KM ${kmAt(u).toFixed(1).replace('.', ',')}`;
@@ -1715,11 +1757,14 @@ function updateHud(dt){
   updateChoice(u);
   $('toll').textContent = 'Rp ' + stats.toll.toLocaleString('id-ID');
   $('viol').textContent = stats.viol; $('crash').textContent = stats.crashes;
-  const ne = nextEvents(), list = $('next'); list.innerHTML = '';
+  const ne = nextEvents(), list = $('next'), nk = ne.map(x => x.e.i + (x.e.i === trip.destIdx ? 'd' : '')).join();
+  // rebuild only when the list changes, so new rows slide in and distances just tick
+  if (list.dataset.k === nk) ne.forEach(({d}, j) => { const em = list.children[j] && list.children[j].lastChild; if (em && em.textContent !== fmtKm(d)) em.textContent = fmtKm(d); });
+  else { list.dataset.k = nk; list.innerHTML = '';
   for (const {e, d} of ne) { const li = document.createElement('li'); if (e.i === trip.destIdx) li.className = 'dest';
     const tag = document.createElement('b'); tag.textContent = e.i === trip.destIdx ? 'TUJUAN' : ICON[e.kind]; tag.className = 'k-' + e.kind;
     const nm = document.createElement('span'); nm.textContent = e.kind === 'te' ? `${e.name} (keluar tol)` : e.kind === 'ti' ? `${e.name} (masuk tol)` : e.kind === 'j' ? nodeLabel(e).replace('Simpang Susun ', '') + (e.turn ? ` → ${CORR[e.cNext].short}` : '') : e.kind === 'r' || e.kind === 'x' ? e.name : nodeLabel(e).replace('Gerbang Tol ', 'GT ');
-    const dd = document.createElement('em'); dd.textContent = fmtKm(d); li.append(tag, nm, dd); list.append(li); }
+    const dd = document.createElement('em'); dd.textContent = fmtKm(d); li.append(tag, nm, dd); list.append(li); } }
   // instruction line
   const sa = siteAhead(v.sd, v.p); let ins = '';
   if (v.rp) ins = v.rp.parked ? 'Parkir di rest area' : v.rp.kind === 'x' ? 'Di ramp keluar. Berhenti di gerbang tol.' : v.rp.kind === 'detour' ? 'Pengalihan lewat Jalan Nasional' : 'Di ramp';
@@ -1736,9 +1781,66 @@ function updateHud(dt){
     else if (bd < 450) ins = v.lane < 0 ? `Contraflow berakhir ${Math.round(bd)} m lagi. Kembali ke jalur kiri.` : `Lajur berakhir/ditutup ${Math.round(bd)} m lagi. Pindah lajur!`;
     else if (z && v.lane === 0 && v.p < z.CF_IN + 30 && v.p > z.CF_IN - 250) ins = 'Contraflow: tekan → di bukaan median untuk masuk';
     else { const nj = ne.find(x => x.e.turn || (x.e.end && x.e.cNext !== x.e.c && x.e.kind !== 'te' && x.e.kind !== 'ti')); if (nj && nj.d < 6) ins = `${nj.e.kind === 'k' ? 'Di ' + nj.e.name + ', jalan' : 'Lurus'} terus ke ${CORR[nj.e.cNext].name}`; } }
-  $('ins').textContent = ins; $('ins').hidden = !ins;
+  if ($('ins').textContent !== ins) { $('ins').textContent = ins; if (ins) replay($('ins'), 'flash'); } $('ins').hidden = !ins;
+  if (!cfg.auto && v.prefLane != null && (Math.round(v.lx) === v.prefLane || clock > v.prefT)) { v.prefLane = null; hudLane(); lgSig = ''; }
+  laneGuide(v);
   hudLane();
 }
+
+// restart a CSS animation class
+function replay(el, cls){ el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
+
+// ---------- lane guidance: which lanes to be in for the next manoeuvre (exit, closed lanes, lane drop, heavy vehicles) ----------
+const ARROW = {up: 'M12 21V5M6 11l6-6 6 6', exit: 'M15 21v-6c0-4-2-6-7-8M6 2.5 8 7l-4.6 1.4', mergeR: 'M9 21v-6c0-4 2-6 7-8M18 2.5 16 7l4.6 1.4', mergeL: 'M15 21v-6c0-4-2-6-7-8M6 2.5 8 7l-4.6 1.4', x: 'M6 6l12 12M18 6 6 18'};
+let lgSig = '';
+function guideFor(v){
+  if (!v || v.rp || !trip || stats.done) return null;
+  const n = Math.round(nAvail(v.sd, v.p)), front = v.p + v.len/2; if (n < 2) return null;
+  const info = Array.from({length: n}, () => ({a: 'up', st: ''})); let rec = new Set(info.map((_, l) => l)), title = '', d = Infinity, real = false;
+  // closed or ending lanes in the next 700 m
+  for (let l = 0; l < n; l++) { const bd = blockAhead(v.sd, l, front); if (bd > 700) continue;
+    const end = dropAhead(v.sd, l, front) <= bd + 1; info[l].st = end ? 'end' : 'closed'; rec.delete(l); d = Math.min(d, bd);
+    title = title || (end ? 'Lajur berkurang' : 'Lajur ditutup'); }
+  if (title && rec.size) for (let l = 0; l < n; l++) if (info[l].st) { const tgt = [...rec].sort((a, b) => Math.abs(a - l) - Math.abs(b - l))[0]; info[l].a = tgt < l ? 'mergeR' : 'mergeL'; }
+  // destination exit: outer (leftmost) lane
+  const sa = siteAhead(v.sd, v.p);
+  if (sa && sa.s.i === trip.destIdx && sa.s.kind === 'x') { const de = Math.max(0, -sa.t - 200);
+    if (de < d) { d = de; title = `Exit tujuan ${sa.s.name}`; real = true; } rec = new Set([n - 1]); info[n - 1].a = 'exit'; info[n - 1].st = ''; }
+  if (!title) return null;
+  if (heavy(v) && [...rec].some(l => l >= heavyMin(n))) for (const l of [...rec]) if (l < heavyMin(n)) rec.delete(l);
+  if (!rec.size) rec = new Set(info.map((_, l) => l).filter(l => !info[l].st));
+  return {n, info, rec, title, d, real};
+}
+function laneGuide(v){
+  const el = $('lg'), g = guideFor(v);
+  if (!g) { if (!el.hidden) el.hidden = true; lgSig = ''; return; }
+  const sig = g.n + g.title + g.info.map((x, l) => x.a + x.st + (g.rec.has(l) ? 'r' : '')).join() + (v.prefLane ?? '');
+  if (sig !== lgSig) { lgSig = sig; const box = $('lg-lanes'); box.innerHTML = ''; box.style.gridTemplateColumns = `repeat(${g.n}, minmax(0, 1fr))`;
+    for (let l = g.n - 1; l >= 0; l--) { const x = g.info[l], b = document.createElement('button');
+      b.className = 'ln' + (g.rec.has(l) ? ' rec' : ' dim') + (x.st ? ' ' + x.st : '') + (v.prefLane === l ? ' pick' : '');
+      b.dataset.l = l; b.setAttribute('aria-label', `Lajur ${g.n - l}${g.rec.has(l) ? ' (disarankan)' : x.st === 'closed' ? ' (ditutup)' : x.st === 'end' ? ' (berakhir)' : ''}`);
+      b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square"><path d="${ARROW[x.st === 'closed' ? 'x' : x.a]}"/></svg><small>${g.n - l}</small>`;
+      box.append(b); }
+    const me = document.createElement('i'); me.className = 'me'; box.append(me);
+    $('lg-title').textContent = g.title; if (el.hidden) { el.hidden = false; } }
+  // exits use the route's real distance (like the other instructions); closures are measured on the road itself
+  $('lg-d').textContent = g.real ? fmtKm(g.d*cfg.scale/1000) : `${Math.round(g.d/10)*10} m`;
+  // the car marker follows the real lateral position
+  const me = $('lg-lanes').querySelector('.me'); if (me) me.style.left = `${clamp((g.n - 1 - v.lx + 0.5)/g.n, 0, 1)*100}%`;
+  const cur = Math.round(v.lx), ok = g.rec.has(cur), tgt = [...g.rec].sort((a, b) => Math.abs(a - cur) - Math.abs(b - cur))[0];
+  const hint = ok ? '✓ Sudah di lajur yang tepat' : `${tgt > cur ? '← Pindah ke kiri' : 'Pindah ke kanan →'} · lajur ${g.n - tgt}`;
+  const h = $('lg-hint'); if (h.textContent !== hint) { h.textContent = hint; h.className = ok ? 'ok' : tgt > cur ? 'go l' : 'go r'; }
+}
+// tap a lane (guidance panel or dashboard): autopilot moves there, manual driving gets a pointer
+function pickLane(l){
+  const v = PLR; if (!v || v.rp) return; const n = Math.round(nAvail(v.sd, v.p)); if (l < 0 || l >= n) return;
+  if (blockAhead(v.sd, l, v.p + v.len/2) < 120) return toast(`Lajur ${n - l} ditutup di depan`, 'warn');
+  v.prefLane = l; v.prefT = clock + 45; lgSig = '';
+  toast(cfg.auto ? `Autopilot pindah ke lajur ${n - l}` : `Lajur ${n - l}: setir ${l > Math.round(v.lx) ? 'ke kiri' : l < Math.round(v.lx) ? 'ke kanan' : 'lurus'}`);
+  hudLane();
+}
+$('lg-lanes').addEventListener('click', e => { const b = e.target.closest('.ln'); if (b) pickLane(+b.dataset.l); });
+$('lanes').addEventListener('click', e => { const b = e.target.closest('i[data-l]'); if (b) pickLane(+b.dataset.l); });
 
 // ---------- mini-map ----------
 const map = $('map'), mctx = map.getContext('2d');
@@ -1921,7 +2023,8 @@ function rowsSpec(){
   return [
     ['cam', 'Kamera', [['chase','Belakang'],['cockpit','Kokpit'],['drone','Drone'],['ic','Simpang susun'],['orbit','Orbit']]],
     ['den', 'Lalu lintas', [[0.6,'Sepi'],[1,'Normal'],[1.7,'Padat'],[2.6,'Macet']]],
-    ['tod', 'Waktu', [['day','Siang'],['dusk','Senja'],['night','Malam']]],
+    ['tod', 'Atur jam', [['morning','Pagi 07:00'],['day','Siang 12:00'],['dusk','Sore 17:48'],['night','Malam 21:00']]],
+    ['tspd', 'Jalannya jam', [[0,'Berhenti'],[0.5,'1 jam = 2 menit'],[1,'1 jam = 1 menit'],[6,'1 jam = 10 detik']]],
     ['lanes', 'Lajur tol', [['auto','Sesuai data'],['2','2'],['3','3'],['4','4'],['5','5']]],
     ['close:1', 'Tutup lajur · arah saya', laneOpts, true],
     ['close:-1', 'Tutup lajur · arah lawan', laneOpts, true],
@@ -1957,7 +2060,7 @@ function applyTraffic(types){ setupBlocks(true); rebuildObjects(types); }
 function apply(id, v){
   cfg[id] = v; saveCfg();
   if (id === 'cam') setCam(v);
-  else if (id === 'tod') setTod(v);
+  else if (id === 'tod') { setTod(v); cfg.tod = ''; saveCfg(); toast(`Jam game diatur ke ${hhmm(gameH)}`); }
   else if (id === 'den') { fillTraffic(); rebuildObjects(['site', 'ov']); }
   else if (id === 'cf' || id === 'cfk') { applyTraffic(['cf', 'ut']); fillTraffic(); }
   else if (id === 'ovl') rebuildObjects(['ov']);
@@ -1975,7 +2078,8 @@ function fillSelect(sel, val){
 }
 const PRESETS = [['Jakarta → Surabaya (Pantura)', 'N:Jakarta', 'N:Surabaya', 'nr'], ['Bandung → Yogyakarta (Lintas Selatan)', 'N:Bandung', 'N:Yogyakarta', 'nr'],
   ['Jakarta → Puncak → Bandung', 'N:Jakarta', 'N:Bandung', 'nr'], ['Jakarta (kota) → Malang', 'N:Jakarta', 'N:Malang', 'mix'],['Jakarta → Bandung', 'Halim', 'Pasteur'], ['Jakarta → Surabaya', 'Halim', 'Dupak'], ['Merak → Banyuwangi', 'Merak', 'Ketapang'],
-  ['Bekasi → Bogor', 'Bekasi Barat', 'Bogor'], ['Bandung → Cirebon', 'Buahbatu', 'Kedawung'], ['Semarang → Solo', 'Krapyak', 'Colomadu'], ['Surabaya → Malang', 'Dupak', 'Malang']];
+  ['Bekasi → Bogor', 'Bekasi Barat', 'Bogor'], ['Bandung → Cirebon', 'Buahbatu', 'Kedawung'], ['Semarang → Solo', 'Krapyak', 'Colomadu'], ['Surabaya → Malang', 'Dupak', 'Malang'],
+  ['JORR 2: Bandara → Pamulang', 'Bandara Soekarno-Hatta', 'Pamulang', 'toll'], ['JORR 2: Pamulang → Setu', 'Pamulang', 'Setu', 'toll']];
 const legHours = legs => legs.reduce((a, l) => { const c = CORR[l.c], km = Math.abs(c.nodes.find(n => n.key === l.b).km - c.nodes.find(n => n.key === l.a).km); return a + km/({t: 90, n: 50, a: 30}[c.cls]); }, 0);
 let firstPick = null;
 function planPreview(){
@@ -2240,15 +2344,15 @@ function updateChoice(u){
 }
 
 try { await Promise.race([document.fonts.load('700 64px Archivo'), new Promise(r => setTimeout(r, 2500))]); } catch(e) {}
-setTod(cfg.tod);
+setTod(null);
 if (cfg.trip === 'free') startDrive({from: NODES.has(cfg.from) ? cfg.from : DEF.from}); else startTrip(NODES.has(cfg.from) ? cfg.from : DEF.from, NODES.has(cfg.to) ? cfg.to : DEF.to);
 if (!localStorage.getItem('tj_seen')) { try { localStorage.setItem('tj_seen', '1'); } catch(e) {} openPlanner(); }
-window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam, startDrive, setNav, clearNav, chooseAt, replanIdx, openAtlas, closeAtlas, atTap, AT, get chunks(){ return chunks; }, get OBJ(){ return OBJ; }, sutetTower};
+window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam, startDrive, setNav, clearNav, chooseAt, replanIdx, openAtlas, closeAtlas, atTap, AT, get chunks(){ return chunks; }, get OBJ(){ return OBJ; }, sutetTower, setHour: h => { gameH = h; todT = 0; lastSign = -1; tickClock(0); }, get gameH(){ return gameH; }};
 
 let last = performance.now(), mapT = 0, frames = 0;
 function tick(dt){
   clock += dt;
-  sim(dt); rampStep(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt);
+  sim(dt); rampStep(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt); tickClock(dt);
   if (PLR) camU = uOfV(PLR);
   ensureAhead();
   setupBlocks(false); updateWorld(); updateSignals();
