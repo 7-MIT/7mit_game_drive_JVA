@@ -13,7 +13,8 @@ import {CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, w
 
 const MOBILE = matchMedia('(pointer:coarse)').matches || innerWidth < 700;
 const LW = 3.6, MED = 1.2, CH = 120, OPEN_HW = 35, OVH = 7.5, PRC = 328, BACK = 460, FWD = 720;
-const DEF = {mode:'mix', cam:'chase', den:1, tod:'day', lanes:'auto', closed:{'1':[1], '-1':[]}, cf:0, cfk:2, ovl:2, scale:5, veh:'car', tspd:1, steerAssist:false,
+let VIEWX = 0;   // extra metres of road and scenery built ahead (Jarak pandang: jauh)
+const DEF = {mode:'mix', cam:'chase', den:1, tod:'day', lanes:'auto', closed:{'1':[1], '-1':[]}, cf:0, cfk:2, ovl:2, scale:5, veh:'car', tspd:1, steerAssist:false, weather:'cerah', roadStyle:'data', view:'normal', autoSteer:false, sound:true, clean:false,
   from:'Bekasi Barat', to:'Pasteur', auto:false, trip:'route'};
 let cfg; try { cfg = {...DEF, ...JSON.parse(localStorage.getItem('tj_cfg1') || '{}')}; } catch(e) { cfg = {...DEF}; }
 const saveCfg = () => { try { localStorage.setItem('tj_cfg1', JSON.stringify(cfg)); } catch(e) {} };
@@ -63,17 +64,17 @@ composer.addPass(bloom); composer.addPass(new OutputPass());
 // near the car with their own winding (z, metres) and hill (w, metres) amplitude: the Lintas Selatan and other mountain
 // roads wind (kelak-kelok) and climb, Cipularang / Semarang–Solo / Bocimi roll over the hills.
 const SEG_N = 6, segU = Array.from({length: SEG_N}, () => new THREE.Vector4(0, -1, 0, 0));
-const CU = {uW:{value:0}, uCz:{value:0}, uB0:{value:0}, uB1:{value:0}, vB0:{value:0}, vB1:{value:0}, uSeg:{value:segU}};
+const CU = {uW:{value:0}, uCz:{value:0}, uB0:{value:0}, uB1:{value:0}, vB0:{value:0}, vB1:{value:0}, uSeg:{value:segU}, uX:{value:new THREE.Vector3(1, 0, 0)}};   // uX: base bend × , extra winding, extra hills
 const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a)/(b - a))); return t*t*(3 - 2*t); };
-function segAmp(u){ let w = 0, h = 0; for (const q of segU) { if (q.y <= q.x) continue; const k = sstep(q.x, q.x + 400, u)*(1 - sstep(q.y - 400, q.y, u)); w += k*q.z; h += k*q.w; } return [w, h]; }
-const gC = u => { const w = segAmp(u)[0]; return 45*Math.sin(u/450) + 20*Math.sin(u/200+1.3) + w*(Math.sin(u/80 + 0.7) + 0.45*Math.sin(u/45 + 2.1)); };
+function segAmp(u){ let w = CU.uX.value.y, h = CU.uX.value.z; for (const q of segU) { if (q.y <= q.x) continue; const k = sstep(q.x, q.x + 400, u)*(1 - sstep(q.y - 400, q.y, u)); w += k*q.z; h += k*q.w; } return [w, h]; }
+const gC = u => { const w = segAmp(u)[0]; return CU.uX.value.x*(45*Math.sin(u/450) + 20*Math.sin(u/200+1.3)) + w*(Math.sin(u/80 + 0.7) + 0.45*Math.sin(u/45 + 2.1)); };
 const gY = u => { const h = segAmp(u)[1]; return h*(0.7*Math.sin(u/520) + 0.3*Math.sin(u/230 + 2)); };
 const gD = u => gC(u + 0.5) - gC(u - 0.5), gYD = u => gY(u + 0.5) - gY(u - 0.5);
-const BEND_HEAD = `uniform float uW; uniform float uCz; uniform float uB0; uniform float uB1; uniform float vB0; uniform float vB1; uniform vec4 uSeg[${SEG_N}];
+const BEND_HEAD = `uniform float uW; uniform float uCz; uniform float uB0; uniform float uB1; uniform float vB0; uniform float vB1; uniform vec4 uSeg[${SEG_N}]; uniform vec3 uX;
 float segK(vec4 q, float u){ if (q.y <= q.x) return 0.0; return smoothstep(q.x, q.x + 400.0, u)*(1.0 - smoothstep(q.y - 400.0, q.y, u)); }
-float bendX(float z){ float u = uW - z, w = 0.0; for (int i = 0; i < ${SEG_N}; i++) w += segK(uSeg[i], u)*uSeg[i].z;
-  return 45.0*sin(u/450.0) + 20.0*sin(u/200.0 + 1.3) + w*(sin(u/80.0 + 0.7) + 0.45*sin(u/45.0 + 2.1)) - uB0 - uB1*(z - uCz); }
-float bendY(float z){ float u = uW - z, h = 0.0; for (int i = 0; i < ${SEG_N}; i++) h += segK(uSeg[i], u)*uSeg[i].w;
+float bendX(float z){ float u = uW - z, w = uX.y; for (int i = 0; i < ${SEG_N}; i++) w += segK(uSeg[i], u)*uSeg[i].z;
+  return uX.x*(45.0*sin(u/450.0) + 20.0*sin(u/200.0 + 1.3)) + w*(sin(u/80.0 + 0.7) + 0.45*sin(u/45.0 + 2.1)) - uB0 - uB1*(z - uCz); }
+float bendY(float z){ float u = uW - z, h = uX.z; for (int i = 0; i < ${SEG_N}; i++) h += segK(uSeg[i], u)*uSeg[i].w;
   return h*(0.7*sin(u/520.0) + 0.3*sin(u/230.0 + 2.0)) - vB0 - vB1*(z - uCz); }
 `;
 const BEND_CHUNK = THREE.ShaderChunk.project_vertex.replace('mvPosition = modelViewMatrix * mvPosition;',
@@ -1278,10 +1279,10 @@ function buildObj(o){
 }
 function freeObj(gs){ dropSolids(gs); for (const g of gs) { g.traverse(m => { if (m.material) arrowMats.delete(m.material); }); dispose(g); } }
 function updateWorld(){
-  const lo = Math.floor((camU - BACK - 140)/CH), hi = Math.floor((camU + FWD + 340)/CH);
+  const lo = Math.floor((camU - BACK - 140)/CH), hi = Math.floor((camU + FWD + 340 + VIEWX)/CH);
   for (const [i, g] of chunks) if (i < lo || i > hi) { dropSolids([g]); dispose(g); chunks.delete(i); }
   for (let i = lo; i <= hi; i++) if (!chunks.has(i)) { chunks.set(i, buildChunk(i)); applySign([chunks.get(i)]); }
-  const a = camU - BACK - 200, b = camU + FWD + 500;
+  const a = camU - BACK - 200, b = camU + FWD + 500 + VIEWX;
   for (const [o, gs] of built) if (o.u + o.r < a || o.u - o.r > b) { freeObj(gs); built.delete(o); if (o.type === 'site') o.s.bays = {'1': null, '-1': null}; }
   for (const o of OBJ) { if (o.u - o.r > b) break; if (o.u + o.r < a || built.has(o)) continue; built.set(o, buildObj(o)); }
 }
@@ -1696,12 +1697,15 @@ function lxBounds(v){
 // from speed, wheelbase and steering angle, limited by tyre grip; the sideways speed is speed × sin(heading)
 const wheelbase = v => heavy(v) ? 6.2 : v.type === 'suv' || v.type === 'van' ? 2.9 : 2.7;
 function steerPlayer(v, dt){
-  const st = (input.left ? 1 : 0) - (input.right ? 1 : 0), spd = Math.abs(v.vel);
+  let st = (input.left ? 1 : 0) - (input.right ? 1 : 0); const spd = Math.abs(v.vel);
+  // Setir otomatis: keeps the car centred in its lane (pedals stay yours); steering by hand picks the new lane
+  if (cfg.autoSteer) { if (st) v.autoLane = null; else { if (v.autoLane == null) v.autoLane = clamp(Math.round(v.lx), 0, nAvail(v.sd, v.p) - 1);
+    const want = clamp((v.autoLane - v.lx)*0.3, -0.12, 0.12), e = want - (v.hd || 0); st = Math.abs(e) > 0.003 ? clamp(e*14, -1, 1) : 0; } }
   // full lock gives at most ~4 m/s² sideways at speed (a firm lane change), but the full 30° when parking
   const maxS = clamp(4.2*wheelbase(v)/Math.max(spd*spd, 1), 0.01, 0.55);
   v.steer = v.steer || 0; v.hd = v.hd || 0;
   const tgt = st*maxS, rate = (st ? 1.6 : 3)*Math.max(maxS, 0.05); v.steer += clamp(tgt - v.steer, -rate*dt, rate*dt);   // ~0.6 s to full lock
-  const grip = (heavy(v) ? 4.5 : 7.5)/Math.max(spd, 1); let yr = clamp(v.vel/wheelbase(v)*Math.tan(v.steer), -grip, grip);
+  const grip = (heavy(v) ? 4.5 : 7.5)*((WEATHER[cfg.weather] || {}).rain ? 0.7 : 1)/Math.max(spd, 1); let yr = clamp(v.vel/wheelbase(v)*Math.tan(v.steer), -grip, grip);
   if (spd > 3 && Math.abs(v.vel/wheelbase(v)*Math.tan(v.steer)) > grip*1.15 && clock - (v.skidT || 0) > 3) { v.skidT = clock; toast('Ban selip! Kurangi setir', 'warn'); }
   v.hd = wrapA(v.hd + yr*dt);
   if (!st && cfg.steerAssist && Math.abs(v.hd) < 0.6) v.hd -= v.hd*Math.min(1, dt*1.1);   // the driver straightens up after a lane change (Asisten setir); a U-turn is left alone
@@ -1838,15 +1842,89 @@ function todAt(h){
   t.night = clamp(t.lamp/4, 0, 1);
   return t;
 }
+const WEATHER = {cerah: {cloud: 0.3, fog: 1, sun: 1, grey: 0}, berawan: {cloud: 0.66, fog: 0.85, sun: 0.5, grey: 0.35},
+  hujan: {cloud: 0.95, fog: 0.5, sun: 0.22, grey: 0.6, rain: true}, kabut: {cloud: 0.55, fog: 0.28, sun: 0.55, grey: 0.45}};
 function applyTod(t){
-  scene.background.set(t.sky); scene.fog.color.set(t.sky); scene.fog.near = t.fog[0]; scene.fog.far = t.fog[1];
-  hemi.intensity = t.hemi; sun.intensity = t.sun; sun.color.set(t.sunCol); sunOff.set(...t.sunPos);
+  const W = WEATHER[cfg.weather] || WEATHER.cerah, far = (VIEWX ? 1.9 : 1)*W.fog;
+  t.sky = cA.set(t.sky).lerp(cB.set(0x8d969c).multiplyScalar(1 - 0.8*t.night), W.grey).getHex();
+  scene.background.set(t.sky); scene.fog.color.set(t.sky); scene.fog.near = t.fog[0]*Math.min(1, W.fog*1.2); scene.fog.far = t.fog[1]*far;
+  skyU.hor.value.set(t.sky); skyU.top.value.set(t.sky).lerp(cB.set(t.night > 0.5 ? 0x03060d : 0x3f78bf), 0.5*(1 - W.grey*0.8));
+  skyU.sunDir.value.copy(sunOff).normalize(); skyU.sunCol.value.set(t.sunCol).multiplyScalar((1 - t.night)*W.sun);
+  skyU.cloud.value = W.cloud; skyU.night.value = t.night; skyU.cloudCol.value.set(0xffffff).lerp(cB.set(t.sky), 0.35 + W.grey*0.5).multiplyScalar(1 - 0.85*t.night);
+  asphalt.roughness = W.rain ? 0.3 : 0.95; asphalt.color.set(W.rain ? 0x2b2d30 : 0x3b3d40);
+  hemi.intensity = t.hemi*(0.75 + 0.25*W.sun); sun.intensity = t.sun*W.sun; sun.color.set(t.sunCol); sunOff.set(...t.sunPos);
   headMat.emissiveIntensity = t.head; tailMat.emissiveIntensity = t.tail; lampHeadMat.emissiveIntensity = t.lamp; lampI = t.lamp*60;
   bloom.strength = MOBILE ? t.bloom*0.7 : t.bloom; renderer.toneMappingExposure = t.exp;
   signI = t.sign; if (Math.abs(signI - lastSign) > 0.02) { lastSign = signI; applySign(); }
   ground.material.color.set(cA.set(0x6f8a4a).lerp(cB.set(0x2c3a24), t.night));
 }
 const hhmm = h => { const m = Math.floor(mod(h, 24)*60); return `${String(Math.floor(m/60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
+// sky dome: gradient, sun, drifting clouds (cover follows the weather) and stars at night
+const skyU = {top: {value: new THREE.Color()}, hor: {value: new THREE.Color()}, sunDir: {value: new THREE.Vector3(0, 1, 0)}, sunCol: {value: new THREE.Color()},
+  cloud: {value: 0.3}, night: {value: 0}, time: {value: 0}, cloudCol: {value: new THREE.Color()}};
+const skyDome = new THREE.Mesh(new THREE.SphereGeometry(2200, 32, 16), new THREE.ShaderMaterial({uniforms: skyU, side: THREE.BackSide, depthWrite: false, fog: false,
+  vertexShader: 'varying vec3 vD; void main(){ vD = position; gl_Position = projectionMatrix*modelViewMatrix*vec4(position, 1.0); }',
+  fragmentShader: `uniform vec3 top, hor, sunCol, cloudCol, sunDir; uniform float cloud, night, time; varying vec3 vD;
+    float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7)))*43758.5453); }
+    float n(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0 - 2.0*f); return mix(mix(h(i), h(i + vec2(1.0, 0.0)), f.x), mix(h(i + vec2(0.0, 1.0)), h(i + vec2(1.0, 1.0)), f.x), f.y); }
+    float fbm(vec2 p){ float s = 0.0, a = 0.5; for (int i = 0; i < 5; i++){ s += a*n(p); p *= 2.03; a *= 0.5; } return s; }
+    void main(){ vec3 d = normalize(vD); float y = max(d.y, 0.0);
+      vec3 col = mix(hor, top, pow(y, 0.5));
+      float sd = max(dot(d, normalize(sunDir)), 0.0);
+      col += sunCol*(pow(sd, 1200.0)*5.0*(1.0 - cloud*0.85) + pow(sd, 10.0)*0.22);
+      if (night > 0.05 && d.y > 0.02) { vec2 sp = floor(d.xz/(d.y + 0.3)*420.0); col += vec3(step(0.9972, h(sp))*night*(1.0 - cloud)); }
+      if (d.y > 0.0) { vec2 cp = d.xz/(d.y + 0.15)*1.7 + vec2(time*0.012, time*0.005);
+        float cov = smoothstep(1.05 - cloud, 1.25 - cloud*0.6, fbm(cp))*smoothstep(0.0, 0.1, d.y); col = mix(col, cloudCol, cov*0.92); }
+      else col = hor;
+      gl_FragColor = vec4(col, 1.0);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }`}));
+skyDome.renderOrder = -2; skyDome.frustumCulled = false; scene.add(skyDome);
+// rain: streaks falling around the camera
+const RAIN_N = MOBILE ? 700 : 1800, rainPos = new Float32Array(RAIN_N*6), rainGeo = new THREE.BufferGeometry();
+rainGeo.setAttribute('position', new THREE.BufferAttribute(rainPos, 3));
+const rain = new THREE.LineSegments(rainGeo, new THREE.LineBasicMaterial({color: 0xd5dee8, transparent: true, opacity: 0.7, fog: false}));
+rain.frustumCulled = false; rain.visible = false; scene.add(rain);
+for (let i = 0; i < RAIN_N; i++) { rainPos[i*6] = rnd(-35, 35); rainPos[i*6 + 1] = rnd(0, 26); rainPos[i*6 + 2] = rnd(-60, 15); }
+function updateSky(dt){
+  skyDome.position.copy(camera.position); skyU.time.value += dt;
+  const on = !!(WEATHER[cfg.weather] || {}).rain; rain.visible = on; if (!on) return;
+  const fall = 22*dt, v = PLR ? Math.max(0, PLR.vel)*dt : 0;
+  for (let i = 0; i < RAIN_N; i++) { const k = i*6; let y = rainPos[k + 1] - fall, z = rainPos[k + 2] + v;
+    if (y < 0) { y += 26; rainPos[k] = rnd(-35, 35); } if (z > 15) z -= 75;
+    rainPos[k + 1] = y; rainPos[k + 2] = z; rainPos[k + 3] = rainPos[k] + 0.05; rainPos[k + 4] = y + 0.9; rainPos[k + 5] = z - 0.25 - v*0.6; }
+  rainGeo.attributes.position.needsUpdate = true; rain.position.set(camera.position.x, camera.position.y - 6, camera.position.z);
+}
+function setRoadStyle(){ const k = {data: [1, 0, 0], kelok: [1.25, 16, 9], lurus: [0.35, 0, 0]}[cfg.roadStyle] || [1, 0, 0]; CU.uX.value.set(...k); }
+function setView(){ VIEWX = cfg.view === 'jauh' ? 900 : 0; }
+function setClean(){ document.body.classList.toggle('clean', !!cfg.clean); $('hudb').setAttribute('aria-pressed', cfg.clean ? 'true' : 'false'); }
+
+// ---------- sound: engine (rpm from speed and gear), wind, rain; starts on the first tap or key press
+let AC = null, snd = null;
+function audioStart(){
+  if (AC || !cfg.sound) return; try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
+  const master = AC.createGain(); master.gain.value = 0.5; master.connect(AC.destination);
+  const eng = AC.createOscillator(), eng2 = AC.createOscillator(), lp = AC.createBiquadFilter(), eg = AC.createGain();
+  eng.type = 'sawtooth'; eng2.type = 'square'; lp.type = 'lowpass'; lp.frequency.value = 700; eg.gain.value = 0;
+  eng.connect(lp); eng2.connect(lp); lp.connect(eg); eg.connect(master); eng.start(); eng2.start();
+  const buf = AC.createBuffer(1, AC.sampleRate*2, AC.sampleRate), d = buf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random()*2 - 1;
+  const mk = (f, q) => { const src = AC.createBufferSource(); src.buffer = buf; src.loop = true; const bp = AC.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = q;
+    const g = AC.createGain(); g.gain.value = 0; src.connect(bp); bp.connect(g); g.connect(master); src.start(); return g; };
+  snd = {master, eng, eng2, lp, eg, wind: mk(500, 0.6), rain: mk(2500, 0.4)};
+}
+function updateSound(){
+  if (!snd) return; const t = AC.currentTime, v = PLR ? Math.abs(PLR.vel) : 0, hv = PLR && heavy(PLR) ? 0.6 : 1;
+  snd.master.gain.setTargetAtTime(cfg.sound && $('plan').hidden ? 0.5 : 0, t, 0.1);
+  const g = gearOf(v/hv), lo = g > 1 ? GEAR_UP[g - 2]*hv : 0, hi = (GEAR_UP[g - 1] || 45)*hv, rpm = 850 + clamp((v - lo)/(hi - lo), 0, 1)*4200*(g === 1 ? 1 : 0.75) + (input.gas ? 300 : 0);
+  const f = rpm/60*(heavy(PLR || {}) ? 1.5 : 2);
+  snd.eng.frequency.setTargetAtTime(f, t, 0.05); snd.eng2.frequency.setTargetAtTime(f*0.5, t, 0.05); snd.lp.frequency.setTargetAtTime(400 + rpm*0.25 + (input.gas ? 500 : 0), t, 0.08);
+  snd.eg.gain.setTargetAtTime(0.05 + (input.gas || cfg.auto ? 0.06 : 0.02) + rpm/90000, t, 0.1);
+  snd.wind.gain.setTargetAtTime(Math.min(0.5, v*v/2600), t, 0.2);
+  snd.rain.gain.setTargetAtTime((WEATHER[cfg.weather] || {}).rain ? 0.22 : 0, t, 0.5);
+}
+addEventListener('pointerdown', audioStart); addEventListener('keydown', audioStart);
+
 function tickClock(dt){
   gameH = mod(gameH + dt*(+cfg.tspd || 0)/60, 24);
   todT -= dt; if (todT > 0) return; todT = 0.5;
@@ -2210,6 +2288,12 @@ function rowsSpec(){
   return [
     ['cam', 'Kamera', [['chase','Belakang'],['cockpit','Kokpit'],['drone','Drone'],['ic','Simpang susun'],['orbit','Orbit']]],
     ['den', 'Lalu lintas', [[0.6,'Sepi'],[1,'Normal'],[1.7,'Padat'],[2.6,'Macet']]],
+    ['weather', 'Cuaca', [['cerah','Cerah'],['berawan','Berawan'],['hujan','Hujan'],['kabut','Kabut']]],
+    ['roadStyle', 'Gaya jalan', [['data','Sesuai medan'],['kelok','Lebih berkelok & berbukit'],['lurus','Lebih lurus']]],
+    ['view', 'Jarak pandang', [['normal','Normal'],['jauh','Jauh (lebih berat)']]],
+    ['autoSteer', 'Setir otomatis', [[false,'Mati'],[true,'Aktif (gas & rem tetap manual)']]],
+    ['sound', 'Suara', [[true,'Nyala'],[false,'Mati']]],
+    ['clean', 'Tampilan', [[false,'Lengkap'],[true,'Bersih (tanpa HUD, tekan H)']]],
     ['tod', 'Atur jam', [['morning','Pagi 07:00'],['day','Siang 12:00'],['dusk','Sore 17:48'],['night','Malam 21:00']]],
     ['steerAssist', 'Asisten setir', [[false,'Mati (setir penuh, harus balas setir)'],[true,'Aktif (mobil lurus lagi saat setir dilepas)']]],
     ['tspd', 'Jalannya jam', [[0,'Berhenti'],[0.5,'1 jam = 2 menit'],[1,'1 jam = 1 menit'],[6,'1 jam = 10 detik']]],
@@ -2279,6 +2363,12 @@ function apply(id, v){
   if (id === 'cam') { setCam(v); toast(`Kamera: ${label()}`); }
   else if (id === 'tod') { setTod(v); cfg.tod = ''; saveCfg(); toast(`Jam game diatur ke ${hhmm(gameH)}`); }
   else if (id === 'tspd') toast(`Jam game: ${label()}`);
+  else if (id === 'weather') { lastSign = -1; tickClock(0); toast(`Cuaca: ${label()}`); }
+  else if (id === 'roadStyle') { setRoadStyle(); toast(`Gaya jalan: ${label()}`); }
+  else if (id === 'view') { setView(); updateWorld(); tickClock(0); toast(`Jarak pandang: ${label()}`); }
+  else if (id === 'autoSteer') { if (PLR) PLR.autoLane = null; toast(`Setir otomatis: ${v ? 'aktif, gas & rem manual' : 'mati'}`); }
+  else if (id === 'sound') { if (v) audioStart(); toast(`Suara: ${v ? 'nyala' : 'mati'}`); }
+  else if (id === 'clean') setClean();
   else if (id === 'steerAssist') toast(`Asisten setir: ${v ? 'aktif' : 'mati'}`);
   else if (id === 'den') { fillTraffic(); rebuildObjects(['site', 'ov']); toast(`Lalu lintas: ${label()}`); }
   else if (id === 'cf' || id === 'cfk') { const msg = cfg.cf ? ahead('cf') : ''; applyTraffic(['cf', 'ut']); fillTraffic(); updateWorld(); toast(`Contraflow: ${cfg.cf ? (cfg.cfk >= 9 ? 'semua lajur' : cfg.cfk + ' lajur') + (cfg.cf > 0 ? ' untuk arah saya' : ' untuk arah lawan') : 'mati'}${msg}`); }
@@ -2302,9 +2392,9 @@ const PRESETS = [['Jakarta → Surabaya (Pantura)', 'N:Jakarta', 'N:Surabaya', '
 const legHours = legs => legs.reduce((a, l) => { const c = CORR[l.c], km = Math.abs(c.nodes.find(n => n.key === l.b).km - c.nodes.find(n => n.key === l.a).km); return a + km/({t: 90, n: 50, a: 30}[c.cls]); }, 0);
 let firstPick = null;
 function planPreview(){
-  const free = cfg.trip === 'free', el = $('preview');
+  const free = cfg.trip === 'free' || cfg.trip === 'santai', el = $('preview');
   $('to-field').hidden = $('swap').hidden = $('presets-field').hidden = free; $('first-field').hidden = !free;
-  [...$('tripsel').children].forEach(c => c.setAttribute('aria-pressed', c.dataset.t === (free ? 'free' : 'route') ? 'true' : 'false'));
+  [...$('tripsel').children].forEach(c => c.setAttribute('aria-pressed', c.dataset.t === (cfg.trip || 'route') ? 'true' : 'false'));
   if (free) {
     const from = $('from').value, ch = choicesAt(from, null, 'mix'), fs = $('firstsel'); fs.innerHTML = '';
     if (firstPick && !ch.some(o => o.e === firstPick)) firstPick = null;
@@ -2312,7 +2402,8 @@ function planPreview(){
     for (const o of ch) { const b = btn(`${o.road} → ${o.toward}`, firstPick === o.e); b.onclick = () => { firstPick = o.e; planPreview(); }; fs.append(b); }
     const t = tripFromLegs(from, walkFree(from, null, null, firstPick, 60, 'mix'), null, 'mix'); $('go').disabled = !t;
     el.innerHTML = '';
-    const d = document.createElement('div'); d.className = 'big'; d.textContent = 'Keliling bebas'; el.append(d);
+    const d = document.createElement('div'); d.className = 'big'; d.textContent = cfg.trip === 'santai' ? 'Santai' : 'Keliling bebas'; el.append(d);
+    if (cfg.trip === 'santai') { const s0 = document.createElement('div'); s0.textContent = 'Jalan tanpa ujung untuk bersantai: autopilot, tampilan bersih (tekan H), jalan lebih berkelok dan berbukit, jarak pandang jauh, lalu lintas sepi, sore hari. Cuaca bisa diganti di Pengaturan.'; el.append(s0); }
     const s1 = document.createElement('div'); s1.textContent = `Mulai dari ${NODES.get(from).name}${t ? ' lewat ' + CORR[t.legs[0].c].name : ''}. Tanpa tujuan: jalan terus mengikuti jalan, dan Anda memilih arah di tiap simpang susun, exit atau persimpangan (panel "Arah di").`; el.append(s1);
     const s2 = document.createElement('div'); s2.className = 'path'; s2.textContent = `Buka Peta (tombol Peta / tombol M) untuk navigasi ke salah satu dari ${NAV_COUNT} tempat: ${NET_SUMMARY}.`; el.append(s2);
     return;
@@ -2334,7 +2425,7 @@ function setMode(m){ cfg.mode = m; saveCfg(); [...$('modesel').children].forEach
 function openPlanner(){
   fillSelect($('from'), trip ? trip.from : cfg.from); fillSelect($('to'), trip && trip.dest && [...$('to').options].some(o => o.value === trip.dest) ? trip.dest : cfg.to);
   const ts = $('tripsel'); ts.innerHTML = '';
-  for (const [k, l] of [['route', 'Rute (A → B)'], ['free', 'Keliling bebas']]) { const x = btn(l, (cfg.trip || 'route') === k); x.dataset.t = k; x.onclick = () => { cfg.trip = k; saveCfg(); planPreview(); }; ts.append(x); }
+  for (const [k, l] of [['route', 'Rute (A → B)'], ['free', 'Keliling bebas'], ['santai', 'Santai (ala Slow Roads)']]) { const x = btn(l, (cfg.trip || 'route') === k); x.dataset.t = k; x.onclick = () => { cfg.trip = k; saveCfg(); planPreview(); }; ts.append(x); }
   const pr = $('presets'); pr.innerHTML = '';
   for (const [label, a, b, m] of PRESETS) { const x = btn(label, false); x.onclick = () => { $('from').value = a; $('to').value = b; setMode(m || 'mix'); planPreview(); }; pr.append(x); }
   const ms = $('modesel'); ms.innerHTML = '';
@@ -2346,7 +2437,8 @@ function openPlanner(){
 $('from').onchange = () => { firstPick = null; planPreview(); }; $('to').onchange = planPreview;
 $('swap').onclick = () => { const a = $('from').value; $('from').value = $('to').value; $('to').value = a; planPreview(); };
 $('go').onclick = () => { $('plan').hidden = true; cfg.from = $('from').value; if (cfg.trip !== 'free') cfg.to = $('to').value; saveCfg();
-  if (cfg.trip === 'free') startDrive({from: cfg.from, first: firstPick}); else startTrip(cfg.from, cfg.to); };
+  if (cfg.trip === 'santai') { Object.assign(cfg, {auto: true, clean: true, roadStyle: 'kelok', view: 'jauh', den: 0.6}); gameH = 16.4; saveCfg(); setRoadStyle(); setView(); setClean(); hudAuto(); setTod(null); }
+  if (cfg.trip === 'free' || cfg.trip === 'santai') startDrive({from: cfg.from, first: firstPick}); else startTrip(cfg.from, cfg.to); };
 $('plan-close').onclick = () => { if (trip) $('plan').hidden = true; };
 
 // leaving the route on a ramp or at an intersection keeps you driving: the trip continues from that place
@@ -2382,6 +2474,7 @@ $('auto').onclick = () => { cfg.auto = !cfg.auto; saveCfg(); hudAuto();
   if (cfg.auto && PLR && !PLR.rp) { const n = nAvail(PLR.sd, PLR.p); PLR.lane = clamp(Math.round(PLR.lx), 0, n - 1); if (PLR.vel < 0) PLR.vel = 0; }
   toast(cfg.auto ? 'Autopilot aktif: mengikuti rute dan aturan sampai tujuan' : 'Kemudi manual: bebas, pelanggaran tetap dicatat'); };
 $('mapb').onclick = () => openAtlas();
+$('hudb').onclick = () => { cfg.clean = !cfg.clean; saveCfg(); setClean(); renderUI(); };
 $('camb').onclick = () => { const order = ['chase', 'cockpit', 'drone', 'ic', 'orbit'], m = order[(order.indexOf(cfg.cam) + 1) % order.length]; apply('cam', m); };
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('atlas').hidden) { closeAtlas(); return; }
   if (e.target.closest && e.target.closest('select,input')) return;
@@ -2391,6 +2484,7 @@ addEventListener('keydown', e => { if (e.key === 'Escape' && !$('atlas').hidden)
   else if (k === 'arrowleft' || k === 'a') { input.left = true; manualNow(); e.preventDefault(); }
   else if (k === 'arrowright' || k === 'd') { input.right = true; manualNow(); e.preventDefault(); }
   else if (k === 'p' && !e.repeat) $('auto').click();
+  else if (k === 'h' && !e.repeat) $('hudb').click();
   else if (k === 'c' && !e.repeat) $('camb').click();
   else if (k === 'm' && !e.repeat) { if ($('atlas').hidden) openAtlas(); else closeAtlas(); } });
 addEventListener('keyup', e => { const k = e.key.toLowerCase(); if (k === 'arrowup' || k === 'w') input.gas = false; if (k === 'arrowdown' || k === 's') input.brake = false;
@@ -2618,8 +2712,8 @@ function updateChoice(u){
 }
 
 try { await Promise.race([document.fonts.load('700 64px Archivo'), new Promise(r => setTimeout(r, 2500))]); } catch(e) {}
-setTod(null);
-if (cfg.trip === 'free') startDrive({from: NODES.has(cfg.from) ? cfg.from : DEF.from}); else startTrip(NODES.has(cfg.from) ? cfg.from : DEF.from, NODES.has(cfg.to) ? cfg.to : DEF.to);
+setRoadStyle(); setView(); setClean(); setTod(null);
+if (cfg.trip === 'free' || cfg.trip === 'santai') startDrive({from: NODES.has(cfg.from) ? cfg.from : DEF.from}); else startTrip(NODES.has(cfg.from) ? cfg.from : DEF.from, NODES.has(cfg.to) ? cfg.to : DEF.to);
 if (!localStorage.getItem('tj_seen')) { try { localStorage.setItem('tj_seen', '1'); } catch(e) {} openPlanner(); }
 window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam, startDrive, setNav, clearNav, chooseAt, replanIdx, openAtlas, closeAtlas, atTap, AT, get chunks(){ return chunks; }, get OBJ(){ return OBJ; }, sutetTower, setHour: h => { gameH = h; todT = 0; lastSign = -1; tickClock(0); }, get gameH(){ return gameH; }, volcanoes, updateVolcanoes, regionAt, latLonAt};
 
@@ -2639,7 +2733,7 @@ renderer.setAnimationLoop(now => {
   const dt = Math.min(0.05, (now - last)/1000); last = now; frames++;
   if ((!$('plan').hidden && trip && !stats.done) || !$('atlas').hidden) { composer.render(); return; }
   tick(dt);
-  placeGroups(); place(); updateCam(dt); updateVolcanoes(dt); flash(); updateBend(); updateHud(dt);
+  placeGroups(); place(); updateCam(dt); updateVolcanoes(dt); updateSky(dt); updateSound(); flash(); updateBend(); updateHud(dt);
   mapT -= dt; if (mapT <= 0) { mapT = 0.5; drawMap(); }
   composer.render();
 });

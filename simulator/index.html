@@ -97,6 +97,10 @@
   #lanes i[data-l]{cursor:pointer;transition:background-color .2s,border-color .2s}
   #lanes i.pick{outline:2px solid var(--color-accent);outline-offset:1px}
 
+  /* Tampilan bersih: only the road, the speed and the controls (like slowroads.io) */
+  body.clean #top, body.clean #mapbox, body.clean #guide, body.clean #ctrl, body.clean .keys, body.clean #dash .dright{display:none!important}
+  body.clean #dash{opacity:.85}
+  body.clean #hudb{background:var(--color-text);color:var(--color-bg)}
   /* motion: panels slide in, dialogs scale in, buttons respond to presses */
   @keyframes pop{from{opacity:0;transform:translateY(-8px) scale(.98)}to{opacity:1;transform:none}}
   @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
@@ -286,7 +290,7 @@
     #mapbox.big #map{height:min(200px,55dvh)}
     #drive{justify-self:stretch;grid-template-columns:60px 60px auto minmax(0,1fr) 72px 72px;grid-template-rows:54px;gap:6px}
     .mini{grid-column:3;grid-row:1;display:flex}
-    .mini .dbtn{min-width:70px}
+    .mini .dbtn{min-width:56px;padding:6px 4px}
     #lft{grid-column:1;grid-row:1}#rgt{grid-column:2;grid-row:1}
     #brake{grid-column:5;grid-row:1}#gas{grid-column:6;grid-row:1}
   }
@@ -405,12 +409,13 @@
       <button id="auto" class="dbtn" aria-pressed="false">Autopilot</button>
       <button id="camb" class="dbtn">Kamera</button>
       <button id="mapb" class="dbtn">Peta</button>
+      <button id="hudb" class="dbtn" aria-pressed="false" aria-label="Tampilan bersih">HUD</button>
     </div>
     <button id="lft" class="dbtn" aria-label="Setir ke kiri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"><path d="M15 5l-7 7 7 7"/></svg></button>
     <button id="rgt" class="dbtn" aria-label="Setir ke kanan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"><path d="M9 5l7 7-7 7"/></svg></button>
     <button id="brake" class="dbtn">REM</button>
     <button id="gas" class="dbtn">GAS</button>
-    <div class="keys">↑/W gas · ↓/S rem (tahan saat berhenti = mundur) · tahan ←/→ setir · P autopilot · C kamera · M peta</div>
+    <div class="keys">↑/W gas · ↓/S rem (tahan saat berhenti = mundur) · tahan ←/→ setir · P autopilot · C kamera · M peta · H tampilan bersih</div>
   </div>
 </div>
 

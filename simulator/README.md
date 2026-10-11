@@ -73,6 +73,16 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
   - Cipularang, Bawen–Salatiga, Bocimi, Cisumdawu, Pandaan–Malang and the mountain roads run between green hills.
   - About thirty volcanoes (Salak, Gede-Pangrango, Ciremai, Slamet, Merbabu, Merapi, Lawu, Arjuno, Semeru …) stand on the horizon at their real bearing.
 - **U-turns.** Steer all the way round where the road allows it (anywhere on a national road, through a median opening on a toll road) and the trip carries on the other way.
+- **Relaxed driving, inspired by slowroads.io.**
+  - The trip type "Santai (ala Slow Roads)" starts an endless drive with autopilot, a clean screen, winding and hilly roads, a long view, light traffic and a late afternoon sun.
+  - Settings:
+    - Cuaca: clear, cloudy, rain, fog. Rain brings falling streaks, a wet dark road and less grip.
+    - Gaya jalan: as the terrain, more winding and hilly, or straighter.
+    - Jarak pandang: normal or far.
+    - Setir otomatis: lane keeping while you work the pedals. Steering by hand picks the next lane.
+    - Suara: engine pitch follows speed and gear, plus wind and rain.
+    - Tampilan: full or clean. Clean shows only the speed and controls; H or the HUD button switches.
+  - The sky is a gradient dome with the sun, drifting clouds that follow the weather, and stars at night.
 - **Power lines.**
   - Every PLN electricity pole along the national roads (in towns and outside) carries its wires: three phase wires on the cross-arm, the neutral and a telecom cable, sagging between poles. Poles skip intersections, and you can crash into them.
   - SUTET 500 kV lines (double-circuit lattice towers, about 57 m tall, every 400 m) run beside toll and national roads for long stretches. Each has six conductors on insulator strings and two earth wires.
