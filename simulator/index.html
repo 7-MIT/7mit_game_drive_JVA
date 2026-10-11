@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Simulator Tol Trans-Jawa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="ds/modernist.css">
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#b9c8d3;font-family:var(--font-body);-webkit-user-select:none;user-select:none}
+  canvas{display:block;touch-action:none}
+  #stage{position:fixed;inset:0}
+  .panel{background:var(--color-bg);color:var(--color-text);border:2px solid var(--color-text)}
+  .kick{font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:600}
+  .kick b{color:var(--color-accent);font-weight:800}
+  button{font:inherit;color:inherit}
+  .opt{font-size:12px;background:transparent;border:1px solid currentColor;padding:5px 9px;cursor:pointer;min-height:30px;text-align:left}
+  .opt:hover{background:color-mix(in srgb,var(--color-text) 7%,transparent)}
+  .opt[aria-pressed="true"]{background:var(--color-text);color:var(--color-bg)}
+  .opt:disabled{opacity:.3;cursor:default}
+
+  /* top bar */
+  #top{position:fixed;left:16px;top:16px;width:min(420px,calc(100vw - 32px));display:flex;flex-direction:column;max-height:calc(100vh - 32px)}
+  .top-head{display:flex;align-items:stretch;justify-content:space-between}
+  .top-id{padding:8px 12px;min-width:0}
+  #route{font-family:var(--font-heading);font-weight:800;font-size:17px;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sub{font-size:11px;display:flex;gap:10px;flex-wrap:wrap;margin-top:2px}
+  #kmpost{font-weight:800}
+  #toggle{font-size:12px;font-weight:600;background:var(--color-text);color:var(--color-bg);border:0;padding:8px 14px;cursor:pointer;min-height:36px;text-align:left}
+  #toggle:hover{background:var(--color-accent-600)}
+  #ctrl{display:none;overflow:auto;grid-template-columns:120px minmax(0,1fr);border-top:2px solid var(--color-text)}
+  #top.open #ctrl{display:grid}
+  .lbl{font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:8px 10px 8px 12px;display:flex;align-items:center;border-bottom:1px solid var(--color-divider);text-wrap:pretty}
+  .cell{padding:6px 8px 6px 0;border-bottom:1px solid var(--color-divider);display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+  .hint{font-size:10px;opacity:.6;width:100%}
+
+  /* map + next events */
+  #mapbox{position:fixed;right:16px;top:16px;width:300px;display:flex;flex-direction:column}
+  #map{width:100%;height:150px;cursor:zoom-in;border-bottom:2px solid var(--color-text)}
+  #mapbox.big #map{height:260px;cursor:zoom-out}
+  #next{list-style:none;margin:0;padding:0}
+  #next li{display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:8px;align-items:center;padding:5px 10px;border-bottom:1px solid var(--color-divider);font-size:13px}
+  #next li:last-child{border-bottom:0}
+  #next li span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #next b{font-size:9px;letter-spacing:.08em;padding:2px 4px;text-align:left;background:#0c6a3c;color:#fff}
+  #next b.k-r{background:#0d3b7a}#next b.k-g,#next b.k-t{background:var(--color-text)}#next b.k-x{background:#f2c230;color:#111}
+  #next b.k-k{background:#8a5a28;color:#fff}#next b.k-te,#next b.k-ti{background:var(--color-text)}#next b.k-n0{background:transparent;color:inherit}
+  #next li.dest b{background:var(--color-accent);color:#fff}
+  #next li.dest{font-weight:800}
+  #next em{font-style:normal;font-weight:600;font-variant-numeric:tabular-nums}
+
+  /* dash */
+  #dash{position:fixed;left:16px;bottom:16px;display:grid;grid-template-columns:auto auto;min-width:300px}
+  #spdbox{display:flex;align-items:center;gap:12px;padding:10px 14px;border-right:2px solid var(--color-text)}
+  #spd{font-family:var(--font-heading);font-weight:800;font-size:48px;line-height:1;font-variant-numeric:tabular-nums;min-width:2.1ch;text-align:right}
+  #spdbox.over #spd{color:var(--color-accent)}
+  .unit{font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+  #lim{width:46px;height:46px;border-radius:50%;border:6px solid #d0202a;background:#fff;color:#111;display:grid;place-items:center;font-weight:800;font-size:16px;font-variant-numeric:tabular-nums}
+  .dright{padding:8px 12px;display:flex;flex-direction:column;gap:6px;justify-content:center}
+  #lanes{display:flex;gap:3px;height:22px}
+  #lanes i{width:12px;border:1.5px solid var(--color-text);display:block}
+  #lanes i.on{background:var(--color-accent);border-color:var(--color-accent)}
+  #lanes i.cf{border-style:dashed}
+  .stats{display:grid;grid-template-columns:repeat(3,auto);gap:2px 14px;font-size:11px}
+  .stats div span{display:block;font-size:9px;letter-spacing:.08em;text-transform:uppercase;opacity:.7}
+  .stats div b{font-variant-numeric:tabular-nums}
+  #ins{grid-column:1/-1;border-top:2px solid var(--color-text);padding:6px 12px;font-size:13px;font-weight:600;background:var(--color-accent);color:#fff}
+
+  /* driving controls */
+  #drive{position:fixed;right:16px;bottom:16px;display:grid;grid-template-columns:repeat(3,64px);grid-template-rows:auto 64px 64px;gap:6px}
+  .dbtn{background:var(--color-bg);border:2px solid var(--color-text);font-weight:800;font-size:13px;cursor:pointer;display:flex;align-items:flex-end;justify-content:flex-start;padding:6px 8px;touch-action:none;text-align:left}
+  .dbtn:hover{background:var(--color-neutral-200)}
+  .dbtn:active,.dbtn[aria-pressed="true"]{background:var(--color-text);color:var(--color-bg)}
+  .dbtn svg{width:22px;height:22px}
+  #lft,#rgt{align-items:center;justify-content:center}
+  #gas{grid-column:3;grid-row:2/4;background:var(--color-text);color:var(--color-bg)}
+  #gas:active{background:var(--color-accent-600);border-color:var(--color-accent-600)}
+  #brake{grid-column:2;grid-row:2/4}
+  #brake:active{background:var(--color-accent);border-color:var(--color-accent);color:#fff}
+  #lft{grid-column:1;grid-row:2}#rgt{grid-column:1;grid-row:3}
+  .mini{grid-column:1/-1;grid-row:1;display:flex;gap:6px}
+  .mini .dbtn{flex:1;min-height:36px;font-size:11px;align-items:center}
+  #auto[aria-pressed="true"]{background:var(--color-accent);border-color:var(--color-accent);color:#fff}
+  .keys{position:fixed;right:16px;bottom:226px;font-size:10px;opacity:.75;text-align:right;color:#111;text-shadow:0 0 6px rgba(255,255,255,.8)}
+
+  #toast{position:fixed;left:50%;top:16px;transform:translate(-50%,-140%);transition:transform .25s;padding:8px 14px;font-size:13px;font-weight:600;max-width:min(520px,calc(100vw - 32px));z-index:5;pointer-events:none}
+  #toast.show{transform:translate(-50%,0)}
+  #toast.warn{background:#f2c230;color:#111;border-color:#111}
+  #toast.bad{background:var(--color-accent);color:#fff;border-color:var(--color-accent-800)}
+  #resume{position:fixed;left:50%;bottom:120px;transform:translateX(-50%);font-size:15px;font-weight:800;padding:12px 18px;cursor:pointer;background:var(--color-accent);color:#fff;border:2px solid var(--color-accent-800);text-align:left}
+
+  /* dialogs */
+  .dlg-back{position:fixed;inset:0;background:color-mix(in srgb,#201e1d 45%,transparent);display:grid;place-items:center;z-index:10;padding:16px}
+  .dlg-back[hidden]{display:none}
+  .dlg{width:min(640px,100%);max-height:calc(100vh - 32px);overflow:auto;box-shadow:var(--shadow-lg)}
+  .dlg-head{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:2px solid var(--color-text)}
+  .dlg-head h2{font-size:22px;margin:0}
+  .x{background:transparent;border:0;cursor:pointer;font-size:20px;line-height:1;padding:4px 8px}
+  .dlg-body{padding:14px;display:grid;gap:14px}
+  .row2{display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:end}
+  .field label{display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px}
+  select.input{appearance:auto}
+  #swap{height:36px;padding:0 10px;cursor:pointer;background:transparent;border:1px solid var(--color-divider)}
+  .chips{display:flex;flex-wrap:wrap;gap:4px}
+  #preview{border:2px solid var(--color-text);padding:10px 12px;font-size:13px;display:grid;gap:2px}
+  #preview .big{font-family:var(--font-heading);font-weight:800;font-size:30px;line-height:1}
+  #preview .path{font-size:12px;opacity:.8}
+  #preview .warn{color:var(--color-accent-700);font-weight:600}
+  #go,#done-go{font-weight:800;font-size:16px;padding:12px 16px;background:var(--color-accent);color:#fff;border:0;cursor:pointer;text-align:left}
+  #go:hover,#done-go:hover{background:var(--color-accent-600)}
+  #go:disabled{opacity:.45;cursor:default}
+  .help{font-size:12px;line-height:1.5;opacity:.8;margin:0}
+  .actions{display:flex;gap:8px;flex-wrap:wrap}
+  #done-new{padding:12px 16px;border:2px solid var(--color-text);background:transparent;cursor:pointer;font-weight:600}
+
+  @media (max-width:700px){
+    #top{left:0;right:0;top:0;width:auto;border-width:0 0 2px;max-height:72vh}
+    #route{font-size:15px}
+    #toggle{min-width:96px;min-height:44px}
+    #ctrl{grid-template-columns:1fr}
+    .lbl{padding:10px 14px 2px;border:0}
+    .cell{padding:4px 14px 10px}
+    .opt{min-height:44px;flex:1 1 auto}
+    #mapbox{right:8px;top:74px;width:150px}
+    #map{height:84px}
+    #mapbox.big{width:calc(100vw - 16px)}
+    #mapbox.big #map{height:200px}
+    #next li{grid-template-columns:auto;gap:0;padding:3px 6px;font-size:11px}
+    #next li b,#next li:nth-child(n+3){display:none}
+    #dash{left:8px;top:74px;bottom:auto;min-width:0;grid-template-columns:auto}
+    #spdbox{border-right:0;padding:6px 10px;gap:8px}
+    #spd{font-size:34px}
+    #lim{width:36px;height:36px;border-width:5px;font-size:13px}
+    .dright{border-top:2px solid var(--color-text);padding:6px 10px}
+    .stats{grid-template-columns:repeat(3,auto);gap:2px 8px}
+    #ins{max-width:calc(100vw - 16px)}
+    #drive{left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom));grid-template-columns:72px 72px 1fr 88px 88px;grid-template-rows:auto 72px}
+    .mini{grid-column:1/-1}
+    #lft{grid-column:1;grid-row:2}#rgt{grid-column:2;grid-row:2}
+    #brake{grid-column:4;grid-row:2}#gas{grid-column:5;grid-row:2}
+    .keys{display:none}
+    #resume{bottom:150px}
+    #toast{top:auto;bottom:calc(170px + env(safe-area-inset-bottom));transform:translate(-50%,calc(100% + 400px))}
+    #toast.show{transform:translate(-50%,0)}
+    #top{z-index:4;max-height:calc(100vh - 170px)}
+    #top.open ~ #mapbox, #top.open ~ #dash{display:none}
+    .row2{grid-template-columns:1fr}
+    #swap{justify-self:start}
+  }
+</style>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+</head>
+<body>
+<div id="stage"></div>
+
+<div id="top" class="panel">
+  <div class="top-head">
+    <div class="top-id">
+      <div class="kick"><b>Jalan</b> Pulau Jawa · Lajur kiri</div>
+      <div id="route">—</div>
+      <div class="sub"><span id="corr">—</span><span id="kmpost">KM —</span></div>
+    </div>
+    <button id="toggle" aria-label="Pengaturan">Pengaturan</button>
+  </div>
+  <div id="ctrl"></div>
+</div>
+
+<div id="mapbox" class="panel">
+  <canvas id="map" aria-label="Peta jaringan tol Pulau Jawa"></canvas>
+  <ul id="next"></ul>
+</div>
+
+<div id="dash" class="panel">
+  <div id="spdbox"><div><div id="spd">0</div><div class="unit">km/jam</div></div><div id="lim" data-v="" title="Batas kecepatan">100</div></div>
+  <div class="dright">
+    <div id="lanes" title="Lajur"></div>
+    <div class="stats">
+      <div><span>Sisa</span><b id="left">—</b></div>
+      <div><span>Tol</span><b id="toll">Rp 0</b></div>
+      <div><span>Langgar/Tabrak</span><b id="viol">0 / 0</b></div>
+    </div>
+  </div>
+  <div id="ins" hidden></div>
+</div>
+
+<div class="keys">↑/W gas · ↓/S rem (tahan saat berhenti = mundur) · tahan ←/→ setir · P autopilot · C kamera · M peta</div>
+<div id="drive">
+  <div class="mini">
+    <button id="auto" class="dbtn" aria-pressed="false">Autopilot</button>
+    <button id="camb" class="dbtn">Kamera</button>
+  </div>
+  <button id="lft" class="dbtn" aria-label="Setir ke kiri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"><path d="M15 5l-7 7 7 7"/></svg></button>
+  <button id="rgt" class="dbtn" aria-label="Setir ke kanan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"><path d="M9 5l7 7-7 7"/></svg></button>
+  <button id="brake" class="dbtn">REM</button>
+  <button id="gas" class="dbtn">GAS</button>
+</div>
+
+<div id="toast" class="panel"></div>
+<button id="resume" hidden>Lanjut perjalanan →</button>
+
+<div id="plan" class="dlg-back" hidden>
+  <div class="dlg panel" role="dialog" aria-labelledby="plan-title">
+    <div class="dlg-head"><h2 id="plan-title">Rencana perjalanan</h2><button id="plan-close" class="x" aria-label="Tutup">×</button></div>
+    <div class="dlg-body">
+      <div class="row2">
+        <div class="field"><label for="from">Dari (gerbang tol / kota)</label><select id="from" class="input"></select></div>
+        <button id="swap" aria-label="Tukar asal dan tujuan">⇄</button>
+        <div class="field"><label for="to">Ke (gerbang tol / kota)</label><select id="to" class="input"></select></div>
+      </div>
+      <div class="field"><label>Jenis jalan</label><div id="modesel" class="chips"></div></div>
+      <div class="field"><label>Rute cepat</label><div id="presets" class="chips"></div></div>
+      <div class="field"><label>Kendaraan</label><div id="vehsel" class="chips"></div></div>
+      <div id="preview"></div>
+      <button id="go">Mulai mengemudi →</button>
+      <p class="help">Lalu lintas lajur kiri. Kemudi manual itu bebas: tahan ← / → untuk menyetir ke mana saja, termasuk bahu jalan, lajur lawan di jalan nasional, atau lajur yang ditutup. Tahan rem saat berhenti untuk mundur. Untuk keluar, setir ke kiri ke ramp saat papan EXIT terlihat (berlaku juga di simpang susun dan rest area); di jalan nasional, setir ke kiri di persimpangan untuk belok. Pelanggaran dan tabrakan tetap dicatat. Autopilot selalu mengikuti rute dan aturan: berhenti di gerbang tol dan lampu merah, patuh batas kecepatan, truk dan bus di lajur kiri.</p>
+    </div>
+  </div>
+</div>
+
+<div id="done" class="dlg-back" hidden>
+  <div class="dlg panel" role="dialog" aria-labelledby="done-title">
+    <div class="dlg-head"><h2 id="done-title">Tiba</h2></div>
+    <div class="dlg-body">
+      <p id="done-body" class="help" style="opacity:1;font-size:14px"></p>
+      <div class="actions"><button id="done-go">Lanjut</button><button id="done-new">Rute lain</button></div>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="main.js"></script>
+</body>
+</html>

@@ -1,3 +1,12 @@
+# 7MIT Game Drive JVA — Simulator Jalan Pulau Jawa
+
+The playable simulator is in [`simulator/`](simulator/). Serve that folder with any static web server (for example `python3 -m http.server` inside `simulator/`) and open `index.html`. [`simulator/README.md`](simulator/README.md) describes the features, controls and how it is built.
+
+The rest of this repository is the original Claude Design handoff bundle the simulator was built from:
+the prototype in `project/`, the design system in `project/_ds/`, and the design chat in `chats/`. The original handoff notes follow.
+
+---
+
 # CODING AGENTS: READ THIS FIRST
 
 This is a **handoff bundle** from Claude Design (claude.ai/design).
