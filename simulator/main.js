@@ -826,6 +826,7 @@ function ssPath(kind, e){ const far = FAR, nfar = -FAR - 2*e, P = Math.PI;
   if (kind === 'inC') { const p = [[far,189.6],[140,189.6], ...arcP(140,219.6,30,-P/2,-P), [110,250], [103,270], [88,292], [58,316], [26,336], [7,348], [1.8,356]];
     const i0 = lastInFromStart(p), i1 = p.findIndex(q => q[1] >= 300); return grade(p, i0, i1, DK, 0); }
   const p = [[nfar,170.4], ...arcP(37.5,136.4,34,P/2,-P)]; const i0 = lastInFromStart(p), i1 = p.length - 1; p.push([1.8,165],[1.8,356]); return grade(p, i0, i1, DK, 0); }
+const jLink = () => [[1.8,50],[1.8,150],[2.5,190],[6,224.6],[16,250],[24,272],[28,298],[26,336],[7,348],[1.8,356]];
 function prof(p, keys){ const c = [0]; for (let i=1; i<p.length; i++) c.push(c[i-1] + Math.hypot(p[i][0]-p[i-1][0], p[i][1]-p[i-1][1]));
   return p.map((q, i) => { let h; const K = keys.length;
     if (i <= keys[0][0]) h = keys[0][1]; else if (i >= keys[K-1][0]) h = keys[K-1][1];
@@ -1068,7 +1069,7 @@ function buildSite(s){
     const g = frameGroup(sd, s.u); groups.push(g);
     siteEdge(g, s.kind, e);
     if (s.kind === 'r') { road(g, [[1.8,12], ...offPts(RE)], e); road(g, onPts(RE), e); restArea(g, e); s.bays[sd] = STATIC.map(x => x ? 'static' : null); }
-    else if (s.kind === 'j') { for (const kd of ['outC','outA','inC','inB']) ramp3(g, ssPath(kd, e), e); }
+    else if (s.kind === 'j') { for (const kd of ['outC','outA','inC','inB']) ramp3(g, ssPath(kd, e), e); ramp3(g, jLink(), e); }
     else { const keep = q => q[0] < PRC - 12; ramp3(g, [[1.8,12], ...trOut()], e, keep); ramp3(g, trIn(), e, keep); stemPlaza(g, e, s.name); }
     siteSigns(g, s, sd, e);
   } else if (s.kind === 'k') { for (const sd of [1, -1]) { const g = frameGroup(sd, s.u); groups.push(g); townSigns(g, s, sd, e); } groups.push(intersection(s, e)); }
@@ -1419,9 +1420,11 @@ function toRamp(v, site, kind){
     if (free.length && (v.player || Math.random() < 0.75)) { const i = pick(free); occ[i] = v; raw = restPath('out', BAYS[i]); park = {i, t: v.player ? Infinity : rnd(10, 35)}; } else raw = restPath('out'); }
   else if (kind === 'j') { let side = Math.random() < 0.5 ? 'outA' : 'outC';
     if (v.player) { v.rampEdge = rampEdge(site); side = v.rampEdge && v.rampEdge.turn === 'Kanan' ? 'outC' : 'outA'; v.jSwap = !!v.rampEdge && seamlessTurn(site, v.rampEdge.e); }
-    raw = ssPath(side, e); end = 'kill'; }
+    raw = ssPath(side, e); end = 'kill';
+    // the player's junction ramp: a short link that leaves and rejoins the carriageway, which from here on is the chosen road (no dead end, no reload)
+    if (v.player && v.jSwap) { raw = jLink(); end = 'merge'; mergeAt = 346; } }
   else { raw = trOut(); end = 'pr'; if (v.player) v.xSwap = seamlessExit(site); }
-  v.rp = {P: mkPath([...head, ...raw]), d: 0, i: 0, pc: v.sd*site.u, sd: v.sd, e, shift: SC, end, park, kind, site, mergeAt};
+  v.rp = {P: mkPath([...head, ...raw]), d: 0, i: 0, pc: v.sd*site.u, sd: v.sd, e, shift: SC, end, park, kind, site, mergeAt}; v.rpOff = 0;
   v.exitWant = false; v.q = pathAt(v.rp.P, 0, 0);
   rm(vehicles, v); rampers.push(v);
 }
@@ -1461,7 +1464,8 @@ function rampStep(dt){
     const cap = capAt(v, q); let acc = idm(v, lead, gap, cap);
     if (v.rp.park || v.rp.end === 'merge') acc = Math.min(acc, idm(v, STOP, v.rp.P.len - v.rp.d - (v.rp.park ? 0.1 : 1), cap));
     if (v.player && v.rp.kind === 'x' && !v.rp.paid) { const dg = GATE_O - 1 - q.o; if (dg > -1 && q.u > 170) acc = Math.min(acc, idm(v, STOP, Math.max(0, dg) + 2, cap)); }
-    if (v.player && !cfg.auto) acc = playerAcc(v, dt);
+    if (v.player && !cfg.auto) { acc = playerAcc(v, dt); const st = (input.left ? 1 : 0) - (input.right ? 1 : 0);
+      v.rpOff = clamp((v.rpOff || 0) + st*Math.min(Math.abs(v.vel), 12)*0.14*dt, -1.6, 1.6); }
     v.acc = acc; }
   for (const v of [...rampers]) { const rp = v.rp;
     if (rp.parked) { rp.park.t -= dt; if (rp.park.t <= 0) { const occ = rp.site.bays[rp.sd]; if (occ) occ[rp.park.i] = null; rp.P = mkPath(restPath('leave', BAYS[rp.park.i])); rp.d = 0; rp.i = 0; rp.parked = false; rp.park = null; if (v.player) { setRest(false); toast('Keluar dari rest area'); } } continue; }
@@ -1469,7 +1473,7 @@ function rampStep(dt){
     for (const w of v.wh) w.rotation.x += v.vel*dt / v.r;
     const q = v.q = pathAt(rp.P, rp.d, rp.i); rp.i = q.i;
     v.p = rp.pc + q.u - rp.shift;
-    if (v.player && !cfg.auto) { v.x = -rp.sd*(rp.e + q.o); playerCollide(v); }
+    if (v.player && !cfg.auto) { v.x = -rp.sd*(rp.e + q.o + (v.rpOff || 0)*q.hu); playerCollide(v); }
     if (v.player && rp.kind === 'x' && !rp.paid && q.o > GATE_O - 5 && q.u > 170 && Math.abs(v.vel) < 0.5) { rp.paid = true; payToll(rp.site); }
     if (v.player && rp.kind === 'x' && !rp.paid && q.o > GATE_O + 3 && q.u > 170) { rp.paid = true; violation('menerobos gerbang tol'); }
     if (rp.park && rp.d >= rp.P.len - 0.3) { rp.parked = true; v.vel = 0; if (v.player) setRest(true); }
@@ -1484,6 +1488,10 @@ function rampStep(dt){
         const sd = rp.sd, p = rp.pc + 380, n = nAvail(sd, p); Object.assign(v, {sd, p, lane: n - 1, lx: n - 1, rp: null, siteId: null, yaw: 0, hd: 0, steer: 0}); v.x = posX(-sd, v.lx);
         for (const o of [...vehicles]) if (o.sd === sd && Math.abs(o.p - p) < 45) { rm(vehicles, o); killVehicle(o); }
         vehicles.push(v); camU = uOfV(v); blink(); hudLane(); toast(`${CORR[EV[rp.site.i].cNext].name}`); continue; }
+      // exit with no road to town: turn round at the toll gate and rejoin the toll road (never a dead end)
+      if (v.player && rp.kind === 'x' && rp.site.i !== trip.destIdx) {
+        v.rp = {P: cachedPath('trIn', trIn), d: 0, i: 0, pc: rp.pc, sd: rp.sd, e: rp.e, shift: SC, end: 'merge', kind: 'xin', site: rp.site, mergeAt: 300};
+        v.q = pathAt(v.rp.P, 0, 0); v.p = v.rp.pc + v.q.u - v.rp.shift; rampers.push(v); blink(); toast('Tidak ada jalan ke kota di sini: kembali ke jalan tol'); continue; }
       if (v.player) { finishExit(rp.site); continue; }
       if (rp.end === 'pr') { const pr = {kind:'pr', side: rp.sd, dir: Math.random() < 0.5 ? 1 : -1, lane: 0, u: rp.sd*v.p, vel: rnd(12, 15), g: v.g, wh: v.wh, r: v.r, len: v.len, type: v.type}; v.g.rotation.y = 0; locals.push(pr); }
       else killVehicle(v); } }
@@ -1634,7 +1642,7 @@ function place(){
     v.g.position.set(v.x, 0, z); v.g.rotation.y = (v.sd > 0 ? Math.PI : 0) - v.yaw*v.sd; v.g.visible = Math.abs(z) < 900;
     if (v.g.visible && Math.abs(z) < 300) { v.g.rotation.x = v.pit || 0; v.g.rotation.z = v.rol || 0; for (const w of v.front || []) w.rotation.y = v.stv || 0; } }
   for (const v of rampers){ const q = v.q; if (!q) continue; const rp = v.rp, u = rp.sd*v.p, z = camU - u;
-    v.x = -rp.sd*(rp.e + q.o); v.g.position.set(v.x, q.h || 0, z);
+    v.x = -rp.sd*(rp.e + q.o + (v.player ? (v.rpOff || 0)*q.hu : 0)); v.g.position.set(v.x, q.h || 0, z);
     v.g.rotation.y = Math.atan2(-rp.sd*q.ho, -rp.sd*q.hu); v.g.visible = Math.abs(z) < 900; v.g.rotation.x = v.pit || 0; v.g.rotation.z = 0; }
   for (const v of locals){ const z = camU - v.u, out = v.dir === v.side; v.g.visible = isToll(v.u);
     v.g.position.set(-v.side*(eAt(v.u) + PRC + (out ? 1 : -1)*(1.75 + v.lane*3.5)), 0, z); v.g.rotation.y = v.dir > 0 ? Math.PI : 0; }
