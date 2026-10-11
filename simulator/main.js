@@ -59,13 +59,40 @@ const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.
 composer.addPass(bloom); composer.addPass(new OutputPass());
 
 // ---------- gentle curves: vertex-shader bend, straight at the camera ----------
-const CU = {uW:{value:0}, uCz:{value:0}, uB0:{value:0}, uB1:{value:0}};
-const gC = u => 45*Math.sin(u/450) + 20*Math.sin(u/200+1.3);
-const gD = u => 45/450*Math.cos(u/450) + 20/200*Math.cos(u/200+1.3);
-const BEND_HEAD = 'uniform float uW; uniform float uCz; uniform float uB0; uniform float uB1;\nfloat bendX(float z){ return 45.0*sin((uW - z)/450.0) + 20.0*sin((uW - z)/200.0 + 1.3) - uB0 - uB1*(z - uCz); }\n';
+// The road bends sideways (and, in the mountains, up and down) in the vertex shader. uSeg holds up to 6 stretches of road
+// near the car with their own winding (z, metres) and hill (w, metres) amplitude: the Lintas Selatan and other mountain
+// roads wind (kelak-kelok) and climb, Cipularang / Semarang–Solo / Bocimi roll over the hills.
+const SEG_N = 6, segU = Array.from({length: SEG_N}, () => new THREE.Vector4(0, -1, 0, 0));
+const CU = {uW:{value:0}, uCz:{value:0}, uB0:{value:0}, uB1:{value:0}, vB0:{value:0}, vB1:{value:0}, uSeg:{value:segU}};
+const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a)/(b - a))); return t*t*(3 - 2*t); };
+function segAmp(u){ let w = 0, h = 0; for (const q of segU) { if (q.y <= q.x) continue; const k = sstep(q.x, q.x + 400, u)*(1 - sstep(q.y - 400, q.y, u)); w += k*q.z; h += k*q.w; } return [w, h]; }
+const gC = u => { const w = segAmp(u)[0]; return 45*Math.sin(u/450) + 20*Math.sin(u/200+1.3) + w*(Math.sin(u/80 + 0.7) + 0.45*Math.sin(u/45 + 2.1)); };
+const gY = u => { const h = segAmp(u)[1]; return h*(0.7*Math.sin(u/520) + 0.3*Math.sin(u/230 + 2)); };
+const gD = u => gC(u + 0.5) - gC(u - 0.5), gYD = u => gY(u + 0.5) - gY(u - 0.5);
+const BEND_HEAD = `uniform float uW; uniform float uCz; uniform float uB0; uniform float uB1; uniform float vB0; uniform float vB1; uniform vec4 uSeg[${SEG_N}];
+float segK(vec4 q, float u){ if (q.y <= q.x) return 0.0; return smoothstep(q.x, q.x + 400.0, u)*(1.0 - smoothstep(q.y - 400.0, q.y, u)); }
+float bendX(float z){ float u = uW - z, w = 0.0; for (int i = 0; i < ${SEG_N}; i++) w += segK(uSeg[i], u)*uSeg[i].z;
+  return 45.0*sin(u/450.0) + 20.0*sin(u/200.0 + 1.3) + w*(sin(u/80.0 + 0.7) + 0.45*sin(u/45.0 + 2.1)) - uB0 - uB1*(z - uCz); }
+float bendY(float z){ float u = uW - z, h = 0.0; for (int i = 0; i < ${SEG_N}; i++) h += segK(uSeg[i], u)*uSeg[i].w;
+  return h*(0.7*sin(u/520.0) + 0.3*sin(u/230.0 + 2.0)) - vB0 - vB1*(z - uCz); }
+`;
 const BEND_CHUNK = THREE.ShaderChunk.project_vertex.replace('mvPosition = modelViewMatrix * mvPosition;',
-  'vec4 bwp = modelMatrix * mvPosition; bwp.x += bendX(bwp.z); mvPosition = viewMatrix * bwp;');
-const WORLD_CHUNK = '#include <worldpos_vertex>\n#if defined( USE_ENVMAP ) || defined( DISTANCE ) || defined ( USE_SHADOWMAP ) || defined ( USE_TRANSMISSION ) || NUM_SPOT_LIGHT_COORDS > 0\nworldPosition.x += bendX(worldPosition.z);\n#endif';
+  'vec4 bwp = modelMatrix * mvPosition; bwp.x += bendX(bwp.z); bwp.y += bendY(bwp.z); mvPosition = viewMatrix * bwp;');
+const WORLD_CHUNK = '#include <worldpos_vertex>\n#if defined( USE_ENVMAP ) || defined( DISTANCE ) || defined ( USE_SHADOWMAP ) || defined ( USE_TRANSMISSION ) || NUM_SPOT_LIGHT_COORDS > 0\nworldPosition.x += bendX(worldPosition.z); worldPosition.y += bendY(worldPosition.z);\n#endif';
+// winding / hill amplitude per road
+const ROADFORM = {selatan1: [24, 18], garut: [24, 20], pansela1: [22, 14], pansela2: [26, 18], pansela3: [18, 10], pansela4: [22, 16], pansela5: [24, 16],
+  puncak: [26, 22], sindang: [26, 20], kuningan: [20, 14], wonosobo: [24, 20], magelang: [16, 12], batu: [24, 20], pelratu: [22, 14], sukabumi: [16, 12],
+  banjar: [16, 8], malsel: [20, 14], ponorogo: [20, 14], wonogiri: [20, 14], lembang: [22, 18], tegal: [14, 10], jasinga: [14, 8], sumedang: [18, 14],
+  cipularang: [6, 14], semsol: [5, 12], bocimi: [6, 12], cisumdawu: [6, 14], gempan: [4, 8], soroja: [4, 8]};
+let segT = 0;
+function updateSegs(){
+  for (const q of segU) q.set(0, -1, 0, 0);
+  if (!EV.length) return;
+  const out = []; let i0 = Math.max(0, evAt(camU - 2600)), i1 = Math.min(EV.length - 1, evAt(camU + 3200) + 1);
+  for (let i = i0; i < i1; i++) { const f = ROADFORM[EV[i].cNext]; if (!f) continue; const a = EV[i].u, b = EV[i + 1].u, last = out[out.length - 1];
+    if (last && Math.abs(last[1] - a) < 1 && last[2] === f[0] && last[3] === f[1]) last[1] = b; else out.push([a, b, f[0], f[1]]); }
+  out.sort((p, q) => Math.abs((p[0] + p[1])/2 - camU) - Math.abs((q[0] + q[1])/2 - camU)).slice(0, SEG_N).forEach((q, j) => segU[j].set(...q));
+}
 function patchMat(m){ if (!m || m.userData.bent) return; m.userData.bent = true;
   m.onBeforeCompile = sh => { Object.assign(sh.uniforms, CU);
     sh.vertexShader = BEND_HEAD + sh.vertexShader.replace('#include <project_vertex>', BEND_CHUNK).replace('#include <worldpos_vertex>', WORLD_CHUNK); };
@@ -73,12 +100,14 @@ function patchMat(m){ if (!m || m.userData.bent) return; m.userData.bent = true;
 const depthMat = new THREE.MeshDepthMaterial({depthPacking: THREE.RGBADepthPacking}); patchMat(depthMat);
 const bendAt = z => gC(camU - z) - CU.uB0.value - CU.uB1.value*(z - CU.uCz.value);
 function bendObj(g){ g.traverse(o => { if (!o.isMesh) return; o.frustumCulled = false; (Array.isArray(o.material) ? o.material : [o.material]).forEach(patchMat); if (o.castShadow) o.customDepthMaterial = depthMat; }); }
-function updateBend(){ const cz = camera.position.z; CU.uW.value = camU; CU.uCz.value = cz; CU.uB0.value = gC(camU - cz); CU.uB1.value = -gD(camU - cz); }
+function updateBend(){ const cz = camera.position.z; if (--segT <= 0) { segT = 20; updateSegs(); }
+  CU.uW.value = camU; CU.uCz.value = cz; CU.uB0.value = gC(camU - cz); CU.uB1.value = -gD(camU - cz); CU.vB0.value = gY(camU - cz); CU.vB1.value = -gYD(camU - cz); }
 
 // ---------- materials & primitives ----------
 const M = (c, o={}) => new THREE.MeshStandardMaterial({color:c, roughness:0.9, ...o});
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), M(0x6f8a4a));
-ground.rotation.x = -Math.PI/2; ground.position.y = -0.05; ground.receiveShadow = true; scene.add(ground);
+// the ground follows the same hills as the road (vertex shader), so it is finely divided along the road
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000, 40, 200), M(0x6f8a4a));
+ground.rotation.x = -Math.PI/2; ground.position.y = -0.05; ground.receiveShadow = true; ground.frustumCulled = false; patchMat(ground.material); scene.add(ground);
 
 const asphalt = M(0x3b3d40, {roughness:0.95});
 const concrete = M(0xa9a59c);
@@ -594,7 +623,7 @@ const kmTo = (la1, lo1, la2, lo2) => Math.hypot((la1 - la2)*111, (lo1 - lo2)*110
 function regionAt(u){
   if (!EV.length) return 'paddy';
   const p = latLonAt(u), c = corrAt(u);
-  if (HILLS.has(c)) return 'hills';
+  if (HILLS.has(c) || (ROADFORM[c] && ROADFORM[c][1] >= 10)) return 'hills';    // mountain roads (Lintas Selatan, Pansela, Puncak …)
   if (p.lon > 106.45 && p.lon < 107.12 && p.lat > -6.72 && p.lat < -6.05) return 'urban';            // Jabodetabek
   if ((p.lon > 107.05 && p.lon < 107.42 && p.lat > -6.42 && p.lat < -6.22) || (p.lon < 106.12 && p.lat > -6.1)) return 'industrial';   // Cikarang–Karawang, Cilegon
   for (const [la, lo, r] of CITIES) if (kmTo(p.lat, p.lon, la, lo) < r) return 'urban';
@@ -637,8 +666,9 @@ function roadside(g, u0, u1, Z, R, toll){
       for (let k = 0; k < 3; k++) { const o = 16 + k*70 + R()*20, w = 50 + R()*40; for (const h of [0, 1]) if (free(o + w/2, u0 + 30 + h*60, 60)) fields.push([s, o + w/2, w, h]); }
       if (R() < 0.3) { const uc = u0 + R()*CH, oc = 60 + R()*160; for (let j = 0; j < 7; j++) { const u = uc + (R() - 0.5)*50, o = oc + (R() - 0.5)*40; if (free(o, u, 8)) house(s, u, o, 6 + R()*2, 7, 3 + R()); } }
     } else {
-      // hills: rolling green slopes beside the road
-      for (let k = 0; k < 2; k++) { const u = u0 + R()*CH, o = 70 + R()*230, r = 50 + R()*90; if (free(o, u, r)) { const m = new THREE.Mesh(hillGeo, hillMat); m.position.set(s*(eAt(u) + o + r*0.4), 0, Z(u)); m.scale.set(r, r*(0.6 + R()*0.6), r*1.4); m.receiveShadow = true; g.add(m); } }
+      // hills: rolling green slopes beside the road, terraced rice (terasering) on the lower slopes
+      if (R() < 0.5) { const o = 20 + R()*40, w = 30 + R()*30; for (const h of [0, 1]) if (free(o + w/2, u0 + 30 + h*60, 60)) fields.push([s, o + w/2, w, h]); }
+      for (let k = 0; k < 3; k++) { const u = u0 + R()*CH, o = 70 + R()*230, r = 50 + R()*90; if (free(o, u, r)) { const m = new THREE.Mesh(hillGeo, hillMat); m.position.set(s*(eAt(u) + o + r*0.4), 0, Z(u)); m.scale.set(r, r*(0.6 + R()*0.6), r*1.4); m.receiveShadow = true; g.add(m); } }
     }
   }
   for (const [s, o, w, h] of fields) g.add(flat(w, CH/2, PADDY[Math.floor(R()*3)], s*(eAt(u0 + CH/2) + o), 0.003, -(30 + h*60)));

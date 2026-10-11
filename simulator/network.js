@@ -69,23 +69,23 @@ export const CORRIDORS = [
   C('cisumdawu', 'Tol Cileunyi–Sumedang–Dawuan', 'Cisumdawu', 2, 80, [
     ['JCT Cileunyi', 0, 'j'], ['Pamulihan', 12, 'x', -6.880, 107.830], ['Sumedang', 20, 'x', -6.840, 107.920],
     ['Cimalaka', 29, 'x', -6.800, 107.960], ['Ujung Jaya', 50, 'x', -6.730, 108.070], ['JCT Kertajati', 61, 'j', -6.675, 108.170]]),
-  C('cipali', 'Tol Cikopo–Palimanan (Cipali)', 'Cipali', 2, 100, [
+  C('cipali', 'Tol Cikopo–Palimanan (Cipali)', 'Cipali', 3, 100, [
     ['JCT Cikopo', 73, 'j'], ['Rest Area KM 86', 86, 'r'], ['Kalijati', 98, 'x', -6.530, 107.680], ['Subang', 102, 'x', -6.530, 107.750],
     ['Rest Area KM 102', 103, 'r'], ['Rest Area KM 130', 130, 'r'], ['Cikedung', 136, 'x', -6.520, 108.080],
     ['JCT Kertajati', 149, 'j'], ['Sumberjaya', 160, 'x', -6.660, 108.300], ['Rest Area KM 166', 166, 'r'],
     ['GT Palimanan', 188, 'g', -6.695, 108.430]]),
-  C('palikanci', 'Tol Palimanan–Kanci', 'Palikanci', 2, 100, [
+  C('palikanci', 'Tol Palimanan–Kanci', 'Palikanci', 3, 100, [
     ['GT Palimanan', 188, 'g'], ['Plumbon', 194, 'x', -6.700, 108.470], ['Kedawung', 199, 'x', -6.712, 108.520],
     ['Ciperna', 205, 'x', -6.760, 108.550], ['Kanci', 214, 'x', -6.800, 108.620]]),
-  C('kapek', 'Tol Kanci–Pejagan', 'Kanci–Pejagan', 2, 100, [
+  C('kapek', 'Tol Kanci–Pejagan', 'Kanci–Pejagan', 3, 100, [
     ['Kanci', 214, 'x'], ['Rest Area KM 228', 228, 'r'], ['Pejagan', 249, 'x', -6.880, 108.860]]),
-  C('pejpem', 'Tol Pejagan–Pemalang', 'Pejagan–Pemalang', 2, 100, [
+  C('pejpem', 'Tol Pejagan–Pemalang', 'Pejagan–Pemalang', 3, 100, [
     ['Pejagan', 249, 'x'], ['Brebes Barat', 252, 'x', -6.880, 108.990], ['Brebes Timur', 258, 'x', -6.890, 109.050],
     ['Rest Area KM 260', 260, 'r'], ['Tegal', 265, 'x', -6.920, 109.120], ['Adiwerna', 271, 'x', -6.935, 109.140],
     ['Pemalang', 306, 'x', -6.930, 109.380]]),
-  C('pemba', 'Tol Pemalang–Batang', 'Pemalang–Batang', 2, 100, [
+  C('pemba', 'Tol Pemalang–Batang', 'Pemalang–Batang', 3, 100, [
     ['Pemalang', 306, 'x'], ['Rest Area KM 319', 319, 'r'], ['Pekalongan', 330, 'x', -6.940, 109.660], ['Batang', 345, 'x', -6.940, 109.750]]),
-  C('batsem', 'Tol Batang–Semarang', 'Batang–Semarang', 2, 100, [
+  C('batsem', 'Tol Batang–Semarang', 'Batang–Semarang', 3, 100, [
     ['Batang', 345, 'x'], ['Rest Area KM 360', 360, 'r'], ['Weleri', 373, 'x', -6.980, 110.060], ['Kendal', 390, 'x', -6.980, 110.200],
     ['Rest Area KM 391', 391, 'r'], ['Kaliwungu', 403, 'x', -6.982, 110.270], ['GT Kalikangkung', 414, 'g', -6.990, 110.330],
     ['Krapyak', 420, 'x', -7.000, 110.370]]),
@@ -94,22 +94,22 @@ export const CORRIDORS = [
     ['Tembalang', 429, 'x', -7.050, 110.430], ['GT Banyumanik', 433, 'g', -7.070, 110.420]]),
   C('semdem', 'Tol Semarang–Demak', 'Semarang–Demak', 2, 80, [
     ['JCT Jatingaleh', 0, 'j'], ['Kaligawe', 8, 'x', -6.960, 110.450], ['Sayung', 16, 'x', -6.930, 110.520], ['Demak', 27, 't', -6.900, 110.630]]),
-  C('semsol', 'Tol Semarang–Solo', 'Semarang–Solo', 2, 100, [
+  C('semsol', 'Tol Semarang–Solo', 'Semarang–Solo', 3, 100, [
     ['GT Banyumanik', 433, 'g'], ['Ungaran', 440, 'x', -7.140, 110.410], ['Bawen', 450, 'x', -7.240, 110.430],
     ['Rest Area KM 456', 456, 'r'], ['Salatiga', 467, 'x', -7.330, 110.490], ['Boyolali', 485, 'x', -7.500, 110.620],
     ['Rest Area KM 487', 487, 'r'], ['JCT Kartasura', 495, 'j', -7.530, 110.740], ['Colomadu', 498, 'x', -7.520, 110.760]]),
   C('soljog', 'Tol Solo–Yogyakarta', 'Solo–Jogja', 2, 100, [
     ['JCT Kartasura', 0, 'j'], ['Klaten', 23, 'x', -7.700, 110.580], ['Prambanan', 36, 'x', -7.760, 110.490], ['Purwomartani', 42, 't', -7.760, 110.450]]),
-  C('solnga', 'Tol Solo–Ngawi', 'Solo–Ngawi', 2, 100, [
+  C('solnga', 'Tol Solo–Ngawi', 'Solo–Ngawi', 3, 100, [
     ['Colomadu', 498, 'x'], ['Ngemplak', 504, 'x', -7.510, 110.810], ['Gondangrejo', 511, 'x', -7.490, 110.860],
     ['Rest Area KM 519', 519, 'r'], ['Sragen', 535, 'x', -7.430, 111.010], ['Sragen Timur', 548, 'x', -7.440, 111.100],
     ['Rest Area KM 575', 573, 'r'], ['Ngawi', 575, 'x', -7.420, 111.400]]),
-  C('ngker', 'Tol Ngawi–Kertosono', 'Ngawi–Kertosono', 2, 100, [
+  C('ngker', 'Tol Ngawi–Kertosono', 'Ngawi–Kertosono', 3, 100, [
     ['Ngawi', 575, 'x'], ['Madiun', 604, 'x', -7.560, 111.580], ['Caruban', 626, 'x', -7.550, 111.660],
     ['Rest Area KM 626', 627, 'r'], ['Nganjuk', 652, 'x', -7.580, 111.900], ['Bandar', 670, 'x', -7.570, 112.100]]),
-  C('kermo', 'Tol Kertosono–Mojokerto', 'Kertosono–Mojokerto', 2, 100, [
+  C('kermo', 'Tol Kertosono–Mojokerto', 'Kertosono–Mojokerto', 3, 100, [
     ['Bandar', 670, 'x'], ['Jombang', 683, 'x', -7.530, 112.250], ['Rest Area KM 695', 693, 'r'], ['Mojokerto Barat', 695, 'x', -7.470, 112.370]]),
-  C('sumo', 'Tol Surabaya–Mojokerto', 'Surabaya–Mojokerto', 2, 100, [
+  C('sumo', 'Tol Surabaya–Mojokerto', 'Surabaya–Mojokerto', 3, 100, [
     ['Mojokerto Barat', 695, 'x'], ['Mojokerto Utara', 705, 'x', -7.450, 112.440], ['Krian', 720, 'x', -7.400, 112.580],
     ['Driyorejo', 725, 'x', -7.360, 112.630], ['GT Warugunung', 729, 'g', -7.340, 112.690], ['JCT Waru', 734, 'j', -7.350, 112.730]]),
   C('sugem', 'Tol Surabaya–Gempol', 'Surabaya–Gempol', 3, 100, [
@@ -120,12 +120,12 @@ export const CORRIDORS = [
   C('gempan', 'Tol Gempol–Pandaan–Malang', 'Pandaan–Malang', 2, 100, [
     ['JCT Gempol', 0, 'j'], ['Pandaan', 13, 'x', -7.650, 112.690], ['Purwodadi', 22, 'x', -7.780, 112.720],
     ['Lawang', 29, 'x', -7.830, 112.700], ['Singosari', 36, 'x', -7.890, 112.670], ['Pakis', 42, 'x', -7.950, 112.710], ['Malang', 45, 't', -7.980, 112.690]]),
-  C('gempas', 'Tol Gempol–Pasuruan', 'Gempol–Pasuruan', 2, 100, [
+  C('gempas', 'Tol Gempol–Pasuruan', 'Gempol–Pasuruan', 3, 100, [
     ['JCT Gempol', 760, 'j'], ['Bangil', 768, 'x', -7.590, 112.780], ['Rembang', 774, 'x', -7.620, 112.840],
     ['Pasuruan', 783, 'x', -7.650, 112.900], ['Grati', 794, 'x', -7.700, 113.000]]),
-  C('paspro', 'Tol Pasuruan–Probolinggo', 'Pasuruan–Probolinggo', 2, 100, [
+  C('paspro', 'Tol Pasuruan–Probolinggo', 'Pasuruan–Probolinggo', 3, 100, [
     ['Grati', 794, 'x'], ['Rest Area KM 802', 802, 'r'], ['Probolinggo Barat', 812, 'x', -7.750, 113.150], ['Probolinggo Timur', 821, 'x', -7.780, 113.240]]),
-  C('probo', 'Tol Probolinggo–Banyuwangi', 'Probowangi', 2, 100, [
+  C('probo', 'Tol Probolinggo–Banyuwangi', 'Probowangi', 3, 100, [
     ['Probolinggo Timur', 821, 'x'], ['Gending', 833, 'x', -7.790, 113.310], ['Kraksaan', 844, 'x', -7.760, 113.410],
     ['Paiton', 852, 'x', -7.720, 113.510], ['Besuki', 870, 'x', -7.730, 113.700]]),
   C('probo2', 'Tol Probolinggo–Banyuwangi (rencana)', 'Probowangi (rencana)', 2, 100, [
