@@ -40,6 +40,10 @@ export const CORRIDORS = [
     ['Ampera', 26, 'x', -6.292, 106.815], ['Pasar Minggu', 28, 'x', -6.296, 106.840], ['JCT Taman Mini', 33, 'j', -6.300, 106.880],
     ['Jatiwarna', 38, 'x', -6.310, 106.920], ['JCT Cikunir', 43, 'j'], ['Kalimalang', 45, 'x', -6.245, 106.955],
     ['Cakung', 51, 'x', -6.190, 106.955], ['Rorotan', 56, 'x', -6.145, 106.950], ['JCT Cilincing', 60, 'j', -6.120, 106.950]]),
+  C('wiyoto', 'Tol Ir. Wiyoto Wiyono (Cawang–Tanjung Priok)', 'Cawang–Priok', 3, 80, [
+    ['JCT Cawang', 0, 'j'], ['Cempaka Putih', 7, 'x', -6.180, 106.872], ['Sunter', 10, 'x', -6.148, 106.872], ['JCT Tanjung Priok', 14, 'j', -6.118, 106.880]]),
+  C('atp', 'Tol Akses Tanjung Priok', 'Akses Tj. Priok', 3, 80, [
+    ['JCT Tanjung Priok', 0, 'j'], ['Pelabuhan Tanjung Priok', 2, 't', -6.105, 106.885], ['Koja', 5, 'x', -6.117, 106.910], ['JCT Cilincing', 11.4, 'j']]),
   C('jjc', 'Tol Cibitung–Cilincing (JORR 2)', 'Cibitung–Cilincing', 2, 80, [
     ['JCT Cibitung', 0, 'j'], ['Telaga Asih', 4, 'x', -6.240, 107.080], ['Gabus', 15, 'x', -6.180, 107.040],
     ['Tarumajaya', 25, 'x', -6.130, 107.010], ['JCT Cilincing', 34, 'j']]),
@@ -182,6 +186,38 @@ export const CORRIDORS = [
     ['Jakarta', 0], ['Tentara Pelajar', 5, -6.205, 106.800], ['Kebayoran Lama', 9, -6.243, 106.778], ['Pondok Pinang', 12.5, -6.272, 106.776],
     ['Ciputat', 20, -6.312, 106.745], ['Pondok Cabe', 24, -6.338, 106.758], ['Sawangan', 30, -6.398, 106.758], ['Parung', 37, -6.428, 106.727],
     ['Kemang', 45, -6.497, 106.745], ['Bogor', 56, -6.597, 106.800]]),
+  // Jalur Pantai Selatan (Pansela): Banten – Jawa Barat – Jawa Tengah – DIY – Jawa Timur
+  N('pansela1', 'Jalan Nasional Pantai Selatan (Labuan–Bayah–Palabuhanratu)', 'Pansela Banten', 1, 60, [
+    ['Labuan', 0], ['Panimbang', 22, -6.530, 105.700], ['Malingping', 70, -6.770, 106.020], ['Bayah', 100, -6.930, 106.230], ['Cisolok', 125, -6.950, 106.450], ['Palabuhanratu', 135]]),
+  N('pansela2', 'Jalan Nasional Pantai Selatan (Palabuhanratu–Pangandaran)', 'Pansela Jawa Barat', 1, 60, [
+    ['Palabuhanratu', 0], ['Surade', 55, -7.330, 106.550], ['Sindangbarang', 125, -7.450, 107.130], ['Cidaun', 150, -7.470, 107.370], ['Rancabuaya', 175, -7.480, 107.550],
+    ['Pameungpeuk', 200, -7.650, 107.720], ['Cipatujah', 245, -7.750, 108.030], ['Pangandaran', 315, -7.690, 108.650]]),
+  N('pansela3', 'Jalan Nasional Pantai Selatan (Pangandaran–Cilacap–Kebumen)', 'Pansela Pangandaran–Kebumen', 1, 60, [
+    ['Pangandaran', 0], ['Kalipucang', 15, -7.650, 108.760], ['Cilacap', 70, -7.730, 109.010], ['Kroya', 95, -7.630, 109.250], ['Kebumen', 140]]),
+  N('pansela4', 'Jalan Nasional Yogyakarta–Wonosari–Pacitan', 'Yogya–Wonosari–Pacitan', 1, 60, [
+    ['Yogyakarta', 0], ['Piyungan', 15, -7.840, 110.470], ['Wonosari', 40, -7.960, 110.600], ['Pracimantoro', 75, -8.060, 110.800], ['Pacitan', 115]]),
+  N('pansela5', 'Jalan Lintas Selatan Jawa Timur (Pacitan–Prigi–Tulungagung)', 'JLS Pacitan–Tulungagung', 1, 60, [
+    ['Pacitan', 0], ['Panggul', 45, -8.280, 111.450], ['Prigi', 80, -8.290, 111.730], ['Tulungagung', 120]]),
+  N('malsel', 'Jalan Nasional Malang–Turen–Dampit–Lumajang', 'Malang–Lumajang', 1, 60, [
+    ['Malang', 0], ['Turen', 25, -8.170, 112.700], ['Dampit', 35, -8.210, 112.750], ['Lumajang', 90]]),
+  N('lumjem', 'Jalan Nasional Lumajang–Jember', 'Lumajang–Jember', 1, 60, [
+    ['Lumajang', 0], ['Jatiroto', 25, -8.120, 113.360], ['Jember', 50]]),
+  N('banjar', 'Jalan Nasional Banjar–Pangandaran', 'Banjar–Pangandaran', 1, 60, [
+    ['Banjar', 0], ['Banjarsari', 18, -7.500, 108.630], ['Pangandaran', 45]]),
+  N('purwakarta', 'Jalan Nasional Cikampek–Purwakarta–Padalarang', 'Cikampek–Purwakarta–Padalarang', 1, 60, [
+    ['Cikampek', 0], ['Purwakarta', 18, -6.550, 107.440], ['Plered', 30, -6.640, 107.390], ['Padalarang', 60]]),
+  N('madura', 'Jalan Nasional Suramadu–Bangkalan–Sampang–Pamekasan–Sumenep (Madura)', 'Suramadu–Sumenep', 1, 60, [
+    ['Surabaya', 0], ['Bangkalan', 20, -7.050, 112.740], ['Sampang', 75, -7.190, 113.240], ['Pamekasan', 105, -7.160, 113.480], ['Sumenep', 150, -7.010, 113.860]]),
+  N('jasinga', 'Jalan Nasional Bogor–Leuwiliang–Jasinga–Rangkasbitung–Pandeglang', 'Bogor–Rangkasbitung', 1, 60, [
+    ['Bogor', 0], ['Dramaga', 10, -6.560, 106.730], ['Leuwiliang', 22, -6.570, 106.630], ['Jasinga', 45, -6.470, 106.470], ['Rangkasbitung', 80, -6.360, 106.250], ['Pandeglang', 105]]),
+  N('sindang', 'Jalan Nasional Cianjur–Sukanagara–Sindangbarang', 'Cianjur–Sindangbarang', 1, 60, [
+    ['Cianjur', 0], ['Sukanagara', 45, -7.100, 107.130], ['Sindangbarang', 105]]),
+  N('gemolong', 'Jalan Nasional Solo–Gemolong–Purwodadi', 'Solo–Purwodadi', 1, 60, [
+    ['Solo', 0], ['Gemolong', 30, -7.400, 110.830], ['Purwodadi', 65]]),
+  N('jepara', 'Jalan Nasional Kudus–Jepara', 'Kudus–Jepara', 1, 60, [
+    ['Kudus', 0], ['Jepara', 35, -6.590, 110.670]]),
+  N('cilacap', 'Jalan Nasional Purwokerto–Cilacap', 'Purwokerto–Cilacap', 1, 60, [
+    ['Purwokerto', 0], ['Rawalo', 20, -7.550, 109.110], ['Cilacap', 50]]),
   N('puncak', 'Jalan Nasional Jakarta–Bogor–Puncak–Bandung', 'Jakarta–Puncak–Bandung', 1, 60, [
     ['Jakarta', 0], ['Cibinong', 35, -6.480, 106.850], ['Bogor', 50, -6.597, 106.800], ['Ciawi', 57, -6.650, 106.845],
     ['Puncak', 80, -6.700, 107.000], ['Cianjur', 105, -6.820, 107.140], ['Padalarang', 150, -6.843, 107.495], ['Cimahi', 155, -6.872, 107.540],
@@ -292,8 +328,8 @@ for (const N of [...NODES.values()]) {
   if (N.kind !== 'x' && N.kind !== 't') continue;
   let best = null, bd = 12; for (const t of towns) { const d = hav(N, t); if (d < bd) { bd = d; best = t; } }
   if (!best) continue;
-  const km = Math.max(1, Math.round(bd*1.3*10)/10), id = 'a:' + N.key;
-  CORRIDORS.push({id, name: `Jalan akses Gerbang Tol ${N.name}`, short: `Akses GT ${N.name}`, lanes: 1, limit: 60, planned: false, cls: 'a',
+  const km = Math.max(1, Math.round(bd*1.3*10)/10), id = 'a:' + N.key, wide = [...best.corr].some(c => (CORRIDORS.find(q => q.id === c) || {}).lanes >= 2);
+  CORRIDORS.push({id, name: `Jalan akses Gerbang Tol ${N.name}`, short: `Akses GT ${N.name}`, lanes: wide ? 2 : 1, limit: 60, planned: false, cls: 'a',
     nodes: [{name: N.name, km: 0, kind: N.kind, key: N.key}, {name: best.name, km, kind: 'k', key: best.key}]});
   N.corr.add(id); best.corr.add(id);
 }
