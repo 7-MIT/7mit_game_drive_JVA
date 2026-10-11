@@ -13,7 +13,7 @@ import {CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, w
 
 const MOBILE = matchMedia('(pointer:coarse)').matches || innerWidth < 700;
 const LW = 3.6, MED = 1.2, CH = 120, OPEN_HW = 35, OVH = 7.5, PRC = 328, BACK = 460, FWD = 720;
-const DEF = {mode:'mix', cam:'chase', den:1, tod:'day', lanes:'auto', closed:{'1':[1], '-1':[]}, cf:0, cfk:2, ovl:2, scale:5, veh:'car', tspd:1,
+const DEF = {mode:'mix', cam:'chase', den:1, tod:'day', lanes:'auto', closed:{'1':[1], '-1':[]}, cf:0, cfk:2, ovl:2, scale:5, veh:'car', tspd:1, assist:true,
   from:'Bekasi Barat', to:'Pasteur', auto:false, trip:'route'};
 let cfg; try { cfg = {...DEF, ...JSON.parse(localStorage.getItem('tj_cfg1') || '{}')}; } catch(e) { cfg = {...DEF}; }
 const saveCfg = () => { try { localStorage.setItem('tj_cfg1', JSON.stringify(cfg)); } catch(e) {} };
@@ -260,7 +260,9 @@ function makeVehicle(type, color){
     wh = wheels(g, [[-1.1,4.2],[1.1,4.2],[-1.1,-3.4],[1.1,-3.4],[-1.1,-4.8],[1.1,-4.8]], r, 0.38); v0 = rnd(21, 23.5);
   }
   bendObj(g);
-  return {g, len, wh, r, v0, type};
+  g.rotation.order = 'YXZ';
+  const front = wh.filter(w => w.position.z > 0); for (const w of front) w.rotation.order = 'YXZ';
+  return {g, len, wh, front, r, v0, type};
 }
 function killVehicle(v){ if (v.g.parent) v.g.parent.remove(v.g); v.g.traverse(o => { if (o.isMesh && !SHARED.has(o.material) && o.material.userData.own) o.material.dispose(); }); v.dead = true; }
 const rm = (arr, v) => { const i = arr.indexOf(v); if (i >= 0) arr.splice(i, 1); };
@@ -298,6 +300,8 @@ function layoutTrip(t, keepN = -1){
     }
     EV[i].u = a + gap;
   }
+  for (const z of oldZ) if (z.user && !ZONES.includes(z)) ZONES.push(z);
+  ZONES.sort((a, b) => a.u - b.u);
   // corridor KM of each event on the corridor that LEAVES it
   for (const e of EV) { const n = CORR[e.cNext].nodes.find(n => n.key === e.key); e.kmOut = n ? n.km : e.km; }
   // lane changes between corridors: taper over the 150 m before c
@@ -458,7 +462,7 @@ function buildChunkNat(i){
     g.add(strip(us, u => s*(MED - 0.05), u => s*(eAt(u) + 0.8), 0, asphalt, Z));
     g.add(strip(us, u => s*(eAt(u) + 0.8), u => s*(eAt(u) + (town ? 5 : 2.6)), 0.004, town ? curbMat : shoulderMat, Z));
     g.add(strip(us, u => s*(eAt(u) - 0.08), u => s*(eAt(u) + 0.08), 0.012, white, Z));
-    const dp = []; for (let l = 1; l < 5; l++) for (let u = Math.ceil(u0/9)*9; u < u1; u += 9) if (l < nAt(u + 1.5) - 0.3 && l < nAt(u) - 0.3) dp.push([s*(MED + l*LW), Z(u + 1.5)]);
+    const dp = []; for (let l = 1; l < 7; l++) for (let u = Math.ceil(u0/9)*9; u < u1; u += 9) if (l < nAt(u + 1.5) - 0.3 && l < nAt(u) - 0.3) dp.push([s*(MED + l*LW), Z(u + 1.5)]);
     g.add(instanced(dashGeo, white, dp, 0.012));
     const ku = u0 + 60;
     if (EV.length && !xGap(ku)) { const p = panelMesh(0.5, 0.7, kmPostTex(kmAt(ku).toFixed(1).replace('.', ','))); p.position.set(s*(eAt(ku) + 3.2), 1.1, Z(ku)); p.rotation.y = s < 0 ? 0 : Math.PI; g.add(p);
@@ -527,7 +531,7 @@ function buildChunk(i){
       const pp = []; for (let u = Math.ceil(a/4)*4; u < b; u += 4) pp.push([s*(eAt(u) + 2.85), Z(u)]);
       g.add(instanced(postGeo, railMat, pp, 0.4)); }
     // lane dashes
-    const dp = []; for (let l = 1; l < 5; l++) for (let u = Math.ceil(u0/9)*9; u < u1; u += 9) if (l < nAt(u + 1.5) - 0.3 && l < nAt(u) - 0.3) dp.push([s*(MED + l*LW), Z(u + 1.5)]);
+    const dp = []; for (let l = 1; l < 7; l++) for (let u = Math.ceil(u0/9)*9; u < u1; u += 9) if (l < nAt(u + 1.5) - 0.3 && l < nAt(u) - 0.3) dp.push([s*(MED + l*LW), Z(u + 1.5)]);
     g.add(instanced(dashGeo, white, dp, 0.012));
     // parallel road (Jalan Nasional, 2 lajur per arah)
     const pr = u => eAt(u) + PRC;
@@ -787,10 +791,14 @@ function citiesAhead(i, sd, k = 2){ const out = [], own = EV[i].city;
   for (const a of ahead(i, sd)) { if (a.e.city && a.e.city !== own && !out.some(o => o.e.city === a.e.city)) out.push(a); if (out.length >= k) break; }
   return out; }
 const corrLabel = id => 'Tol ' + CORR[id].short;
-function jctTargets(s){ const ids = s.others && s.others.length ? s.others : [];
+// toll roads the junction ramps lead to (every toll road at the node except the one the carriageway continues as), seen from side sd
+const thruOf = (s, sd) => sd > 0 ? s.cNext : s.c;
+function jctTargets(s, sd = 1){
+  const N = NODES.get(s.key), thru = thruOf(s, sd), from = sd > 0 ? s.c : s.cNext, ends = id => [CORR[id].nodes[0], CORR[id].nodes[CORR[id].nodes.length - 1]].some(n => n.key === s.key);
+  const ids = [...N.corr].filter(id => CORR[id].cls === 't' && id !== thru && (id !== from || !ends(id)));
   if (!ids.length) return {name: nodeLabel(s), sub: ''};
   const c = CORR[ids[0]], a = c.nodes[0], b = c.nodes[c.nodes.length-1];
-  return {name: corrLabel(ids[0]) + (ids[1] ? ' · ' + CORR[ids[1]].short : ''), sub: `${(NODES.get(a.key).city || a.name)} / ${(NODES.get(b.key).city || b.name)}`}; }
+  return {name: corrLabel(ids[0]) + (ids[1] ? ' · ' + CORR[ids[1]].short : ''), sub: ids[1] ? nodeLabel(s).replace('Simpang Susun ', 'JCT ') : `${(NODES.get(a.key).city || a.name)} / ${(NODES.get(b.key).city || b.name)}`}; }
 
 // overhead gantry + boards for one side of a site (local frame)
 function siteSigns(g, s, sd, e){
@@ -798,7 +806,7 @@ function siteSigns(g, s, sd, e){
   const kind = s.kind, half = (e - MED)/2, pw = Math.max(5, half - 0.6), ph = 3.2;
   // advance board 500 m
   const adv = kind === 'r' ? textPanel(5, 2.6, SIGN_BLUE, 'REST AREA', `${nodeLabel(s).replace('Rest Area ', '')} · 500 m`)
-    : kind === 'j' ? exitPanel(5.6, 3.2, jctTargets(s).name, 'JCT', '1 km', SIGN_GREEN, jctTargets(s).sub)
+    : kind === 'j' ? exitPanel(5.6, 3.2, jctTargets(s, sd).name, 'JCT', '1 km', SIGN_GREEN, jctTargets(s, sd).sub)
     : kind === 'x' ? exitPanel(5.6, 3.2, s.name, 'EXIT', '500 m')
     : textPanel(5.6, 2.6, SIGN_GREEN, nodeLabel(s).toUpperCase(), '500 m · Siapkan kartu e-Toll');
   const ab = panelMesh(kind === 'r' ? 5 : 5.6, kind === 'r' ? 2.6 : (kind === 'j' || kind === 'x') ? 3.2 : 2.6, adv);
@@ -816,10 +824,12 @@ function siteSigns(g, s, sd, e){
   const gz = -270;
   for (const x of [0.75, roadW + 0.6]) g.add(solid(0.35, 9, 0.35, signBackMat, x, 4.5, gz));
   g.add(solid(roadW - 0.15, 0.3, 0.3, signBackMat, 0.75 + (roadW - 0.15)/2, 8.9, gz));
-  const t = jctTargets(s);
+  const t = jctTargets(s, sd);
   const exTex = kind === 'r' ? textPanel(pw, ph, SIGN_BLUE, 'REST AREA', 'SPBU · Musala · Kuliner')
     : kind === 'j' ? exitPanel(pw, ph, t.name, 'JCT', '', SIGN_GREEN, t.sub) : exitPanel(pw, ph, s.name, 'EXIT', '');
   const cs = citiesAhead(i, sd), dl = cs.map(c => c.e.city); if (!dl.length) dl.push('Akhir rute');
+  // through lanes at a junction: name the toll road the carriageway continues as
+  if (kind === 'j' && CORR[thruOf(s, sd)].cls === 't') { dl.unshift(corrLabel(thruOf(s, sd))); dl.length = Math.min(dl.length, 3); }
   const ex = panelMesh(pw, ph, exTex), de = panelMesh(pw, ph, destPanel(pw, ph, dl));
   ex.position.set(MED + half*1.5, 7.6, gz - 0.3); de.position.set(MED + half*0.5, 7.6, gz - 0.3); ex.rotation.y = de.rotation.y = rot; g.add(ex, de);
   // gore sign
@@ -958,7 +968,7 @@ function flyover(s, e){ const g = worldGroup(s.u), H = DECK_H, dw = 25.2, W2 = 2
   for (const sx of [-1, 1]) for (const zz of [-7.5, 7.5]) { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.85,0.85,H - 1.7,12), concrete); c.position.set(sx*(e + 6.5), (H - 1.7)/2, zz); c.castShadow = true; g.add(c); }
   for (const sx of [-1, 1]) g.add(solid(2, 1.2, dw - 2, concrete, sx*(e + 6.5), H - 1.6, 0));
   const t = jctTargets(s);
-  for (const sd of [1, -1]) { const p = panelMesh((e - MED)*0.85, 2.4, textPanel((e - MED)*0.85, 2.4, SIGN_GREEN, nodeLabel(s), t.sub ? t.name : ''));
+  for (const sd of [1, -1]) { const p = panelMesh((e - MED)*0.85, 2.4, textPanel((e - MED)*0.85, 2.4, SIGN_GREEN, nodeLabel(s), t.name !== nodeLabel(s) ? t.name : ''));
     p.position.set(-sd*(MED + (e - MED)/2), H - 0.2, sd*(dw/2 + 0.25)); p.rotation.y = sd > 0 ? 0 : Math.PI; g.add(p); }
   // through traffic on the crossing toll road
   g.userData.fly = [];
@@ -1275,7 +1285,7 @@ function toRamp(v, site, kind){
   if (kind === 'r') { const occ = site.bays[v.sd] || (site.bays[v.sd] = STATIC.map(x => x ? 'static' : null)), free = occ.map((_, i) => i).filter(i => !occ[i]);
     if (free.length && (v.player || Math.random() < 0.75)) { const i = pick(free); occ[i] = v; raw = restPath('out', BAYS[i]); park = {i, t: v.player ? Infinity : rnd(10, 35)}; } else raw = restPath('out'); }
   else if (kind === 'j') { let side = Math.random() < 0.5 ? 'outA' : 'outC';
-    if (v.player) { v.rampEdge = rampEdge(site); side = v.rampEdge && v.rampEdge.turn === 'Kanan' ? 'outC' : 'outA'; }
+    if (v.player) { v.rampEdge = rampEdge(site); side = v.rampEdge && v.rampEdge.turn === 'Kanan' ? 'outC' : 'outA'; v.jSwap = !!v.rampEdge && seamlessTurn(site, v.rampEdge.e); }
     raw = ssPath(side, e); end = 'kill'; }
   else { raw = trOut(); end = 'pr'; }
   v.rp = {P: mkPath([...head, ...raw]), d: 0, i: 0, pc: v.sd*site.u, sd: v.sd, e, shift: SC, end, park, kind, site, mergeAt};
@@ -1299,7 +1309,7 @@ function capAt(v, q){ const k = v.rp.kind;
 function tryMerge(v){
   const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), front = p + v.len/2;
   const outerFree = spanFree(sd, n-1, p - v.len/2 - 2, front + 2), nl = outerFree ? n-1 : n-2;
-  if (v.player && !cfg.auto) { v.p = p; rm(rampers, v); Object.assign(v, {sd, lane: n - 1, lx: n - 0.4, rp: null, siteId: null, yaw: 0}); v.x = posX(-sd, v.lx); vehicles.push(v); toast('Masuk jalur utama'); hudLane(); return; }
+  if (v.player && !cfg.auto) { v.p = p; rm(rampers, v); Object.assign(v, {sd, lane: n - 1, lx: n - 0.4, rp: null, siteId: null, yaw: 0, hd: 0, steer: 0}); v.x = posX(-sd, v.lx); vehicles.push(v); toast('Masuk jalur utama'); hudLane(); return; }
   if (nl < 0 || (heavy(v) && nl < heavyMin(n))) return;
   v.p = p;
   if (!spanFree(sd, nl, p - v.len/2 - 2, front + 2) || blockAhead(sd, nl, front) < 40) return;
@@ -1332,6 +1342,10 @@ function rampStep(dt){
     if (rp.park && rp.d >= rp.P.len - 0.3) { rp.parked = true; v.vel = 0; if (v.player) setRest(true); }
     else if (rp.end === 'merge' && q.u >= rp.mergeAt) tryMerge(v);
     else if (rp.d >= rp.P.len) { rm(rampers, v);
+      if (v.player && v.jSwap && rp.kind === 'j') { const jk = rp.P.pts[rp.P.pts.length - 1][0] > 0 ? 'inC' : 'inB';
+        v.rp = {P: cachedPath(jk + rp.e, () => ssPath(jk, rp.e)), d: 0, i: 0, pc: rp.pc, sd: rp.sd, e: rp.e, shift: SC, end: 'merge', kind: 'j', site: rp.site, mergeAt: jk === 'inC' ? 340 : 300};
+        v.q = pathAt(v.rp.P, 0, 0); v.p = v.rp.pc + v.q.u - v.rp.shift; v.jSwap = false; rampers.push(v); blink();
+        toast(`${CORR[EV[rp.site.i].cNext].name} · arah ${v.rampEdge ? v.rampEdge.toward : ''}`); continue; }
       if (v.player) { finishExit(rp.site); continue; }
       if (rp.end === 'pr') { const pr = {kind:'pr', side: rp.sd, dir: Math.random() < 0.5 ? 1 : -1, lane: 0, u: rp.sd*v.p, vel: rnd(12, 15), g: v.g, wh: v.wh, r: v.r, len: v.len, type: v.type}; v.g.rotation.y = 0; locals.push(pr); }
       else killVehicle(v); } }
@@ -1420,7 +1434,7 @@ function sim(dt){
   }
   for (const v of vehicles){
     const man = v.player && !cfg.auto;
-    if (man) { v.vel = Math.min((VEH[v.type] || VEH.car).vmax, Math.max(-5, v.vel + v.acc*dt)); v.p += v.vel*dt; }
+    if (man) { v.vel = Math.min((VEH[v.type] || VEH.car).vmax, Math.max(-5, v.vel + v.acc*dt)); v.p += v.vel*Math.cos(v.hd || 0)*dt; }
     else {
       v.vel = Math.max(0, v.vel + v.acc*dt);
       let step = v.vel*dt;
@@ -1429,10 +1443,13 @@ function sim(dt){
       v.p += step;
       if (v.player) { const g = gapInfo(v, laneList(v.sd, v.lane)); if (g.lead && g.ld < 0) { v.p -= Math.min(step, -g.ld + 0.2); if (v.vel - g.lead.vel > 2 && Math.abs(g.lead.lx - g.lead.lane) < 0.05) crash('Tabrakan dari belakang'); v.vel = Math.min(v.vel, g.lead.vel*0.7); } }
       const crossing = (v.lane === -1 && v.lx > -1) || (v.lane === 0 && v.lx < 0);
-      v.lx += Math.sign(v.lane - v.lx) * Math.min(Math.abs(v.lane - v.lx), dt*(crossing ? 0.7 : v.player ? 0.8 : 0.45));
+      const err = v.lane - v.lx, vmx = crossing ? 0.7 : v.player ? 0.8 : 0.45, want = Math.sign(err)*Math.min(vmx, Math.sqrt(2*0.45*Math.abs(err)));
+      v.lvel = (v.lvel || 0) + clamp(want - (v.lvel || 0), -0.75*dt, 0.75*dt);
+      v.lx += v.lvel*dt; if (Math.abs(v.lane - v.lx) < 0.01 && Math.abs(v.lvel) < 0.08) { v.lx = v.lane; v.lvel = 0; }
     }
-    const x = posX(-v.sd, v.lx), lat = (x - v.x)/dt; v.x = x;
+    const x = posX(-v.sd, v.lx), lat = (x - v.x)/dt, y0 = v.yaw; v.x = x;
     v.yaw += (Math.atan2(lat*Math.sign(v.vel || 1), Math.max(Math.abs(v.vel), 1)) - v.yaw) * Math.min(1, dt*6);
+    bodyMotion(v, (v.yaw - y0)/dt, dt);
     for (const w of v.wh) w.rotation.x += v.vel*dt / v.r;
   }
   if (PLR && !cfg.auto && vehicles.includes(PLR)) playerCollide(PLR);
@@ -1475,10 +1492,11 @@ function simLocals(dt){
 // ---------- placement ----------
 function place(){
   for (const v of vehicles){ const u = v.sd*v.p, z = camU - u;
-    v.g.position.set(v.x, 0, z); v.g.rotation.y = (v.sd > 0 ? Math.PI : 0) - v.yaw*v.sd; v.g.visible = Math.abs(z) < 900; }
+    v.g.position.set(v.x, 0, z); v.g.rotation.y = (v.sd > 0 ? Math.PI : 0) - v.yaw*v.sd; v.g.visible = Math.abs(z) < 900;
+    if (v.g.visible && Math.abs(z) < 300) { v.g.rotation.x = v.pit || 0; v.g.rotation.z = v.rol || 0; for (const w of v.front || []) w.rotation.y = v.stv || 0; } }
   for (const v of rampers){ const q = v.q; if (!q) continue; const rp = v.rp, u = rp.sd*v.p, z = camU - u;
     v.x = -rp.sd*(rp.e + q.o); v.g.position.set(v.x, q.h || 0, z);
-    v.g.rotation.y = Math.atan2(-rp.sd*q.ho, -rp.sd*q.hu); v.g.visible = Math.abs(z) < 900; }
+    v.g.rotation.y = Math.atan2(-rp.sd*q.ho, -rp.sd*q.hu); v.g.visible = Math.abs(z) < 900; v.g.rotation.x = v.pit || 0; v.g.rotation.z = 0; }
   for (const v of locals){ const z = camU - v.u, out = v.dir === v.side; v.g.visible = isToll(v.u);
     v.g.position.set(-v.side*(eAt(v.u) + PRC + (out ? 1 : -1)*(1.75 + v.lane*3.5)), 0, z); v.g.rotation.y = v.dir > 0 ? Math.PI : 0; }
 }
@@ -1499,16 +1517,31 @@ function spawnPlayer(){
   v.lx = v.lane; v.x = posX(-1, v.lane); v.paid = o.kind === 't' || o.kind === 'g' ? o.id : null;
   scene.add(v.g); vehicles.push(v); PLR = v; camU = startP;
 }
+const GEAR_UP = [5.5, 11, 17.5, 25, 33], GEAR_K = [1, 0.8, 0.64, 0.52, 0.43, 0.36];
+const gearOf = vel => 1 + GEAR_UP.filter(x => vel >= x).length;
 function playerAcc(v, dt){
-  const spec = VEH[v.type] || VEH.car;
+  const spec = VEH[v.type] || VEH.car, hv = heavy(v) ? 0.6 : 1;
+  v.thr = (v.thr || 0) + clamp((input.gas ? 1 : 0) - (v.thr || 0), -4*dt, 2.5*dt);
+  v.brk = input.brake ? Math.min(1, (v.brk || 0) + 3*dt) : 0;
+  const g = gearOf(Math.max(0, v.vel)/hv); if (g > (v.gear || 1) && v.thr > 0.2) v.shiftT = 0.28; v.gear = g; v.shiftT = Math.max(0, (v.shiftT || 0) - dt);
+  const drag = 0.00042*v.vel*Math.abs(v.vel) + 0.12*Math.sign(v.vel);
   if (input.brake) {
-    if (v.vel > 0.3) { input.brakeT = 0; return -7.5; }
+    if (v.vel > 0.3) { input.brakeT = 0; return -(1.2 + 7.3*v.brk) - drag; }
     input.brakeT = (input.brakeT || 0) + dt;                        // hold the brake at a standstill to reverse
     return input.brakeT > 0.6 ? (v.vel > -5 ? -1.6 : 0) : -v.vel/dt;
   }
   input.brakeT = 0;
-  if (input.gas) return v.vel < -0.2 ? 6 : spec.acc*(1 - Math.pow(Math.max(0, v.vel)/spec.vmax, 2));
-  return v.vel > 0.05 ? -0.25 - 0.0004*v.vel*v.vel : v.vel < -0.05 ? 0.8 : -v.vel/dt;
+  if (input.gas || v.thr > 0.02) { if (v.vel < -0.2) return 6;
+    let a = spec.acc*1.75*GEAR_K[g - 1]*v.thr*(1 - Math.pow(Math.max(0, v.vel)/spec.vmax, 2)); if (v.shiftT > 0) a *= 0.25;
+    return a - drag; }
+  return v.vel > 0.05 ? -0.25 - 0.18*Math.min(1, v.vel/8) - drag : v.vel < -0.05 ? 0.8 : -v.vel/dt;   // rolling + engine braking
+}
+// body pitch under braking / acceleration, roll in turns, and the steered front wheels
+function bodyMotion(v, yawRate, dt){
+  const k = Math.min(1, dt*5);
+  v.pit = (v.pit || 0) + (clamp(-(v.acc || 0)*0.0065, -0.03, 0.05) - (v.pit || 0))*k;
+  v.rol = (v.rol || 0) + (clamp(-yawRate*Math.abs(v.vel)*0.011*(heavy(v) ? 1.4 : 1), -0.07, 0.07) - (v.rol || 0))*k;
+  v.stv = v.player && !cfg.auto ? (v.steer || 0) : clamp(-yawRate*wheelbase(v)/Math.max(Math.abs(v.vel), 2), -0.5, 0.5);
 }
 // lateral room for the player: guard rail and median barrier on toll roads, buildings and the far kerb on national roads
 function lxBounds(v){
@@ -1521,12 +1554,25 @@ function lxBounds(v){
     if (!atOpen) { if (v.lx < -0.5) hi = Math.min(hi, -0.71); else lo = -0.29; } }
   return [lo, hi];
 }
+// steering like a real car (bicycle model): the wheel turns gradually, less at speed; the car's heading follows
+// from speed, wheelbase and steering angle, limited by tyre grip; the sideways speed is speed × sin(heading)
+const wheelbase = v => heavy(v) ? 6.2 : v.type === 'suv' || v.type === 'van' ? 2.9 : 2.7;
 function steerPlayer(v, dt){
-  const st = (input.left ? 1 : 0) - (input.right ? 1 : 0), rate = 1.15*Math.min(1, Math.abs(v.vel)/8);
-  let lx = v.lx + st*rate*dt;
-  const [lo, hi] = lxBounds(v), fast = Math.abs(v.vel) > 6;
-  if (lx > hi) { lx = hi; if (st > 0 && fast) { crash(isToll(uOfV(v)) ? 'Menyerempet pagar pengaman' : townNear(uOfV(v)) ? 'Menabrak bangunan di tepi jalan' : 'Masuk parit di tepi jalan'); v.vel *= 0.8; } }
-  if (lx < lo) { lx = lo; if (st < 0 && fast) { crash(isToll(uOfV(v)) ? 'Menyerempet median beton' : 'Keluar badan jalan'); v.vel *= 0.8; } }
+  const st = (input.left ? 1 : 0) - (input.right ? 1 : 0), spd = Math.abs(v.vel);
+  // full lock gives at most ~4 m/s² sideways at speed (a firm lane change), but the full 30° when parking
+  const maxS = clamp(4.2*wheelbase(v)/Math.max(spd*spd, 1), 0.01, 0.55);
+  v.steer = v.steer || 0; v.hd = v.hd || 0;
+  const tgt = st*maxS, rate = (st ? 1.6 : 3)*Math.max(maxS, 0.05); v.steer += clamp(tgt - v.steer, -rate*dt, rate*dt);   // ~0.6 s to full lock
+  const grip = (heavy(v) ? 4.5 : 7.5)/Math.max(spd, 1); let yr = clamp(v.vel/wheelbase(v)*Math.tan(v.steer), -grip, grip);
+  if (spd > 3 && Math.abs(v.vel/wheelbase(v)*Math.tan(v.steer)) > grip*1.15 && clock - (v.skidT || 0) > 3) { v.skidT = clock; toast('Ban selip! Kurangi setir', 'warn'); }
+  v.hd += yr*dt;
+  if (!st && cfg.assist !== false) v.hd -= v.hd*Math.min(1, dt*1.1);   // the driver straightens up after the manoeuvre (Asisten setir)
+  v.hd = clamp(v.hd, -0.45, 0.45);
+  v.vel -= Math.sign(v.vel)*Math.abs(v.steer)*spd*0.05*dt;                 // tyre scrub in turns
+  let lx = v.lx + v.vel*Math.sin(v.hd)/LW*dt;
+  const [lo, hi] = lxBounds(v), side = Math.abs(v.vel*Math.sin(v.hd)), fast = Math.abs(v.vel) > 6 && side > 1.2;
+  if (lx > hi) { lx = hi; if (v.hd*Math.sign(v.vel) > 0) { if (fast) { crash(isToll(uOfV(v)) ? 'Menyerempet pagar pengaman' : townNear(uOfV(v)) ? 'Menabrak bangunan di tepi jalan' : 'Masuk parit di tepi jalan'); v.vel *= 0.8; } v.hd *= 0.2; v.steer *= 0.5; } }
+  if (lx < lo) { lx = lo; if (v.hd*Math.sign(v.vel) < 0) { if (fast) { crash(isToll(uOfV(v)) ? 'Menyerempet median beton' : 'Keluar badan jalan'); v.vel *= 0.8; } v.hd *= 0.2; v.steer *= 0.5; } }
   v.lx = lx; v.lane = Math.round(lx);
   // leaving the road on the left: exit ramp, rest area, detour or turn at an intersection
   const n = nAvail(v.sd, v.p), front = v.p + v.len/2;
@@ -1748,6 +1794,7 @@ function updateHud(dt){
   hudT -= dt; if (hudT > 0 || !PLR) return; hudT = 0.15;
   const v = PLR, u = uOfV(v), rk = rkAt(u), dest = EV[trip.destIdx];
   $('spd').textContent = v.vel < -0.3 ? 'R ' + KMH(-v.vel) : KMH(Math.abs(v.vel));
+  const gr = v.vel < -0.3 ? 'R' : Math.abs(v.vel) < 0.3 && !input.gas ? 'N' : 'D' + (cfg.auto || !v.gear ? gearOf(Math.max(0, v.vel)/(heavy(v) ? 0.6 : 1)) : v.gear); if ($('gear').textContent !== gr) $('gear').textContent = gr;
   const lim = Math.min(limitAt(u), postedCap(v.sd, v.p + v.len/2), v.lane < 0 ? 16.7 : 99);
   const limK = Math.round(KMH(lim)/10)*10; if ($('lim').dataset.v !== String(limK)) { $('lim').dataset.v = limK; $('lim').textContent = limK; replay($('lim'), 'chg'); }
   $('spdbox').classList.toggle('over', v.vel > lim + 1.4);
@@ -2024,6 +2071,7 @@ function rowsSpec(){
     ['cam', 'Kamera', [['chase','Belakang'],['cockpit','Kokpit'],['drone','Drone'],['ic','Simpang susun'],['orbit','Orbit']]],
     ['den', 'Lalu lintas', [[0.6,'Sepi'],[1,'Normal'],[1.7,'Padat'],[2.6,'Macet']]],
     ['tod', 'Atur jam', [['morning','Pagi 07:00'],['day','Siang 12:00'],['dusk','Sore 17:48'],['night','Malam 21:00']]],
+    ['assist', 'Asisten setir', [[true,'Aktif (mobil lurus lagi saat setir dilepas)'],[false,'Mati (setir penuh, harus balas setir)']]],
     ['tspd', 'Jalannya jam', [[0,'Berhenti'],[0.5,'1 jam = 2 menit'],[1,'1 jam = 1 menit'],[6,'1 jam = 10 detik']]],
     ['lanes', 'Lajur tol', [['auto','Sesuai data'],['2','2'],['3','3'],['4','4'],['5','5']]],
     ['close:1', 'Tutup lajur · arah saya', laneOpts, true],
@@ -2045,7 +2093,9 @@ function renderUI(){
       const d = id.split(':')[1], sel = cfg.closed[d] || [];
       opts.forEach(([v, t]) => { const on = sel.includes(v), b = btn(t, on);
         b.disabled = !on && sel.length >= 4;
-        b.onclick = () => { cfg.closed[d] = on ? sel.filter(x => x !== v) : [...sel, v]; saveCfg(); renderUI(); applyTraffic(['rw']); };
+        b.onclick = () => { cfg.closed[d] = on ? sel.filter(x => x !== v) : [...sel, v]; saveCfg(); renderUI();
+          const z = (cfg.closed[d] || []).length && PLR ? zoneAhead('rw') : null; applyTraffic(['rw']); updateWorld();
+          toast(`Lajur ${v} ${on ? 'dibuka' : 'ditutup'} (${d === '1' ? 'arah saya' : 'arah lawan'})${z ? ` · pekerjaan jalan ${Math.round((z.u - uOfV(PLR))/10)*10} m di depan` : ''}`); };
         cell.append(b); });
       const h = document.createElement('div'); h.className = 'hint'; h.textContent = 'Lajur 1 = paling kiri. Lajur yang tidak ada di ruas itu diabaikan, dan minimal satu lajur tetap dibuka.'; cell.append(h);
     } else opts.forEach(([v, t]) => { const b = btn(t, String(cfg[id]) === String(v)); b.onclick = () => apply(id, v); cell.append(b); });
@@ -2057,14 +2107,33 @@ function renderUI(){
   ctrl.scrollTop = sc;
 }
 function applyTraffic(types){ setupBlocks(true); rebuildObjects(types); }
+// a roadworks / contraflow zone in front of the car, so a changed setting can be seen right away
+function zoneAhead(type){
+  const u0 = uOfV(PLR), r = ZEXT[type] - 450, have = ZONES.find(z => z.type === type && z.u - u0 > 300 && z.u - u0 < 3200);
+  if (have) return have;
+  const ok = u => (type === 'cf' ? isToll(u) && CORR[corrAt(u)].cls === 't' : nAt(u) >= 2 && nAt(u + 400) >= 2 && nAt(u - 400) >= 2)
+    && !SITES.some(s => Math.abs(s.u - u) < 800 + r) && !ZONES.some(z => Math.abs(z.u - u) < ZEXT[z.type] + ZEXT[type] + 300)
+    && !OVS.some(o => Math.abs(o.u - u) < r + 360) && !OPENS.some(o => Math.abs(o.u - u) < r + 80);
+  for (let u = u0 + 760 + r; u < u0 + 9000; u += 40) if (ok(u)) {
+    const z = {type, u, user: true}; ZONES.push(z); ZONES.sort((a, b) => a.u - b.u);
+    const add = [{u, r, type, z}];
+    if (type === 'cf') for (const du of [-200, 200]) { const o = {u: u + du, cf: z}; OPENS.push(o); add.push({u: o.u, r: 60, type: 'ut', o}); }
+    OPENS.sort((a, b) => a.u - b.u); OBJ.push(...add); OBJ.sort((a, b) => a.u - b.u);
+    return z; }
+  return null;
+}
 function apply(id, v){
   cfg[id] = v; saveCfg();
-  if (id === 'cam') setCam(v);
+  const ahead = type => { if (!PLR) return ''; const z = zoneAhead(type); return z ? ` · ${type === 'cf' ? 'zona contraflow' : 'pekerjaan jalan'} ${Math.round((z.u - uOfV(PLR))/10)*10} m di depan` : ' · berlaku di zona berikutnya'; };
+  const label = () => { const row = rowsSpec().find(r => r[0] === id), o = row && row[2].find(x => String(x[0]) === String(v)); return o ? o[1] : v; };
+  if (id === 'cam') { setCam(v); toast(`Kamera: ${label()}`); }
   else if (id === 'tod') { setTod(v); cfg.tod = ''; saveCfg(); toast(`Jam game diatur ke ${hhmm(gameH)}`); }
-  else if (id === 'den') { fillTraffic(); rebuildObjects(['site', 'ov']); }
-  else if (id === 'cf' || id === 'cfk') { applyTraffic(['cf', 'ut']); fillTraffic(); }
-  else if (id === 'ovl') rebuildObjects(['ov']);
-  else if (id === 'lanes' || id === 'scale') startDrive({from: trip.from, legs: trip.dest ? trip.legs : trip.allLegs, dest: trip.dest, keepPos: true});
+  else if (id === 'tspd') toast(`Jam game: ${label()}`);
+  else if (id === 'assist') toast(`Asisten setir: ${v ? 'aktif' : 'mati'}`);
+  else if (id === 'den') { fillTraffic(); rebuildObjects(['site', 'ov']); toast(`Lalu lintas: ${label()}`); }
+  else if (id === 'cf' || id === 'cfk') { const msg = cfg.cf ? ahead('cf') : ''; applyTraffic(['cf', 'ut']); fillTraffic(); updateWorld(); toast(`Contraflow: ${cfg.cf ? (cfg.cfk >= 9 ? 'semua lajur' : cfg.cfk + ' lajur') + (cfg.cf > 0 ? ' untuk arah saya' : ' untuk arah lawan') : 'mati'}${msg}`); }
+  else if (id === 'ovl') { rebuildObjects(['ov']); toast(`Jalan overpass: ${label()}`); }
+  else if (id === 'lanes' || id === 'scale') { toast(id === 'lanes' ? `Lajur tol: ${label()}` : `Skala jarak: ${label()}`); setTimeout(() => startDrive({from: trip.from, legs: trip.dest ? trip.legs : trip.allLegs, dest: trip.dest, keepPos: true}), 30); }
   renderUI();
 }
 
@@ -2132,7 +2201,7 @@ $('plan-close').onclick = () => { if (trip) $('plan').hidden = true; };
 
 // leaving the route on a ramp or at an intersection keeps you driving: the trip continues from that place
 function finishExit(site){
-  const v = PLR; v.vel = 0;
+  const v = PLR;
   if (site.i === trip.destIdx) { stats.done = true; return arrive(site, site.kind === 'j' ? v.rampEdge && v.rampEdge.e : exitEdge(site)); }
   const ed = site.kind === 'j' ? v.rampEdge && v.rampEdge.e : exitEdge(site);
   if (!ed) { stats.done = true; return arrive(site, null); }
@@ -2159,6 +2228,7 @@ const hold = (el, k) => { const on = e => { e.preventDefault(); input[k] = true;
   el.addEventListener('pointerdown', on); for (const ev of ['pointerup','pointerleave','pointercancel']) el.addEventListener(ev, off); };
 hold($('gas'), 'gas'); hold($('brake'), 'brake'); hold($('lft'), 'left'); hold($('rgt'), 'right');
 $('auto').onclick = () => { cfg.auto = !cfg.auto; saveCfg(); hudAuto();
+  if (PLR) { PLR.hd = 0; PLR.steer = 0; }
   if (cfg.auto && PLR && !PLR.rp) { const n = nAvail(PLR.sd, PLR.p); PLR.lane = clamp(Math.round(PLR.lx), 0, n - 1); if (PLR.vel < 0) PLR.vel = 0; }
   toast(cfg.auto ? 'Autopilot aktif: mengikuti rute dan aturan sampai tujuan' : 'Kemudi manual: bebas, pelanggaran tetap dicatat'); };
 $('mapb').onclick = () => openAtlas();
@@ -2226,8 +2296,10 @@ function continueFrom(site, ed, quiet = false, dest = trip.dest){
   const rkHere = rkAt(site.u), toll = CORR[ed.c].cls === 't';
   stats.km0 = (stats.km0 || 0) + rkHere;
   const owed = toll ? Math.max(0, rkHere - stats.lastPay) : 0;
+  const vel = PLR ? Math.max(0, PLR.vel) : 0; blink();
   const ok = startDrive({from: site.key, first: ed, dest, cont: true, prev: prevKeyOf(site)});
   if (!ok) return;
+  if (vel > 1) PLR.vel = Math.min(vel, limitAt(uOfV(PLR)));
   stats.lastPay = -owed;
   if (!quiet) toast(`${ed.cls === 'a' ? (site.kind === 'k' ? 'Menuju gerbang tol ' + NODES.get(ed.to).name : 'Jalan akses ke ' + NODES.get(ed.to).name) : CORR[ed.c].name + ' arah ' + towardOfEdge(site.key, ed)}${dest ? ' · rute dihitung ulang' : ''}`);
 }
@@ -2249,13 +2321,13 @@ function leftEdge(s){
 }
 
 // ---------- re-planning the road ahead without rebuilding the world ----------
-function relayout(t, keepN){
+function relayout(t, keepN, keepSite = false){
   const s0 = EV[keepN], before = s0 && [s0.kind, s0.cNext, !!s0.turn].join();
   layoutTrip(t, keepN);
   const s1 = EV[keepN], changed = !s0 || before !== [s1.kind, s1.cNext, !!s1.turn].join(), cut = s1.u;
   const byRef = new Map(OBJ.map(o => [o.s || o.z || o.o, o]));
   for (const [o, gs] of [...built]) { built.delete(o); const n = byRef.get(o.s || o.z || o.o);
-    if (n && n.type === o.type && !(changed && o.s === s1)) { built.set(n, gs); continue; }
+    if (n && n.type === o.type && !(changed && o.s === s1 && !keepSite)) { built.set(n, gs); continue; }
     freeObj(gs);
     if (o.type === 'site') { o.s.bays = {'1': null, '-1': null}; for (const v of [...rampers]) if (!v.player && v.rp.site === o.s) { rm(rampers, v); killVehicle(v); } } }
   for (const [ci, g] of [...chunks]) if ((ci + 1)*CH > cut - 1) { dropSolids([g]); dispose(g); chunks.delete(ci); }
@@ -2271,11 +2343,21 @@ function replanIdx(u, needChoice = false){
     if (e.u > u + 80000) break; }
   return needChoice ? -1 : EV.length - 1;
 }
-function replan(i, tail, dest){
+function replan(i, tail, dest, keepSite = false){
   const e = EV[i], legs = trip.allLegs.slice(0, e.legIdx + 1).concat(tail);
   const t = tripFromLegs(trip.from, legs, dest, cfg.mode); if (!t) return false;
-  t.home = trip.home; relayout(t, i); return true;
+  t.home = trip.home; relayout(t, i, keepSite); return true;
 }
+// the player took a junction ramp: from here on the main road is the road that ramp leads to
+function seamlessTurn(s, ed){
+  const nl = trip.allLegs[s.legIdx + 1];
+  if (nl && nl.b === ed.to && nl.c === ed.c) return true;            // already the plan
+  const dest = trip.dest && trip.dest !== s.key ? trip.dest : null;
+  const rest = dest ? (ed.to === dest ? [] : legsFor(ed.to, null, dest, s.key)) : walkFree(ed.to, s.key, ed.c, null, 50, 'mix');
+  if (!rest) return false;
+  return replan(s.i, [{a: s.key, b: ed.to, c: ed.c}].concat(rest), dest, true);
+}
+function blink(){ const f = $('fade'); if (!f) return; f.classList.add('on'); setTimeout(() => f.classList.remove('on'), 260); }
 function ensureAhead(){
   if (!trip || !PLR) return;
   const u = uOfV(PLR), lastE = EV[EV.length - 1]; if (lastE.u - u > 16000) return;

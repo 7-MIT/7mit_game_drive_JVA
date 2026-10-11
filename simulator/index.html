@@ -11,6 +11,8 @@
   html,body{margin:0;height:100%;overflow:hidden;background:#b9c8d3;font-family:var(--font-body);-webkit-user-select:none;user-select:none}
   canvas{display:block;touch-action:none}
   #stage{position:fixed;inset:0}
+  #fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;z-index:1;transition:opacity .13s}
+  #fade.on{opacity:.85}
   .panel{background:var(--color-bg);color:var(--color-text);border:2px solid var(--color-text)}
   .kick{font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:600}
   .kick b{color:var(--color-accent);font-weight:800}
@@ -144,7 +146,8 @@
   #spdbox{display:flex;align-items:center;gap:12px;padding:10px 14px;border-right:2px solid var(--color-text)}
   #spd{font-family:var(--font-heading);font-weight:800;font-size:48px;line-height:1;font-variant-numeric:tabular-nums;min-width:2.1ch;text-align:right;white-space:nowrap}
   #spdbox.over #spd{color:var(--color-accent)}
-  .unit{font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+  .unit{font-size:10px;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+  #gear{display:inline-block;min-width:2.4ch;padding:0 3px;margin-left:3px;background:var(--color-text);color:var(--color-bg);font-weight:800;text-align:center}
   #lim{flex:none;width:46px;height:46px;border-radius:50%;border:6px solid #d0202a;background:#fff;color:#111;display:grid;place-items:center;font-weight:800;font-size:16px;font-variant-numeric:tabular-nums}
   .dright{padding:8px 12px;display:flex;flex-direction:column;gap:6px;justify-content:center;min-width:0}
   #lanes{display:flex;gap:3px;height:22px}
@@ -348,6 +351,7 @@
 </head>
 <body>
 <div id="stage"></div>
+<div id="fade"></div>
 
 <div id="ui">
   <div id="top" class="panel">
@@ -368,7 +372,7 @@
   </div>
 
   <div id="dash" class="panel">
-    <div id="spdbox"><div><div id="spd">0</div><div class="unit">km/jam</div></div><div id="lim" data-v="" title="Batas kecepatan">100</div></div>
+    <div id="spdbox"><div><div id="spd">0</div><div class="unit">km/jam <b id="gear">D1</b></div></div><div id="lim" data-v="" title="Batas kecepatan">100</div></div>
     <div class="dright">
       <div id="lanes" title="Lajur"></div>
       <div class="stats">

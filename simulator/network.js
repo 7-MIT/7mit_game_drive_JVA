@@ -177,6 +177,11 @@ export const CORRIDORS = [
     ['Surabaya', 0], ['Sidoarjo', 25, -7.450, 112.720], ['Porong', 38, -7.540, 112.695], ['Gempol', 44, -7.560, 112.700],
     ['Bangil', 55, -7.600, 112.780], ['Pasuruan', 65, -7.645, 112.905], ['Probolinggo', 100, -7.755, 113.215], ['Kraksaan', 125, -7.760, 113.410],
     ['Besuki', 160, -7.735, 113.700], ['Situbondo', 192, -7.710, 114.010], ['Ketapang', 290, -8.140, 114.400]]),
+  // Jalan Raya Jakarta–Bogor lewat barat: Tentara Pelajar – Kebayoran Lama – Ciputat – Pondok Cabe – Sawangan (Depok) – Parung – Kemang – Bogor
+  N('jkbg', 'Jalan Raya Jakarta–Bogor (Jalan Nasional 6 Jawa: Tentara Pelajar–Ciputat–Parung)', 'Jkt–Bogor via Parung', 2, 60, [
+    ['Jakarta', 0], ['Tentara Pelajar', 5, -6.205, 106.800], ['Kebayoran Lama', 9, -6.243, 106.778], ['Pondok Pinang', 12.5, -6.272, 106.776],
+    ['Ciputat', 20, -6.312, 106.745], ['Pondok Cabe', 24, -6.338, 106.758], ['Sawangan', 30, -6.398, 106.758], ['Parung', 37, -6.428, 106.727],
+    ['Kemang', 45, -6.497, 106.745], ['Bogor', 56, -6.597, 106.800]]),
   N('puncak', 'Jalan Nasional Jakarta–Bogor–Puncak–Bandung', 'Jakarta–Puncak–Bandung', 1, 60, [
     ['Jakarta', 0], ['Cibinong', 35, -6.480, 106.850], ['Bogor', 50, -6.597, 106.800], ['Ciawi', 57, -6.650, 106.845],
     ['Puncak', 80, -6.700, 107.000], ['Cianjur', 105, -6.820, 107.140], ['Padalarang', 150, -6.843, 107.495], ['Cimahi', 155, -6.872, 107.540],
@@ -243,7 +248,7 @@ export const CORRIDORS = [
 const CITY = {
   'Merak':'Merak','Cilegon Timur':'Cilegon','Serang Timur':'Serang','Tangerang':'Tangerang','Cikupa':'Balaraja','JCT Tomang':'Jakarta',
   'JCT Cawang':'Jakarta','Bandara Soekarno-Hatta':'Bandara Soetta','Bekasi Barat':'Bekasi','Cikarang Barat':'Cikarang','Karawang Barat':'Karawang',
-  'Cikampek':'Cikampek','JCT Pasir Koja':'Bandung','Pasteur':'Bandung','Sadang':'Purwakarta','Bogor':'Bogor','JCT Ciawi':'Ciawi',
+  'Cikampek':'Cikampek','JCT Pasir Koja':'Bandung','Pasteur':'Bandung','Sadang':'Purwakarta','Bogor':'Bogor','Sawangan':'Depok','JCT Ciawi':'Ciawi',
   'Cibadak':'Sukabumi','Sumedang':'Sumedang','Subang':'Subang','JCT Kertajati':'Kertajati','GT Palimanan':'Cirebon','Kedawung':'Cirebon',
   'Pejagan':'Brebes','Tegal':'Tegal','Pemalang':'Pemalang','Pekalongan':'Pekalongan','Batang':'Batang','Kendal':'Kendal',
   'Krapyak':'Semarang','GT Banyumanik':'Semarang','Salatiga':'Salatiga','Boyolali':'Boyolali','Colomadu':'Solo','JCT Kartasura':'Solo',
