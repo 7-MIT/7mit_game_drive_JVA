@@ -8,6 +8,7 @@ import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
 import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
 import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
 import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
+import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, walkFree, choicesAt, edgesFrom, turnDeg, fmtKm, nodeLabel, JAVA} from './network.js';
 
 const MOBILE = matchMedia('(pointer:coarse)').matches || innerWidth < 700;
@@ -471,7 +472,7 @@ function buildChunkNat(i){
           g.add(ubox(AWN[Math.floor(R()*AWN.length)], s*(eAt(u) + 5.4), 3.1, Z(u + w/2), 1.6, 0.15, w - 0.6));
           g.add(ubox(roofMat2, x, h + 0.2, Z(u + w/2), d + 0.4, 0.4, w)); }
         u += w; }
-      const lp = []; for (let u2 = Math.ceil(u0/40)*40; u2 < u1; u2 += 40) if (!xGap(u2)) { lp.push([s*(eAt(u2) + 3.4), Z(u2)]); addSolid(g, 'Menabrak tiang lampu', u2 - 0.25, u2 + 0.25, s*(eAt(u2) + 3.4) - 0.25, s*(eAt(u2) + 3.4) + 0.25); }
+      const lp = []; for (let u2 = Math.ceil((u0 - 20)/40)*40 + 20; u2 < u1; u2 += 40) if (!xGap(u2)) { lp.push([s*(eAt(u2) + 3.4), Z(u2)]); addSolid(g, 'Menabrak tiang lampu', u2 - 0.25, u2 + 0.25, s*(eAt(u2) + 3.4) - 0.25, s*(eAt(u2) + 3.4) + 0.25); }
       g.add(instanced(sPoleGeo, lampMat, lp), instanced(headGeo, lampHeadMat, lp.map(([x, z]) => [x - s*0.9, z]), 7.9));
     } else {
       for (let k = 0; k < 2; k++) { const w = 30 + R()*120, o = 14 + R()*40;
@@ -479,10 +480,18 @@ function buildChunkNat(i){
       for (let u = u0 + R()*30; u < u1; u += 30 + R()*40) { if (R() < 0.45) continue; const o = 9 + R()*14, x = s*(eAt(u) + o + 3);
         g.add(ubox(RUKO[Math.floor(R()*RUKO.length)], x, 1.6, Z(u), 6, 3.2, 7));
         const rf = new THREE.Mesh(roofGeo, R() < 0.5 ? roofMat : roofMat2); rf.position.set(x, 4.4, Z(u)); rf.scale.set(1, 1, 1.2); rf.castShadow = true; g.add(rf); }
-      const pp = []; for (let u2 = Math.ceil(u0/40)*40; u2 < u1; u2 += 40) { pp.push([s*(eAt(u2) + 3.6), Z(u2)]); addSolid(g, 'Menabrak tiang listrik', u2 - 0.25, u2 + 0.25, s*(eAt(u2) + 3.6) - 0.25, s*(eAt(u2) + 3.6) + 0.25); }
-      g.add(instanced(uPoleGeo, uPoleMat, pp), instanced(uBarGeo, uBarMat, pp));
     }
+    // PLN distribution poles (tiang listrik) with their wires, in towns and outside
+    const pp = [], wires = [];
+    for (let u2 = Math.ceil(u0/40)*40; u2 < u1; u2 += 40) { if (!plnPole(u2)) continue; const x = s*plnX(u2);
+      pp.push([x, Z(u2)]); addSolid(g, 'Menabrak tiang listrik', u2 - 0.25, u2 + 0.25, x - 0.25, x + 0.25);
+      const u3 = plnPole(u2 + 40) ? u2 + 40 : plnPole(u2 + 80) ? u2 + 80 : null; if (u3 == null) continue;
+      const x3 = s*plnX(u3);
+      for (const [ox, y, sag] of PLN_WIRES) wireSpan(wires, x + s*ox, y, Z(u2), x3 + s*ox, y, Z(u3), sag*(u3 - u2)/40, 6); }
+    g.add(instanced(uPoleGeo, uPoleMat, pp), instanced(uBarGeo, uBarMat, pp), instanced(insGeo, insMat, pp.flatMap(([x, z]) => [[x - 0.7, z], [x + 0.7, z]]), 8.5));
+    g.add(wireMesh(wires, distWireMat));
   }
+  addSutet(g, u0, u1, Z);
   if (divided) {
     g.add(solid(2*MED - 0.4, 0.25, CH, curbMat, 0, 0.125, -CH/2));
     const sp = []; for (let u = Math.ceil(u0/6)*6; u < u1; u += 6) if (!xGap(u)) sp.push([0, Z(u)]);
@@ -556,7 +565,95 @@ function buildChunk(i){
   pts.forEach((p, j) => { pv.set(p.x, 0, p.z); sc.set(p.k, p.k*p.h, p.k); q.setFromAxisAngle(upv, p.r); tm.compose(pv, q, sc); trunks.setMatrixAt(j, tm); (j % 2 ? crowns : blobs).setMatrixAt(j >> 1, tm); });
   crowns.count = pts.filter((_, j) => j % 2).length; blobs.count = pts.length - crowns.count;
   for (const m of [trunks, crowns, blobs]) { m.castShadow = true; g.add(m); }
+  addSutet(g, u0, u1, Z);
   bendObj(g); scene.add(g); return g;
+}
+
+// ================================================================
+// POWER LINES: PLN distribution poles along national roads, SUTET 500 kV transmission towers
+// ================================================================
+const distWireMat = new THREE.LineBasicMaterial({color: 0x26282a}), hvWireMat = new THREE.LineBasicMaterial({color: 0x3a3d40});
+patchMat(distWireMat); patchMat(hvWireMat);
+const insMat = M(0xd8d2c4, {roughness: 0.5});
+const insGeo = new THREE.CylinderGeometry(0.07, 0.07, 0.35, 6); insGeo.userData.keep = true;
+// [lateral offset from the pole, height, sag over a 40 m span]: three phase wires on the cross-arm, neutral on the pole top, telecom cable lower down
+const PLN_WIRES = [[-0.7, 8.7, 0.55], [0, 9.0, 0.5], [0.7, 8.7, 0.55], [0, 7.2, 0.6], [0.15, 5.6, 0.7]];
+const plnPole = u => !KSITES.some(t => Math.abs(t.u - u) < XW/2 + 9);
+const plnX = u => eAt(u) + (townNear(u, TOWN_R + 80) ? 4.3 : 3.6);
+// a sagging wire from A to B as line segments (parabola, n pieces)
+function wireSpan(out, x0, y0, z0, x1, y1, z1, sag, n){
+  let px = x0, py = y0, pz = z0;
+  for (let i = 1; i <= n; i++) { const t = i/n, x = x0 + (x1 - x0)*t, z = z0 + (z1 - z0)*t, y = y0 + (y1 - y0)*t - 4*sag*t*(1 - t);
+    out.push(px, py, pz, x, y, z); px = x; py = y; pz = z; } }
+function wireMesh(arr, mat){ const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+  const l = new THREE.LineSegments(geo, mat); l.frustumCulled = false; return l; }
+
+// lattice tower (double circuit, ~56 m): legs, girts, X-bracing, three cross-arms per side and an earth-wire peak; arms along local x
+const steelMat = M(0x8b9196, {metalness: 0.55, roughness: 0.45});
+const SUTET_ARMS = [[32, 9], [40, 11.5], [48, 9]], SUTET_EARTH = [[56, 4]];
+const towerGeo = (() => {
+  const parts = [], up = new THREE.Vector3(0, 1, 0);
+  const beam = (a, b, t) => { const d = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]), L = d.length(); const g = new THREE.BoxGeometry(t, L, t); g.translate(0, L/2, 0);
+    g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(up, d.normalize())); g.translate(a[0], a[1], a[2]); parts.push(g); };
+  const lv = [0, 7, 14, 21, 27, 32, 36, 40, 44, 48, 52], hw = y => y <= 27 ? 5.2 - (5.2 - 1.5)*y/27 : y <= 50 ? 1.5 : 1.5 - (y - 50)*0.12;
+  const C = [[1, 1], [1, -1], [-1, -1], [-1, 1]];
+  for (let i = 0; i < lv.length; i++) { const y = lv[i], h = hw(y);
+    for (let c = 0; c < 4; c++) { const [ax, az] = C[c], [bx, bz] = C[(c + 1) % 4];
+      if (i > 0) beam([ax*h, y, az*h], [bx*h, y, bz*h], 0.16);
+      if (i < lv.length - 1) { const y2 = lv[i+1], h2 = hw(y2); beam([ax*h, y, az*h], [ax*h2, y2, az*h2], 0.34);
+        beam([ax*h, y, az*h], [bx*h2, y2, bz*h2], 0.12); beam([bx*h, y, bz*h], [ax*h2, y2, az*h2], 0.12); } } }
+  const top = 52, ht = hw(top); for (const [ax, az] of C) beam([ax*ht, top, az*ht], [0, 57, 0], 0.2);
+  for (const [y, L] of [...SUTET_ARMS, ...SUTET_EARTH]) { const h = hw(y);
+    for (const sx of [-1, 1]) { beam([sx*h, y, -h], [sx*L, y, 0], 0.16); beam([sx*h, y, h], [sx*L, y, 0], 0.16); beam([sx*h, y + 2.4, 0], [sx*L, y, 0], 0.14);
+      beam([sx*h, y + 2.4, -h*0.6], [sx*h, y + 2.4, h*0.6], 0.12); } }
+  const g = mergeGeometries(parts); parts.forEach(p => p.dispose()); g.userData.keep = true; return g;
+})();
+const strGeo = (() => { const g = new THREE.CylinderGeometry(0.22, 0.22, 4, 6); g.translate(0, -2, 0); g.userData.keep = true; return g; })();   // insulator string
+// conductor attachment points in tower coordinates [x along the arms, y]
+const SUTET_PTS = [...SUTET_ARMS.flatMap(([y, L]) => [[-L, y - 4], [L, y - 4]]), ...SUTET_EARTH.flatMap(([y, L]) => [[-L, y], [L, y]])];
+const SPAN = 400, PBLK = 6000;
+const hsh = (n, k) => { const r = rng((n + 100000)*92821 + k*7 + 1); r(); return r(); };
+const lineOn = b => hsh(b, 2) < 0.55;
+function lineRun(b){ let a = b; for (let k = 0; k < 40 && lineOn(a - 1); k++) a--; let e = b; for (let k = 0; k < 40 && lineOn(e + 1); k++) e++; return [a*PBLK, (e + 1)*PBLK, hsh(a, 1) < 0.5 ? 1 : -1]; }
+function siteDist(u){ let lo = 0, hi = SITES.length; while (lo < hi) { const m = (lo + hi) >> 1; if (SITES[m].u < u) lo = m + 1; else hi = m; }
+  let d = Infinity; for (const j of [lo - 1, lo]) if (SITES[j]) d = Math.min(d, Math.abs(SITES[j].u - u)); return d; }
+// parallel line: tower k stands at u = k*SPAN (nudged off overpasses) at distance D from the carriageway edge
+function sutetTower(k){
+  const b = Math.floor(k*SPAN/PBLK); if (!lineOn(b)) return null;
+  const [ra, rb, side] = lineRun(b); let u = k*SPAN;
+  const ov = OVS.find(o => Math.abs(o.u - u) < 45); if (ov) u = ov.u + (u >= ov.u ? 1 : -1)*45;
+  const w = clamp((1150 - siteDist(u))/450, 0, 1), de = Math.min(u - ra, rb - u);
+  let D = 150 + 330*w*w*(3 - 2*w);
+  if (de < 2*SPAN) D += 1400*Math.pow(1 - de/(2*SPAN), 2);       // the line swings away from the road where it ends
+  if (isToll(u) && Math.abs(D - PRC) < 18) D = PRC + 18;            // never on the parallel road
+  return {u, x: side*(eAt(u) + D)};
+}
+function addSutet(g, u0, u1, Z){
+  if (!EV.length) return;
+  const T = [], ins = [], wires = [];
+  const place = (x, u, rot) => { tm.compose(new THREE.Vector3(x, 0, Z(u)), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rot), new THREE.Vector3(1, 1, 1)); T.push(tm.clone());
+    for (const [ax, ay] of SUTET_PTS) if (ay < 50) { const c = Math.cos(rot), s2 = Math.sin(rot); tm.compose(new THREE.Vector3(x + ax*c, ay + 4, Z(u) - ax*s2), new THREE.Quaternion(), new THREE.Vector3(1, 1, 1)); ins.push(tm.clone()); } };
+  // attachment point j of a tower at (x, z) whose arms point along angle rot
+  const att = (x, z, rot, j) => { const [ax, ay] = SUTET_PTS[j]; return [x + ax*Math.cos(rot), ay, z - ax*Math.sin(rot)]; };
+  const rotOf = (a, c) => Math.atan2(c.x - a.x, Z(c.u) - Z(a.u));   // arms perpendicular to the line
+  for (let k = Math.ceil((u0 - 60)/SPAN); k*SPAN < u1 + 60; k++) {
+    const t = sutetTower(k); if (!t || t.u < u0 || t.u >= u1) continue;
+    const p = sutetTower(k - 1), n = sutetTower(k + 1), a = p || t, c = n || t, rot = rotOf(a, c);
+    place(t.x, t.u, rot);
+    if (n) { const n2 = sutetTower(k + 2), rn = rotOf(t, n2 || n);
+      for (let j = 0; j < SUTET_PTS.length; j++) { const A = att(t.x, Z(t.u), rot, j), B = att(n.x, Z(n.u), rn, j), L = Math.hypot(B[0] - A[0], B[2] - A[2]);
+        wireSpan(wires, A[0], A[1], A[2], B[0], B[1], B[2], (j >= 6 ? 0.022 : 0.03)*L, 24); } } }
+  // a line crossing the road once in some blocks, well away from interchanges and overpasses
+  const b = Math.floor((u0 + u1)/2/PBLK), uc = (b + 0.5)*PBLK;
+  if (uc >= u0 && uc < u1 && hsh(b, 3) < 0.4 && siteDist(uc) > 1300 && !OVS.some(o => Math.abs(o.u - uc) < 140)) {
+    const e = eAt(uc), xs = [-1, 1].flatMap(s => [0, 1, 2, 3].map(j => s*(e + 45 + j*390))).sort((p, q) => p - q), rot = Math.PI/2;
+    for (const x of xs) place(x, uc, rot);
+    for (let i = 0; i < xs.length - 1; i++) for (let j = 0; j < SUTET_PTS.length; j++) { const A = att(xs[i], Z(uc), rot, j), B = att(xs[i+1], Z(uc), rot, j), L = Math.abs(B[0] - A[0]);
+      wireSpan(wires, A[0], A[1], A[2], B[0], B[1], B[2], (j >= 6 ? 0.022 : 0.03)*L, 24); } }
+  if (!T.length && !wires.length) return;
+  if (T.length) { const m = new THREE.InstancedMesh(towerGeo, steelMat, T.length); T.forEach((x, i) => m.setMatrixAt(i, x)); m.castShadow = true; g.add(m);
+    const s = new THREE.InstancedMesh(strGeo, insMat, ins.length); ins.forEach((x, i) => s.setMatrixAt(i, x)); g.add(s); }
+  if (wires.length) g.add(wireMesh(wires, hvWireMat));
 }
 
 // frame groups: local x = outward from the median, local z = travel direction of side sd; u = u0 + sd*z
@@ -2140,7 +2237,7 @@ try { await Promise.race([document.fonts.load('700 64px Archivo'), new Promise(r
 setTod(cfg.tod);
 if (cfg.trip === 'free') startDrive({from: NODES.has(cfg.from) ? cfg.from : DEF.from}); else startTrip(NODES.has(cfg.from) ? cfg.from : DEF.from, NODES.has(cfg.to) ? cfg.to : DEF.to);
 if (!localStorage.getItem('tj_seen')) { try { localStorage.setItem('tj_seen', '1'); } catch(e) {} openPlanner(); }
-window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam, startDrive, setNav, clearNav, chooseAt, replanIdx, openAtlas, closeAtlas, atTap, AT, get chunks(){ return chunks; }, get OBJ(){ return OBJ; }};
+window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam, startDrive, setNav, clearNav, chooseAt, replanIdx, openAtlas, closeAtlas, atTap, AT, get chunks(){ return chunks; }, get OBJ(){ return OBJ; }, sutetTower};
 
 let last = performance.now(), mapT = 0, frames = 0;
 function tick(dt){

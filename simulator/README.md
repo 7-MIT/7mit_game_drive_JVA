@@ -52,6 +52,11 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
   - Roadworks: choose which lanes to close in each direction.
   - Contraflow: the closed U-turn openings ("khusus petugas") open up and police guard the lanes. It can run either way, for some lanes or all of them.
   - All lanes ("one way"): oncoming traffic is diverted through a temporary ramp to the Jalan Nasional and back.
+- **Power lines.**
+  - Every PLN electricity pole along the national roads (in towns and outside) carries its wires: three phase wires on the cross-arm, the neutral and a telecom cable, sagging between poles. Poles skip intersections, and you can crash into them.
+  - SUTET 500 kV lines (double-circuit lattice towers, about 57 m tall, every 400 m) run beside toll and national roads for long stretches. Each has six conductors on insulator strings and two earth wires.
+  - Near interchanges, toll plazas and towns a line swings further out, so no tower stands on a ramp or the parallel road, and wires pass high over everything. Where a line ends it veers away from the road.
+  - Some lines cross the road on towers on both sides.
 - **Signs.** There are gantry signs (EXIT/JCT plus the next cities), 500 m advance boards, km distance boards after each interchange, KM posts, speed-limit and minimum-speed signs, and warning boards for works and contraflow.
 - **Distance scale.** "Nyata 1:1" uses the real distances between exits. "Ringkas 1:5" and "Cepat 1:20" shorten the empty stretches, so a Jakarta–Surabaya drive fits into a session. The HUD always shows real km.
 - **Lanes.** Lane counts come from the data per road (for example Cipali has 2, Japek 4). "Lajur tol" can force 2–5 lanes. When the count changes between roads, the lane tapers and traffic has to merge.
