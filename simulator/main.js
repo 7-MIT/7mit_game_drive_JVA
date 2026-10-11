@@ -343,7 +343,7 @@ function layoutTrip(t, keepN = -1){
     }
     EV[i].u = a + gap;
   }
-  layoutElev();
+  layoutElev(); segT = 0;
   for (const z of oldZ) if (z.user && !ZONES.includes(z)) ZONES.push(z);
   ZONES.sort((a, b) => a.u - b.u);
   // corridor KM of each event on the corridor that LEAVES it
@@ -623,6 +623,7 @@ function buildChunk(i){
   for (const m of [trunks, crowns, blobs]) { m.castShadow = true; g.add(m); }
   roadside(g, u0, u1, Z, R, true);
   viaduct(g, u0, u1, Z);
+  mbzStack(g, u0, u1, Z);
   addSutet(g, u0, u1, Z);
   bendObj(g); scene.add(g); return g;
 }
@@ -734,6 +735,45 @@ function viaduct(g, u0, u1, Z){
   for (let u = Math.ceil(u0/32)*32; u < u1; u += 32) { const h = elevAt(u); if (h < 1.2) continue;
     for (const s of [-1, 1]) { const x = s*(MED + (e - MED)/2), c = new THREE.Mesh(viaPierGeo, concrete); c.position.set(x, -h/2 - 0.6, Z(u)); c.scale.set(1, h, 1); c.castShadow = true; g.add(c);
       g.add(solid(e - MED + 1, 1.0, 2.2, concrete, x, -1.6, Z(u))); } }
+}
+// ---------- Tol Layang MBZ stacked over Jakarta–Cikampek (KM 10 Cikunir – KM 46 Karawang Barat) ----------
+// on Japek you see the elevated deck above the median; on MBZ you see Japek and its traffic below. Both carry moving traffic.
+const MBZ_K = [10, 46], MBZ_H = 15.5, MBZ_HW = MED + 2*LW + 1.2;
+const mbzRise = km => MBZ_H*sstep(MBZ_K[0] + 0.4, MBZ_K[0] + 3, km)*(1 - sstep(MBZ_K[1] - 3, MBZ_K[1] - 0.4, km));
+const ghosts = new Set();   // chunk groups carrying "ghost" traffic lanes (other levels of a stacked road)
+function mbzStack(g, u0, u1, Z){
+  const c = corrAt(u0 + CH/2); if (c !== 'japek' && c !== 'mbz') return;
+  const km = u => kmAt(u), hAt = u => mbzRise(km(u)); if (Math.max(hAt(u0), hAt(u1)) < 0.3) return;
+  const lanes = [];
+  if (c === 'japek') {
+    // the deck overhead, in 10 m pieces following the rise, on single columns in the median
+    for (let u = u0; u < u1; u += 10) { const h = hAt(u + 5); if (h < 0.3) continue;
+      g.add(solid(2*MBZ_HW, 1.5, 10.05, concrete, 0, h - 0.75, Z(u + 5)), solid(2*MBZ_HW - 0.9, 0.06, 10.05, asphalt, 0, h + 0.03, Z(u + 5)), solid(0.5, 0.9, 10.05, barMat, 0, h + 0.45, Z(u + 5)));
+      for (const sx of [-1, 1]) { g.add(solid(0.15, 0.03, 10.05, white, sx*(MED + 2*LW - 0.1), h + 0.075, Z(u + 5)));
+        if (Math.floor(u/10) % 2 === 0) g.add(solid(0.14, 0.03, 4, white, sx*(MED + LW), h + 0.075, Z(u + 5))); }
+      for (const sx of [-1, 1]) g.add(solid(0.4, 1.1, 10.05, barMat, sx*(MBZ_HW - 0.2), h + 0.55, Z(u + 5))); }
+    for (let u = Math.ceil(u0/40)*40; u < u1; u += 40) { const h = hAt(u); if (h < 3) continue;
+      const m = new THREE.Mesh(viaPierGeo, concrete); m.position.set(0, (h - 1.5)/2, Z(u)); m.scale.set(0.75, h - 1.5, 0.75); m.castShadow = true; g.add(m);
+      g.add(solid(2*MBZ_HW - 4, 1.4, 2.4, concrete, 0, h - 2.1, Z(u))); }
+    for (let l = 0; l < 2; l++) for (const d of [1, -1]) lanes.push({x: -d*(MED + (l + 0.5)*LW), y: u => hAt(u) + 0.02, dir: d, vel: 22 + l*3, gap: (85 + l*30)*(MOBILE ? 1.6 : 1), ph: l*31 + (d > 0 ? 0 : 17)});
+  } else {
+    // Jakarta–Cikampek underneath: carriageways, markings, barrier and its traffic, on the land below the deck
+    const us = []; for (let u = u0; u <= u1 + 0.01; u += 10) us.push(u);
+    const JM = 5;   // Japek's wide median under the MBZ piers
+    for (const sx of [-1, 1]) { g.add(strip(us, u => sx*(JM - 0.6), u => sx*(JM + 4*LW + 2.6), 0.01, prAsphalt, Z));
+      for (let l = 1; l < 4; l++) g.add(strip(us, u => sx*(JM + l*LW - 0.07), u => sx*(JM + l*LW + 0.07), 0.02, prWhite, Z));
+      g.add(strip(us, u => sx*(JM + 4*LW - 0.08), u => sx*(JM + 4*LW + 0.08), 0.02, prWhite, Z)); }
+    for (const l of [0, 2, 3]) for (const d of [1, -1]) lanes.push({x: -d*(JM + (l + 0.5)*LW), y: u => -elevAt(u) + 0.02, dir: d, vel: 18 + l*4, gap: (80 + l*15)*(MOBILE ? 1.6 : 1), ph: l*13 + (d > 0 ? 0 : 7)});
+  }
+  // moving traffic: car positions follow one global pattern (u = phase + n·gap + v·t), so they flow seamlessly from chunk to chunk
+  const pool = []; for (const L of lanes) for (let k = 0; k < Math.ceil(CH/L.gap) + 1; k++) { const t = Math.random(), v = makeVehicle(t < 0.15 ? 'truck' : t < 0.22 ? 'bus' : t < 0.4 ? 'suv' : 'car');
+    v.g.rotation.y = L.dir > 0 ? Math.PI : 0; bendObj(v.g); g.add(v.g); pool.push({L, v, k}); }
+  g.userData.ghost = {u0, u1, Z, pool}; ghosts.add(g);
+}
+function animGhosts(){
+  for (const g of ghosts) { if (!g.parent) { ghosts.delete(g); continue; } const {u0, u1, Z, pool} = g.userData.ghost;
+    for (const {L, v, k} of pool) { const base = mod(L.ph + L.dir*L.vel*clock - u0, L.gap), u = u0 + base + k*L.gap;
+      if (u >= u1) { v.g.visible = false; continue; } v.g.visible = true; v.g.position.set(L.x, L.y(u), Z(u)); } }
 }
 const viaPierGeo = (() => { const g = new THREE.CylinderGeometry(0.9, 1.0, 1, 12); g.userData.keep = true; return g; })();
 
@@ -2755,7 +2795,7 @@ try { await Promise.race([document.fonts.load('700 64px Archivo'), new Promise(r
 setRoadStyle(); setView(); setClean(); setTod(null);
 if (cfg.trip === 'free' || cfg.trip === 'santai') startDrive({from: NODES.has(cfg.from) ? cfg.from : DEF.from}); else startTrip(NODES.has(cfg.from) ? cfg.from : DEF.from, NODES.has(cfg.to) ? cfg.to : DEF.to);
 if (!localStorage.getItem('tj_seen')) { try { localStorage.setItem('tj_seen', '1'); } catch(e) {} openPlanner(); }
-window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam, startDrive, setNav, clearNav, chooseAt, replanIdx, openAtlas, closeAtlas, atTap, AT, get chunks(){ return chunks; }, get OBJ(){ return OBJ; }, sutetTower, setHour: h => { gameH = h; todT = 0; lastSign = -1; tickClock(0); }, get gameH(){ return gameH; }, volcanoes, updateVolcanoes, regionAt, latLonAt};
+window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam, startDrive, setNav, clearNav, chooseAt, replanIdx, openAtlas, closeAtlas, atTap, AT, get chunks(){ return chunks; }, get OBJ(){ return OBJ; }, sutetTower, setHour: h => { gameH = h; todT = 0; lastSign = -1; tickClock(0); }, get gameH(){ return gameH; }, volcanoes, updateVolcanoes, regionAt, latLonAt, get ELV(){ return ELV; }, elU, elevAt};
 
 let last = performance.now(), mapT = 0, frames = 0;
 function tick(dt){
@@ -2764,11 +2804,11 @@ function tick(dt){
   sim(dt); rampStep(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt); tickClock(dt);
   if (PLR) camU = uOfV(PLR);
   ensureAhead();
-  setupBlocks(false); updateWorld(); updateSignals();
+  setupBlocks(false); updateWorld(); updateSignals(); animGhosts();
 }
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering
-window.__tj.step = (n, dt = 1/20) => { for (let i = 0; i < n; i++) tick(dt); placeGroups(); place(); for (let k = 0; k < 40; k++) updateCam(dt); updateBend(); hudT = 0; updateHud(dt); drawMap(); };
+window.__tj.step = (n, dt = 1/20) => { for (let i = 0; i < n; i++) tick(dt); updateSegs(); placeGroups(); place(); for (let k = 0; k < 40; k++) updateCam(dt); updateBend(); hudT = 0; updateHud(dt); drawMap(); };
 renderer.setAnimationLoop(now => {
   const dt = Math.min(0.05, (now - last)/1000); last = now; frames++;
   if ((!$('plan').hidden && trip && !stats.done) || !$('atlas').hidden) { composer.render(); return; }
