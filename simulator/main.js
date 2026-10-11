@@ -2612,6 +2612,7 @@ function seamlessTurn(s, ed){
 }
 // exit ramp taken: the road after this exit becomes the access road to town (the site stays a normal exit)
 function seamlessExit(s){
+  if (s.i === trip.destIdx) return false;            // the destination: arrive at the end of the ramp
   const ed = exitEdge(s); if (!ed) return false;
   const dest = trip.dest && trip.dest !== s.key ? trip.dest : null;
   const rest = dest ? (ed.to === dest ? [] : legsFor(ed.to, null, dest, s.key)) : walkFree(ed.to, s.key, ed.c, null, 50, 'mix');
