@@ -13,7 +13,7 @@ import {CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, w
 
 const MOBILE = matchMedia('(pointer:coarse)').matches || innerWidth < 700;
 const LW = 3.6, MED = 1.2, CH = 120, OPEN_HW = 35, OVH = 7.5, PRC = 328, BACK = 460, FWD = 720;
-const DEF = {mode:'mix', cam:'chase', den:1, tod:'day', lanes:'auto', closed:{'1':[1], '-1':[]}, cf:0, cfk:2, ovl:2, scale:5, veh:'car', tspd:1, assist:true,
+const DEF = {mode:'mix', cam:'chase', den:1, tod:'day', lanes:'auto', closed:{'1':[1], '-1':[]}, cf:0, cfk:2, ovl:2, scale:5, veh:'car', tspd:1, steerAssist:false,
   from:'Bekasi Barat', to:'Pasteur', auto:false, trip:'route'};
 let cfg; try { cfg = {...DEF, ...JSON.parse(localStorage.getItem('tj_cfg1') || '{}')}; } catch(e) { cfg = {...DEF}; }
 const saveCfg = () => { try { localStorage.setItem('tj_cfg1', JSON.stringify(cfg)); } catch(e) {} };
@@ -42,7 +42,7 @@ document.getElementById('stage').prepend(renderer.domElement);
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xb9c8d3, 120, 420);
 scene.background = new THREE.Color(0xb9c8d3);
-const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.3, 1600);
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.3, 2400);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true; controls.maxPolarAngle = Math.PI*0.48; controls.enabled = false;
 
@@ -274,7 +274,7 @@ const heavyMin = n => n >= 5 ? 2 : n >= 2 ? 1 : 0;
 // ================================================================
 let trip = null, EV = [], SITES = [], RSITES = [], PLAZAS = [], KSITES = [], ZONES = [], OVS = [], OPENS = [], OBJ = [], CHG = [];
 const laneSegs = {'1': [], '-1': []};
-const nCorr = c => cfg.lanes === 'auto' || CORR[c].cls !== 't' ? CORR[c].lanes : +cfg.lanes;
+const nCorr = c => cfg.lanes === 'auto' ? CORR[c].lanes : +cfg.lanes;   // the lane setting applies to every road
 const PLZK = new Set(['g', 't', 'te', 'ti']), RAMPK = new Set(['x', 'j', 'r']), SITEK = new Set(['x', 'j', 'r', 'g', 't', 'te', 'ti', 'k']);
 const RW_EVERY = 5600, CF_EVERY = 9400, ZEXT = {rw: 1150, cf: 1380};
 
@@ -293,7 +293,7 @@ function layoutTrip(t, keepN = -1){
       const dueRW = lastRW + RW_EVERY, dueCF = lastCF + CF_EVERY, ty = dueRW <= dueCF ? 'rw' : 'cf', due = Math.min(dueRW, dueCF);
       const pos = Math.max(cur + (ty === 'cf' ? 230 : 0), due);
       // contraflow needs a divided toll road; roadworks need at least two lanes
-      if ((ty === 'cf' && CORR[EV[i].c].cls !== 't') || (ty === 'rw' && nCorr(EV[i].c) < 2)) { if (ty === 'rw') lastRW = due; else lastCF = due; continue; }
+      if (nCorr(EV[i].c) < 2) { if (ty === 'rw') lastRW = due; else lastCF = due; continue; }
       if (pos + ZEXT[ty] > a + gap) { if (due > a + gap) break; gap = pos + ZEXT[ty] - a; }
       ZONES.push(oldZ.find(z => z.type === ty && Math.abs(z.u - pos) < 0.5) || {type: ty, u: pos}); if (ty === 'rw') lastRW = pos; else lastCF = pos;
       cur = pos + 1500;
@@ -316,7 +316,9 @@ function layoutTrip(t, keepN = -1){
   // overpasses and closed U-turn openings in the empty stretches
   const clear = (u, r) => isToll(u) && !SITES.some(s => Math.abs(s.u - u) < 780 + r) && !ZONES.some(z => Math.abs(z.u - u) < ZEXT[z.type] - 400 + r);
   const lastU = EV[EV.length-1].u;
-  OVS = []; for (let u = -2600; u < lastU + 6000; u += 1450) { let v = u; for (let k = 0; k < 8 && !clear(v, 0); k++) v += 180; if (clear(v, 0)) OVS.push(oldV.find(o => Math.abs(o.u - v) < 0.5) || {u: v}); }
+  // overpasses over toll roads every ~1.5 km, over national roads (outside towns) every ~3 km
+  const clearOv = (u, r) => (isToll(u) || nAt(u) >= 2) && !SITES.some(s => Math.abs(s.u - u) < 780 + r) && !ZONES.some(z => Math.abs(z.u - u) < ZEXT[z.type] - 400 + r);
+  OVS = []; for (let u = -2600, j = 0; u < lastU + 6000; u += 1450, j++) { let v = u; for (let k = 0; k < 8 && !clearOv(v, 0); k++) v += 180; if (clearOv(v, 0) && (isToll(v) || j % 2 === 0)) OVS.push(oldV.find(o => Math.abs(o.u - v) < 0.5) || {u: v}); }
   OPENS = [];
   const reuse = o => oldO.find(q => q.cf === o.cf && Math.abs(q.u - o.u) < 0.5) || o;
   for (const z of ZONES) if (z.type === 'cf') OPENS.push(reuse({u: z.u - 200, cf: z}), reuse({u: z.u + 200, cf: z}));
@@ -443,7 +445,12 @@ function kmPostTex(txt){ return canvasTex(0.5, 0.7, (x, w, h) => { x.fillStyle =
 const uPoleMat = M(0x9a948a), uBarMat = M(0x6b6660), curbMat = M(0xc9c4b8), shrubMat = M(0x4f7a3a, {flatShading:true}), shoulderMat = M(0x8f8a76), roofMat = M(0x8a4b35), roofMat2 = M(0x6b3b2a);
 const RUKO = [0xe8d9b5, 0xd9c3a0, 0xf0e6d2, 0xc9d6c3, 0xe3c8c0, 0xd2d8e0, 0xf2efe8, 0xe6b98a].map(c => M(c));
 const AWN = [0x2a6fb5, 0xc8342b, 0xe0a020, 0x2f8a4a, 0x7a3fa0].map(c => M(c, {roughness:0.6}));
-const PADDY = [M(0x9fb35a), M(0x7fa046), M(0xb8b768)];
+// sawah: rows of rice and the raised bunds (pematang) between plots, young green, ripe yellow, and flooded at planting time
+const paddyTex = (base, row, water) => { const c = document.createElement('canvas'); c.width = c.height = 128; const x = c.getContext('2d');
+  x.fillStyle = water || base; x.fillRect(0, 0, 128, 128); x.strokeStyle = row; x.lineWidth = 3; for (let i = 4; i < 128; i += 8) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i, 128); x.stroke(); }
+  x.fillStyle = '#8c7a52'; x.fillRect(0, 0, 128, 5); x.fillRect(0, 0, 5, 128);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(3, 6); t.anisotropy = 4; t.userData.keep = true; t.colorSpace = THREE.SRGBColorSpace; return t; };
+const PADDY = [M(0xffffff, {map: paddyTex('#7fb83a', '#5f9628')}), M(0xffffff, {map: paddyTex('#c9c24a', '#a89b2e')}), M(0xffffff, {map: paddyTex('#6fa3a0', '#7fbf4a', '#7aa9b0'), roughness: 0.35})];
 const shrubGeo = new THREE.IcosahedronGeometry(0.7, 0); shrubGeo.translate(0, 0.6, 0); shrubGeo.userData.keep = true;
 const uPoleGeo = new THREE.CylinderGeometry(0.1, 0.13, 9, 6); uPoleGeo.translate(0, 4.5, 0); uPoleGeo.userData.keep = true;
 const uBarGeo = new THREE.BoxGeometry(1.6, 0.1, 0.1); uBarGeo.translate(0, 8.4, 0); uBarGeo.userData.keep = true;
@@ -479,12 +486,13 @@ function buildChunkNat(i){
       const lp = []; for (let u2 = Math.ceil((u0 - 20)/40)*40 + 20; u2 < u1; u2 += 40) if (!xGap(u2)) { lp.push([s*(eAt(u2) + 3.4), Z(u2)]); addSolid(g, 'Menabrak tiang lampu', u2 - 0.25, u2 + 0.25, s*(eAt(u2) + 3.4) - 0.25, s*(eAt(u2) + 3.4) + 0.25); }
       g.add(instanced(sPoleGeo, lampMat, lp), instanced(headGeo, lampHeadMat, lp.map(([x, z]) => [x - s*0.9, z]), 7.9));
     } else {
-      for (let k = 0; k < 2; k++) { const w = 30 + R()*120, o = 14 + R()*40;
+      if (regionAt(u0 + CH/2) === 'paddy') for (let k = 0; k < 2; k++) { const w = 30 + R()*120, o = 14 + R()*40;
         g.add(flat(w, CH*(0.4 + R()*0.6), PADDY[Math.floor(R()*3)], s*(eAt(u0) + o + w/2), 0.002, -CH/2)); }
       for (let u = u0 + R()*30; u < u1; u += 30 + R()*40) { if (R() < 0.45) continue; const o = 9 + R()*14, x = s*(eAt(u) + o + 3);
         g.add(ubox(RUKO[Math.floor(R()*RUKO.length)], x, 1.6, Z(u), 6, 3.2, 7));
         const rf = new THREE.Mesh(roofGeo, R() < 0.5 ? roofMat : roofMat2); rf.position.set(x, 4.4, Z(u)); rf.scale.set(1, 1, 1.2); rf.castShadow = true; g.add(rf); }
     }
+    if (!town && s > 0) roadside(g, u0, u1, Z, R, false);
     // PLN distribution poles (tiang listrik) with their wires, in towns and outside
     const pp = [], wires = [];
     for (let u2 = Math.ceil(u0/40)*40; u2 < u1; u2 += 40) { if (!plnPole(u2)) continue; const x = s*plnX(u2);
@@ -569,8 +577,102 @@ function buildChunk(i){
   pts.forEach((p, j) => { pv.set(p.x, 0, p.z); sc.set(p.k, p.k*p.h, p.k); q.setFromAxisAngle(upv, p.r); tm.compose(pv, q, sc); trunks.setMatrixAt(j, tm); (j % 2 ? crowns : blobs).setMatrixAt(j >> 1, tm); });
   crowns.count = pts.filter((_, j) => j % 2).length; blobs.count = pts.length - crowns.count;
   for (const m of [trunks, crowns, blobs]) { m.castShadow = true; g.add(m); }
+  roadside(g, u0, u1, Z, R, true);
   addSutet(g, u0, u1, Z);
   bendObj(g); scene.add(g); return g;
+}
+
+// ================================================================
+// LANDSCAPE: what lines the road depends on where you are (researched per corridor):
+// Jabodetabek and the big cities are built up (no rice fields), Cikarang–Karawang and Cilegon are industrial,
+// Pantura, Cipali and the Trans-Jawa plains are rice fields with villages, Cipularang, Bawen–Salatiga, Bocimi,
+// Cisumdawu and Pandaan–Malang run through hills and forest. Volcanoes stand on the horizon where they really are.
+// ================================================================
+const CITIES = [[-6.917, 107.61, 11], [-6.99, 110.42, 10], [-7.26, 112.75, 13], [-7.80, 110.37, 9], [-7.57, 110.82, 8], [-7.98, 112.63, 8], [-6.72, 108.55, 6], [-6.12, 106.15, 6], [-7.33, 108.22, 5], [-7.42, 109.24, 5], [-6.87, 109.13, 5], [-6.89, 109.67, 4]];
+const HILLS = new Set(['cipularang', 'semsol', 'bocimi', 'gempan', 'cisumdawu', 'soroja', 'puncak', 'magelang', 'wonosobo', 'batu', 'pelratu', 'garut', 'lembang']);
+const kmTo = (la1, lo1, la2, lo2) => Math.hypot((la1 - la2)*111, (lo1 - lo2)*110.4);
+function regionAt(u){
+  if (!EV.length) return 'paddy';
+  const p = latLonAt(u), c = corrAt(u);
+  if (HILLS.has(c)) return 'hills';
+  if (p.lon > 106.45 && p.lon < 107.12 && p.lat > -6.72 && p.lat < -6.05) return 'urban';            // Jabodetabek
+  if ((p.lon > 107.05 && p.lon < 107.42 && p.lat > -6.42 && p.lat < -6.22) || (p.lon < 106.12 && p.lat > -6.1)) return 'industrial';   // Cikarang–Karawang, Cilegon
+  for (const [la, lo, r] of CITIES) if (kmTo(p.lat, p.lon, la, lo) < r) return 'urban';
+  return 'paddy';
+}
+const bldMat = new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 0.85}), bldRoof = new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 0.8});
+const WALLS = [0xe8d9b5, 0xd9c3a0, 0xf0e6d2, 0xc9d6c3, 0xe3c8c0, 0xd2d8e0, 0xf2efe8, 0xe6b98a, 0xbfc7cc, 0xdedad0].map(c => new THREE.Color(c));
+const ROOFS = [0x8a4b35, 0x6b3b2a, 0x9a5a3a, 0x7c7f83, 0x4f6f8a, 0xa3402f].map(c => new THREE.Color(c));
+const hillGeo = (() => { const g = new THREE.IcosahedronGeometry(1, 1); g.scale(1, 0.38, 1); g.translate(0, -0.05, 0); g.userData.keep = true; return g; })();
+const hillMat = M(0x5f7d45, {flatShading: true});
+// buildings / fields / hills on both sides of a chunk; toll = keep clear of ramps, the parallel road and plazas
+function roadside(g, u0, u1, Z, R, toll){
+  const reg = regionAt(u0 + CH/2), boxes = [], roofs = [], fields = [];
+  const free = (o, u, w) => { if (!toll) return o > 9 && !KSITES.some(t => Math.abs(t.u - u) < TOWN_R + 60);
+    if (Math.abs(o - PRC) < 16 + w/2) return false;
+    // keep only the real footprint of each interchange clear: trumpet + stem, cloverleaf loops, rest area
+    for (const st of RSITES) { const du = Math.abs(st.u - u) - w/2; if (du > 460) continue;
+      if (st.kind === 'x' && du < 200 && o - w/2 < 350) return false;
+      if (st.kind === 'j' && du < 220 && o - w/2 < 700) return false;
+      if (st.kind === 'r' && du < 280 && o - w/2 < 70) return false; }
+    if (OVS.some(ov => Math.abs(ov.u - u) < 30 + w/2)) return false; if (PLAZAS.some(p => Math.abs(p.u - u) < 90) && o < 60) return false;
+    const k = Math.round(u/SPAN); for (const kk of [k - 1, k, k + 1]) { const t = sutetTower(kk); if (t && Math.abs(t.u - u) < 14 + w/2 && Math.abs(Math.abs(t.x) - (eAt(u) + o)) < 14 + w/2) return false; }
+    return true; };
+  const house = (s, u, o, w, d, h, roof = true, wc, rc) => { const x = s*(eAt(u) + o);
+    boxes.push([x, h/2, Z(u), d, h, w, wc ?? WALLS[Math.floor(R()*WALLS.length)]]);
+    if (roof) roofs.push([x, h + 1.0*Math.min(w, d)/6, Z(u), d*0.78, Math.min(w, d)/3, w*0.78, rc ?? ROOFS[Math.floor(R()*ROOFS.length)]]); };
+  for (const s of toll ? [-1, 1] : [-1, 1]) {
+    if (reg === 'urban') {
+      // dense kampung / housing estates close to the road, ruko and apartment towers further out
+      for (let u = u0 + R()*6; u < u1; u += 8 + R()*5) for (const o0 of toll ? [18, 30, 44, 58] : [26, 38]) {
+        const o = o0 + R()*4, w = 6 + R()*3, d = 7 + R()*3, h = 3 + R()*(R() < 0.25 ? 6 : 2.5);
+        if (R() < 0.12 || !free(o, u, w)) continue; house(s, u, o, w, d, h); }
+      if (R() < 0.55) { const u = u0 + R()*CH, o = 90 + R()*200, w = 22 + R()*14, h = 30 + R()*70; if (free(o, u, w)) house(s, u, o, w, w*0.8, h, false, WALLS[Math.floor(R()*4) + 6]); }
+    } else if (reg === 'industrial') {
+      for (let u = u0 + R()*20; u < u1; u += 50 + R()*30) { const o = 30 + R()*150, w = 40 + R()*30, d = 30 + R()*40, h = 9 + R()*6;
+        if (free(o + d/2, u, w)) house(s, u, o + d/2, w, d, h, false, new THREE.Color(R() < 0.5 ? 0xd7dadc : 0xb9c3cc)); }
+      for (let u = u0 + R()*10; u < u1; u += 14 + R()*10) { const o = 18 + R()*6; if (free(o, u, 7)) house(s, u, o, 7, 8, 3.2); }
+    } else if (reg === 'paddy') {
+      // rice fields (sawah) right up to the fence, a village every few hundred metres
+      for (let k = 0; k < 3; k++) { const o = 16 + k*70 + R()*20, w = 50 + R()*40; for (const h of [0, 1]) if (free(o + w/2, u0 + 30 + h*60, 60)) fields.push([s, o + w/2, w, h]); }
+      if (R() < 0.3) { const uc = u0 + R()*CH, oc = 60 + R()*160; for (let j = 0; j < 7; j++) { const u = uc + (R() - 0.5)*50, o = oc + (R() - 0.5)*40; if (free(o, u, 8)) house(s, u, o, 6 + R()*2, 7, 3 + R()); } }
+    } else {
+      // hills: rolling green slopes beside the road
+      for (let k = 0; k < 2; k++) { const u = u0 + R()*CH, o = 70 + R()*230, r = 50 + R()*90; if (free(o, u, r)) { const m = new THREE.Mesh(hillGeo, hillMat); m.position.set(s*(eAt(u) + o + r*0.4), 0, Z(u)); m.scale.set(r, r*(0.6 + R()*0.6), r*1.4); m.receiveShadow = true; g.add(m); } }
+    }
+  }
+  for (const [s, o, w, h] of fields) g.add(flat(w, CH/2, PADDY[Math.floor(R()*3)], s*(eAt(u0 + CH/2) + o), 0.003, -(30 + h*60)));
+  if (boxes.length) { const m = new THREE.InstancedMesh(unitBox, bldMat, boxes.length);
+    boxes.forEach(([x, y, z, sx, sy, sz, c], j) => { tm.compose(new THREE.Vector3(x, y, z), new THREE.Quaternion(), new THREE.Vector3(sx, sy, sz)); m.setMatrixAt(j, tm); m.setColorAt(j, c); });
+    m.castShadow = m.receiveShadow = true; g.add(m); }
+  if (roofs.length) { const m = new THREE.InstancedMesh(roofGeo, bldRoof, roofs.length);
+    roofs.forEach(([x, y, z, sx, sy, sz, c], j) => { tm.compose(new THREE.Vector3(x, y, z), new THREE.Quaternion(), new THREE.Vector3(sx/4.6, sy/2.4, sz/4.6)); m.setMatrixAt(j, tm); m.setColorAt(j, c); });
+    m.castShadow = true; g.add(m); }
+}
+
+// volcanoes on the horizon at their real bearing; height scaled to the real angle they fill
+const VOLCANO = [['Karang', -6.27, 106.04, 1778], ['Halimun', -6.73, 106.47, 1929], ['Salak', -6.715, 106.73, 2211], ['Gede-Pangrango', -6.78, 106.98, 3019],
+  ['Burangrang', -6.75, 107.53, 2050], ['Tangkuban Perahu', -6.77, 107.6, 2084], ['Patuha', -7.16, 107.40, 2434], ['Malabar', -7.13, 107.65, 2343], ['Papandayan', -7.32, 107.73, 2665],
+  ['Cikuray', -7.32, 107.86, 2821], ['Galunggung', -7.25, 108.06, 2168], ['Ciremai', -6.89, 108.40, 3078], ['Slamet', -7.24, 109.21, 3428], ['Sindoro', -7.30, 109.99, 3136],
+  ['Sumbing', -7.38, 110.07, 3371], ['Ungaran', -7.18, 110.35, 2050], ['Merbabu', -7.45, 110.44, 3145], ['Merapi', -7.54, 110.45, 2930], ['Muria', -6.62, 110.88, 1602],
+  ['Lawu', -7.63, 111.19, 3265], ['Wilis', -7.81, 111.76, 2563], ['Kelud', -7.93, 112.31, 1731], ['Penanggungan', -7.61, 112.62, 1653], ['Welirang', -7.73, 112.57, 3156],
+  ['Arjuno', -7.76, 112.59, 3339], ['Semeru', -8.11, 112.92, 3676], ['Bromo', -7.94, 112.95, 2329], ['Argopuro', -7.97, 113.57, 3088], ['Raung', -8.12, 114.04, 3332], ['Ijen', -8.06, 114.24, 2799]];
+const volGeo = (() => { const pts = [[1, 0], [0.62, 0.12], [0.38, 0.33], [0.22, 0.6], [0.12, 0.88], [0.07, 1]].map(([r, y]) => new THREE.Vector2(r, y)); const g = new THREE.LatheGeometry(pts, 32); g.userData.keep = true; return g; })();
+const volcanoes = VOLCANO.map(([name, lat, lon, h]) => { const m = new THREE.Mesh(volGeo, new THREE.MeshBasicMaterial({color: 0x6f8696, fog: false})); m.visible = false; m.renderOrder = -1; scene.add(m); return {name, lat, lon, h, m}; });
+let volT = 0;
+function updateVolcanoes(dt){
+  volT -= dt; if (volT > 0 && dt) return; volT = 0.25;
+  if (!PLR || !EV.length) return;
+  const u = uOfV(PLR), p = latLonAt(u), i = Math.max(0, Math.min(EV.length - 2, evAt(u))), a = EV[i], b = EV[i + 1];
+  const head = Math.atan2((b.lon - a.lon)*Math.cos(p.lat*Math.PI/180), b.lat - a.lat), D = 1450, sky = scene.background;
+  for (const v of volcanoes) {
+    const dy = (v.lat - p.lat)*111, dx = (v.lon - p.lon)*110.4, d = Math.hypot(dx, dy);
+    if (d > 95 || d < 4) { v.m.visible = false; continue; }
+    const rel = Math.atan2(dx, dy) - head, H = Math.min(200, D*(v.h - 250)/(d*1000));
+    v.m.visible = true; v.m.position.set(camera.position.x + D*Math.sin(rel), -2, camera.position.z - D*Math.cos(rel));
+    v.m.scale.set(H*3.1, H, H*3.1);
+    v.m.material.color.setHex(0x55707e).lerp(sky, clamp(0.25 + d/120, 0, 0.85));
+  }
 }
 
 // ================================================================
@@ -1287,7 +1389,7 @@ function toRamp(v, site, kind){
   else if (kind === 'j') { let side = Math.random() < 0.5 ? 'outA' : 'outC';
     if (v.player) { v.rampEdge = rampEdge(site); side = v.rampEdge && v.rampEdge.turn === 'Kanan' ? 'outC' : 'outA'; v.jSwap = !!v.rampEdge && seamlessTurn(site, v.rampEdge.e); }
     raw = ssPath(side, e); end = 'kill'; }
-  else { raw = trOut(); end = 'pr'; }
+  else { raw = trOut(); end = 'pr'; if (v.player) v.xSwap = seamlessExit(site); }
   v.rp = {P: mkPath([...head, ...raw]), d: 0, i: 0, pc: v.sd*site.u, sd: v.sd, e, shift: SC, end, park, kind, site, mergeAt};
   v.exitWant = false; v.q = pathAt(v.rp.P, 0, 0);
   rm(vehicles, v); rampers.push(v);
@@ -1346,6 +1448,11 @@ function rampStep(dt){
         v.rp = {P: cachedPath(jk + rp.e, () => ssPath(jk, rp.e)), d: 0, i: 0, pc: rp.pc, sd: rp.sd, e: rp.e, shift: SC, end: 'merge', kind: 'j', site: rp.site, mergeAt: jk === 'inC' ? 340 : 300};
         v.q = pathAt(v.rp.P, 0, 0); v.p = v.rp.pc + v.q.u - v.rp.shift; v.jSwap = false; rampers.push(v); blink();
         toast(`${CORR[EV[rp.site.i].cNext].name} · arah ${v.rampEdge ? v.rampEdge.toward : ''}`); continue; }
+      if (v.player && v.xSwap && rp.kind === 'x') { v.xSwap = false; if (rp.site.i === trip.destIdx) { stats.done = true; arrive(rp.site, null); }
+        // the stem road joins the road to town: carry on there at the same speed
+        const sd = rp.sd, p = rp.pc + 380, n = nAvail(sd, p); Object.assign(v, {sd, p, lane: n - 1, lx: n - 1, rp: null, siteId: null, yaw: 0, hd: 0, steer: 0}); v.x = posX(-sd, v.lx);
+        for (const o of [...vehicles]) if (o.sd === sd && Math.abs(o.p - p) < 45) { rm(vehicles, o); killVehicle(o); }
+        vehicles.push(v); camU = uOfV(v); blink(); hudLane(); toast(`${CORR[EV[rp.site.i].cNext].name}`); continue; }
       if (v.player) { finishExit(rp.site); continue; }
       if (rp.end === 'pr') { const pr = {kind:'pr', side: rp.sd, dir: Math.random() < 0.5 ? 1 : -1, lane: 0, u: rp.sd*v.p, vel: rnd(12, 15), g: v.g, wh: v.wh, r: v.r, len: v.len, type: v.type}; v.g.rotation.y = 0; locals.push(pr); }
       else killVehicle(v); } }
@@ -1434,7 +1541,7 @@ function sim(dt){
   }
   for (const v of vehicles){
     const man = v.player && !cfg.auto;
-    if (man) { v.vel = Math.min((VEH[v.type] || VEH.car).vmax, Math.max(-5, v.vel + v.acc*dt)); v.p += v.vel*Math.cos(v.hd || 0)*dt; }
+    if (man) { v.vel = Math.min((VEH[v.type] || VEH.car).vmax, Math.max(-5, v.vel + (v.acc || 0)*dt)); v.p += v.vel*Math.cos(v.hd || 0)*dt; }
     else {
       v.vel = Math.max(0, v.vel + v.acc*dt);
       let step = v.vel*dt;
@@ -1449,7 +1556,8 @@ function sim(dt){
     }
     const x = posX(-v.sd, v.lx), lat = (x - v.x)/dt, y0 = v.yaw; v.x = x;
     v.yaw += (Math.atan2(lat*Math.sign(v.vel || 1), Math.max(Math.abs(v.vel), 1)) - v.yaw) * Math.min(1, dt*6);
-    bodyMotion(v, (v.yaw - y0)/dt, dt);
+    if (v.player && man) v.yaw = -(v.hd || 0);
+    bodyMotion(v, wrapA(v.yaw - y0)/dt, dt);
     for (const w of v.wh) w.rotation.x += v.vel*dt / v.r;
   }
   if (PLR && !cfg.auto && vehicles.includes(PLR)) playerCollide(PLR);
@@ -1550,7 +1658,7 @@ function lxBounds(v){
   let hi = toll ? (e + 1.7 - c)/LW : (e + (inTown ? 4.4 : 7.5) - c)/LW, lo = -nn - 0.35;
   const sa = siteAhead(v.sd, v.p);
   if (toll && sa && sa.t > -280 && sa.t < -100) hi += 1.6;          // gap in the guard rail at the exit
-  if (toll) { const atOpen = OPENS.some(o => o.cf && cfg.cf && Math.abs(o.u - u) < OPEN_HW - 4);
+  if (toll) { const atOpen = OPENS.some(o => Math.abs(o.u - u) < OPEN_HW - 4);
     if (!atOpen) { if (v.lx < -0.5) hi = Math.min(hi, -0.71); else lo = -0.29; } }
   return [lo, hi];
 }
@@ -1565,15 +1673,16 @@ function steerPlayer(v, dt){
   const tgt = st*maxS, rate = (st ? 1.6 : 3)*Math.max(maxS, 0.05); v.steer += clamp(tgt - v.steer, -rate*dt, rate*dt);   // ~0.6 s to full lock
   const grip = (heavy(v) ? 4.5 : 7.5)/Math.max(spd, 1); let yr = clamp(v.vel/wheelbase(v)*Math.tan(v.steer), -grip, grip);
   if (spd > 3 && Math.abs(v.vel/wheelbase(v)*Math.tan(v.steer)) > grip*1.15 && clock - (v.skidT || 0) > 3) { v.skidT = clock; toast('Ban selip! Kurangi setir', 'warn'); }
-  v.hd += yr*dt;
-  if (!st && cfg.assist !== false) v.hd -= v.hd*Math.min(1, dt*1.1);   // the driver straightens up after the manoeuvre (Asisten setir)
-  v.hd = clamp(v.hd, -0.45, 0.45);
+  v.hd = wrapA(v.hd + yr*dt);
+  if (!st && cfg.steerAssist && Math.abs(v.hd) < 0.6) v.hd -= v.hd*Math.min(1, dt*1.1);   // the driver straightens up after a lane change (Asisten setir); a U-turn is left alone
   v.vel -= Math.sign(v.vel)*Math.abs(v.steer)*spd*0.05*dt;                 // tyre scrub in turns
   let lx = v.lx + v.vel*Math.sin(v.hd)/LW*dt;
   const [lo, hi] = lxBounds(v), side = Math.abs(v.vel*Math.sin(v.hd)), fast = Math.abs(v.vel) > 6 && side > 1.2;
   if (lx > hi) { lx = hi; if (v.hd*Math.sign(v.vel) > 0) { if (fast) { crash(isToll(uOfV(v)) ? 'Menyerempet pagar pengaman' : townNear(uOfV(v)) ? 'Menabrak bangunan di tepi jalan' : 'Masuk parit di tepi jalan'); v.vel *= 0.8; } v.hd *= 0.2; v.steer *= 0.5; } }
   if (lx < lo) { lx = lo; if (v.hd*Math.sign(v.vel) < 0) { if (fast) { crash(isToll(uOfV(v)) ? 'Menyerempet median beton' : 'Keluar badan jalan'); v.vel *= 0.8; } v.hd *= 0.2; v.steer *= 0.5; } }
   v.lx = lx; v.lane = Math.round(lx);
+  if (Math.abs(v.hd) > 2.3 && lx < -0.7 && Math.abs(v.vel) > 0.3 && clock - (v.uT || 0) > 2) { v.uT = clock; v.wantU = true; }   // done at the start of the next tick
+  if (Math.abs(v.hd) > 1) return;      // turning around: no ramps or turns
   // leaving the road on the left: exit ramp, rest area, detour or turn at an intersection
   const n = nAvail(v.sd, v.p), front = v.p + v.len/2;
   if (lx > n - 1 + 0.65 && v.vel > 0) {
@@ -1585,7 +1694,7 @@ function steerPlayer(v, dt){
     if (ks && lx > n - 1 + 1.1) { const le = leftEdge(ks);
       if (!le) { v.lx = n - 1 + 0.6; toast('Tidak ada jalan ke kiri di simpang ini', 'warn'); return; }
       if (sigMain(ks) === 'R') violation('menerobos lampu merah');
-      if (ks.i === trip.destIdx) { stats.done = true; v.vel = 0; arrive(ks, le); } else continueFrom(ks, le); }
+      if (ks.i === trip.destIdx) { stats.done = true; v.vel = 0; arrive(ks, le); } else if (!seamlessLeft(v, ks, le)) continueFrom(ks, le); }
   }
 }
 const HW = {moto:0.4, car:0.92, suv:0.98, van:1.0, police:0.92, truck:1.25, bus:1.25};
@@ -1645,7 +1754,8 @@ function playerRules(dt){
   const front = v.p + v.len/2;
   if (!cfg.auto) {
     const z = cfAt(v.sd, v.p), legitCf = z && z.A === v.sd && v.lane < 0 && -v.lane <= z.k;
-    if (v.lx < -0.5 && !legitCf) violation('melawan arus');
+    if (v.lx < -0.5 && !legitCf && Math.abs(v.hd || 0) < Math.PI/2) violation('melawan arus');
+    if (v.lx > -0.5 && Math.abs(v.hd || 0) > 2 && Math.abs(v.vel) > 3) violation('melawan arus');
     if (v.lx > n - 1 + 1.3) { offT += dt; if (offT > 1) { violation('keluar badan jalan'); offT = 0; } } else offT = 0;
     if (v.lx > n - 1 + 0.5 && v.lx <= n - 1 + 1.3 && !siteAhead(v.sd, v.p)) { shoulderT += dt; if (shoulderT > 2) { violation('berkendara di bahu jalan'); shoulderT = 0; } } else shoulderT = 0;
     if (isToll(uOfV(v)) && v.lx < -0.4 && v.lx > -0.8 && !(z && z.A === v.sd)) violation('melintasi putaran balik khusus petugas');
@@ -2071,9 +2181,9 @@ function rowsSpec(){
     ['cam', 'Kamera', [['chase','Belakang'],['cockpit','Kokpit'],['drone','Drone'],['ic','Simpang susun'],['orbit','Orbit']]],
     ['den', 'Lalu lintas', [[0.6,'Sepi'],[1,'Normal'],[1.7,'Padat'],[2.6,'Macet']]],
     ['tod', 'Atur jam', [['morning','Pagi 07:00'],['day','Siang 12:00'],['dusk','Sore 17:48'],['night','Malam 21:00']]],
-    ['assist', 'Asisten setir', [[true,'Aktif (mobil lurus lagi saat setir dilepas)'],[false,'Mati (setir penuh, harus balas setir)']]],
+    ['steerAssist', 'Asisten setir', [[false,'Mati (setir penuh, harus balas setir)'],[true,'Aktif (mobil lurus lagi saat setir dilepas)']]],
     ['tspd', 'Jalannya jam', [[0,'Berhenti'],[0.5,'1 jam = 2 menit'],[1,'1 jam = 1 menit'],[6,'1 jam = 10 detik']]],
-    ['lanes', 'Lajur tol', [['auto','Sesuai data'],['2','2'],['3','3'],['4','4'],['5','5']]],
+    ['lanes', 'Jumlah lajur per arah (semua jalan)', [['auto','Sesuai data'],['1','1'],['2','2'],['3','3'],['4','4'],['5','5']]],
     ['close:1', 'Tutup lajur · arah saya', laneOpts, true],
     ['close:-1', 'Tutup lajur · arah lawan', laneOpts, true],
     ['cf', 'Contraflow', [[0,'Mati'],[1,'Untuk arah saya'],[-1,'Untuk arah lawan']]],
@@ -2109,18 +2219,28 @@ function renderUI(){
 function applyTraffic(types){ setupBlocks(true); rebuildObjects(types); }
 // a roadworks / contraflow zone in front of the car, so a changed setting can be seen right away
 function zoneAhead(type){
-  const u0 = uOfV(PLR), r = ZEXT[type] - 450, have = ZONES.find(z => z.type === type && z.u - u0 > 300 && z.u - u0 < 3200);
+  const u0 = uOfV(PLR), r = ZEXT[type] - 450, have = ZONES.find(z => z.type === type && z.u - u0 > 250 + r && z.u - u0 < 1600);
   if (have) return have;
-  const ok = u => (type === 'cf' ? isToll(u) && CORR[corrAt(u)].cls === 't' : nAt(u) >= 2 && nAt(u + 400) >= 2 && nAt(u - 400) >= 2)
-    && !SITES.some(s => Math.abs(s.u - u) < 800 + r) && !ZONES.some(z => Math.abs(z.u - u) < ZEXT[z.type] + ZEXT[type] + 300)
-    && !OVS.some(o => Math.abs(o.u - u) < r + 360) && !OPENS.some(o => Math.abs(o.u - u) < r + 80);
-  for (let u = u0 + 760 + r; u < u0 + 9000; u += 40) if (ok(u)) {
+  const ok = u => nAt(u) >= 2 && nAt(u + 400) >= 2 && nAt(u - 400) >= 2
+    && !SITES.some(s => Math.abs(s.u - u) < r + 150) && !ZONES.some(z => Math.abs(z.u - u) < (ZEXT[z.type] + ZEXT[type])/2 + 150)
+    && !OVS.some(o => Math.abs(o.u - u) < 420) && !OPENS.some(o => !o.cf && Math.abs(o.u - u) < 260);
+  // no free slot: take the first place clear of interchanges/overpasses and move other zones out of the way
+  let at = null; for (let u = u0 + 420 + r; u < u0 + 9000 && at == null; u += 40) if (ok(u)) at = u;
+  if (at == null) for (let u = u0 + 420 + r; u < u0 + 9000 && at == null; u += 40)
+    if (nAt(u) >= 2 && nAt(u + 400) >= 2 && nAt(u - 400) >= 2 && !SITES.some(s => Math.abs(s.u - u) < r + 150) && !OVS.some(o => Math.abs(o.u - u) < 420) && !OPENS.some(o => !o.cf && Math.abs(o.u - u) < 260)) at = u;
+  if (at != null) for (const z of ZONES.filter(z => Math.abs(z.u - at) < (ZEXT[z.type] + ZEXT[type])/2 + 150)) dropZone(z);
+  for (let u = at ?? Infinity; u < u0 + 9000; u += 40) {
     const z = {type, u, user: true}; ZONES.push(z); ZONES.sort((a, b) => a.u - b.u);
     const add = [{u, r, type, z}];
     if (type === 'cf') for (const du of [-200, 200]) { const o = {u: u + du, cf: z}; OPENS.push(o); add.push({u: o.u, r: 60, type: 'ut', o}); }
     OPENS.sort((a, b) => a.u - b.u); OBJ.push(...add); OBJ.sort((a, b) => a.u - b.u);
     return z; }
   return null;
+}
+function dropZone(z){
+  ZONES = ZONES.filter(q => q !== z); OPENS = OPENS.filter(o => o.cf !== z);
+  for (const o of OBJ.filter(o => o.z === z || (o.o && o.o.cf === z))) { const gs = built.get(o); if (gs) { freeObj(gs); built.delete(o); } }
+  OBJ = OBJ.filter(o => o.z !== z && !(o.o && o.o.cf === z));
 }
 function apply(id, v){
   cfg[id] = v; saveCfg();
@@ -2129,11 +2249,11 @@ function apply(id, v){
   if (id === 'cam') { setCam(v); toast(`Kamera: ${label()}`); }
   else if (id === 'tod') { setTod(v); cfg.tod = ''; saveCfg(); toast(`Jam game diatur ke ${hhmm(gameH)}`); }
   else if (id === 'tspd') toast(`Jam game: ${label()}`);
-  else if (id === 'assist') toast(`Asisten setir: ${v ? 'aktif' : 'mati'}`);
+  else if (id === 'steerAssist') toast(`Asisten setir: ${v ? 'aktif' : 'mati'}`);
   else if (id === 'den') { fillTraffic(); rebuildObjects(['site', 'ov']); toast(`Lalu lintas: ${label()}`); }
   else if (id === 'cf' || id === 'cfk') { const msg = cfg.cf ? ahead('cf') : ''; applyTraffic(['cf', 'ut']); fillTraffic(); updateWorld(); toast(`Contraflow: ${cfg.cf ? (cfg.cfk >= 9 ? 'semua lajur' : cfg.cfk + ' lajur') + (cfg.cf > 0 ? ' untuk arah saya' : ' untuk arah lawan') : 'mati'}${msg}`); }
   else if (id === 'ovl') { rebuildObjects(['ov']); toast(`Jalan overpass: ${label()}`); }
-  else if (id === 'lanes' || id === 'scale') { toast(id === 'lanes' ? `Lajur tol: ${label()}` : `Skala jarak: ${label()}`); setTimeout(() => startDrive({from: trip.from, legs: trip.dest ? trip.legs : trip.allLegs, dest: trip.dest, keepPos: true}), 30); }
+  else if (id === 'lanes' || id === 'scale') { toast(id === 'lanes' ? `Jumlah lajur: ${label()}` : `Skala jarak: ${label()}`); setTimeout(() => startDrive({from: trip.from, legs: trip.dest ? trip.legs : trip.allLegs, dest: trip.dest, keepPos: true}), 30); }
   renderUI();
 }
 
@@ -2343,9 +2463,10 @@ function replanIdx(u, needChoice = false){
     if (e.u > u + 80000) break; }
   return needChoice ? -1 : EV.length - 1;
 }
-function replan(i, tail, dest, keepSite = false){
+function replan(i, tail, dest, keepSite = false, fix = null){
   const e = EV[i], legs = trip.allLegs.slice(0, e.legIdx + 1).concat(tail);
   const t = tripFromLegs(trip.from, legs, dest, cfg.mode); if (!t) return false;
+  if (fix) fix(t);
   t.home = trip.home; relayout(t, i, keepSite); return true;
 }
 // the player took a junction ramp: from here on the main road is the road that ramp leads to
@@ -2356,6 +2477,47 @@ function seamlessTurn(s, ed){
   const rest = dest ? (ed.to === dest ? [] : legsFor(ed.to, null, dest, s.key)) : walkFree(ed.to, s.key, ed.c, null, 50, 'mix');
   if (!rest) return false;
   return replan(s.i, [{a: s.key, b: ed.to, c: ed.c}].concat(rest), dest, true);
+}
+// exit ramp taken: the road after this exit becomes the access road to town (the site stays a normal exit)
+function seamlessExit(s){
+  const ed = exitEdge(s); if (!ed) return false;
+  const dest = trip.dest && trip.dest !== s.key ? trip.dest : null;
+  const rest = dest ? (ed.to === dest ? [] : legsFor(ed.to, null, dest, s.key)) : walkFree(ed.to, s.key, ed.c, null, 50, 'mix');
+  if (!rest) return false;
+  return replan(s.i, [{a: s.key, b: ed.to, c: ed.c}].concat(rest), dest, true, t => { t.ev[s.i].kind = s.kind; });
+}
+// left turn at a town intersection: the main road continues as the road to the left
+function seamlessLeft(v, ks, le){
+  const dest = trip.dest && trip.dest !== ks.key ? trip.dest : null;
+  const rest = dest ? (le.to === dest ? [] : legsFor(le.to, null, dest, ks.key)) : walkFree(le.to, ks.key, le.c, null, 50, 'mix');
+  if (!rest || !replan(ks.i, [{a: ks.key, b: le.to, c: le.c}].concat(rest), dest, true)) return false;
+  const n = nAvail(v.sd, v.p); v.p = Math.max(v.p, v.sd*ks.u + SL + 8); v.lane = n - 1; v.lx = n - 1; v.x = posX(-v.sd, v.lx); v.hd = 0; v.steer = 0;
+  for (const o of [...vehicles]) if (o !== v && o.sd === v.sd && Math.abs(o.p - v.p) < 30) { rm(vehicles, o); killVehicle(o); }
+  blink(); hudLane(); toast(`Belok kiri · ${CORR[EV[ks.i].cNext].name}`); return true;
+}
+// a full U-turn: the trip now runs back the other way from the place ahead, and the car keeps its spot, speed and lane
+const wrapA = a => Math.atan2(Math.sin(a), Math.cos(a));
+function uTurn(v){
+  const u0 = uOfV(v), i = evAt(u0); let ia = -1;
+  for (let j = Math.max(i + 1, 1); j < EV.length; j++) if (EV[j].end) { ia = j; break; }
+  if (ia < 0) return false;
+  const A = EV[ia], leg = trip.allLegs[A.legIdx]; if (!leg) return false;
+  const rev = {a: A.key, b: leg.a, c: leg.c}, dest = trip.dest && trip.dest !== A.key ? trip.dest : null;
+  const rest = dest ? (rev.b === dest ? [] : legsFor(rev.b, null, dest, A.key)) : walkFree(rev.b, A.key, rev.c, null, 50, 'mix');
+  if (!rest) return false;
+  const dRk = A.rk - rkAt(u0), owed = isToll(u0) ? Math.max(0, rkAt(u0) - stats.lastPay) : 0;
+  const vel = v.vel, lane = Math.max(0, Math.round(-v.lx - 1)), hd = wrapA(v.hd - Math.PI*Math.sign(v.hd));
+  stats.km0 = (stats.km0 || 0) + rkAt(u0) - dRk;
+  blink();
+  if (!startDrive({from: A.key, legs: [rev, ...rest], dest, cont: true})) return false;
+  const P = PLR; let u = 0;
+  for (let j = 1; j < EV.length; j++) if (EV[j].rk >= dRk) { const a = EV[j-1], b = EV[j]; u = a.u + (b.u - a.u)*(dRk - a.rk)/((b.rk - a.rk) || 1); break; }
+  P.p = Math.max(5, u); camU = P.p; const n = nAvail(1, P.p);
+  Object.assign(P, {lane: Math.min(lane, n - 1), vel: Math.max(0, vel), acc: 0, hd, steer: 0, yaw: -hd}); P.lx = P.lane; P.x = posX(-1, P.lx);
+  for (const o of [...vehicles]) if (o !== P && o.sd === 1 && Math.abs(o.p - P.p) < 45) { rm(vehicles, o); killVehicle(o); }
+  stats.lastPay = dRk - owed;
+  setupBlocks(true); updateWorld(); fillTraffic(); hudLane(); toast('Putar balik');
+  return true;
 }
 function blink(){ const f = $('fade'); if (!f) return; f.classList.add('on'); setTimeout(() => f.classList.remove('on'), 260); }
 function ensureAhead(){
@@ -2429,11 +2591,12 @@ try { await Promise.race([document.fonts.load('700 64px Archivo'), new Promise(r
 setTod(null);
 if (cfg.trip === 'free') startDrive({from: NODES.has(cfg.from) ? cfg.from : DEF.from}); else startTrip(NODES.has(cfg.from) ? cfg.from : DEF.from, NODES.has(cfg.to) ? cfg.to : DEF.to);
 if (!localStorage.getItem('tj_seen')) { try { localStorage.setItem('tj_seen', '1'); } catch(e) {} openPlanner(); }
-window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam, startDrive, setNav, clearNav, chooseAt, replanIdx, openAtlas, closeAtlas, atTap, AT, get chunks(){ return chunks; }, get OBJ(){ return OBJ; }, sutetTower, setHour: h => { gameH = h; todT = 0; lastSign = -1; tickClock(0); }, get gameH(){ return gameH; }};
+window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam, startDrive, setNav, clearNav, chooseAt, replanIdx, openAtlas, closeAtlas, atTap, AT, get chunks(){ return chunks; }, get OBJ(){ return OBJ; }, sutetTower, setHour: h => { gameH = h; todT = 0; lastSign = -1; tickClock(0); }, get gameH(){ return gameH; }, volcanoes, updateVolcanoes, regionAt, latLonAt};
 
 let last = performance.now(), mapT = 0, frames = 0;
 function tick(dt){
   clock += dt;
+  if (PLR && PLR.wantU) { PLR.wantU = false; uTurn(PLR); }
   sim(dt); rampStep(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt); tickClock(dt);
   if (PLR) camU = uOfV(PLR);
   ensureAhead();
@@ -2446,7 +2609,7 @@ renderer.setAnimationLoop(now => {
   const dt = Math.min(0.05, (now - last)/1000); last = now; frames++;
   if ((!$('plan').hidden && trip && !stats.done) || !$('atlas').hidden) { composer.render(); return; }
   tick(dt);
-  placeGroups(); place(); updateCam(dt); flash(); updateBend(); updateHud(dt);
+  placeGroups(); place(); updateCam(dt); updateVolcanoes(dt); flash(); updateBend(); updateHud(dt);
   mapT -= dt; if (mapT <= 0) { mapT = 0.5; drawMap(); }
   composer.render();
 });
