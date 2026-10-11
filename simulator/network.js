@@ -13,7 +13,7 @@ const N = (id, name, short, lanes, limit, nodes) => ({id, name, short, lanes, li
 export const CORRIDORS = [
   C('tm', 'Tol Jakarta–Tangerang–Merak', 'Tangerang–Merak', 3, 100, [
     ['JCT Tomang', 0, 'j', -6.178, 106.795], ['JCT Kebon Jeruk', 6, 'j', -6.193, 106.763], ['Meruya', 8, 'x', -6.196, 106.738],
-    ['GT Karang Tengah', 11, 'g', -6.205, 106.712], ['Tangerang', 18, 'x', -6.190, 106.640], ['Karawaci', 21, 'x', -6.212, 106.607],
+    ['GT Karang Tengah', 11, 'g', -6.205, 106.712], ['JCT Kunciran', 15, 'j', -6.205, 106.675], ['Tangerang', 18, 'x', -6.190, 106.640], ['Karawaci', 21, 'x', -6.212, 106.607],
     ['Bitung', 25, 'x', -6.222, 106.560], ['Cikupa', 31, 'x', -6.222, 106.510], ['GT Cikupa', 32, 'g', -6.220, 106.500],
     ['Balaraja Timur', 39, 'x', -6.208, 106.462], ['Balaraja Barat', 43, 'x', -6.195, 106.420], ['Rest Area KM 45', 45, 'r'],
     ['Cikande', 49, 'x', -6.172, 106.350], ['Ciujung', 57, 'x', -6.150, 106.290], ['Rest Area KM 66', 66, 'r'],
@@ -36,7 +36,7 @@ export const CORRIDORS = [
   C('jorr', 'Tol Lingkar Luar Jakarta (JORR)', 'JORR', 4, 80, [
     ['Penjaringan', 0, 't', -6.115, 106.765], ['Kembangan', 7, 'x', -6.180, 106.742], ['JCT Kebon Jeruk', 9, 'j'],
     ['Joglo', 12, 'x', -6.215, 106.745], ['Ciledug', 14, 'x', -6.235, 106.755], ['Veteran', 16, 'x', -6.252, 106.765],
-    ['JCT Ulujami', 18, 'j', -6.262, 106.772], ['Pondok Pinang', 21, 'x', -6.280, 106.782], ['Fatmawati', 24, 'x', -6.290, 106.797],
+    ['JCT Ulujami', 18, 'j', -6.262, 106.772], ['Pondok Pinang', 21, 'x', -6.280, 106.782], ['Fatmawati', 24, 'x', -6.290, 106.797], ['JCT Antasari', 25, 'j', -6.292, 106.807],
     ['Ampera', 26, 'x', -6.292, 106.815], ['Pasar Minggu', 28, 'x', -6.296, 106.840], ['JCT Taman Mini', 33, 'j', -6.300, 106.880],
     ['Jatiwarna', 38, 'x', -6.310, 106.920], ['JCT Cikunir', 43, 'j'], ['Kalimalang', 45, 'x', -6.245, 106.955],
     ['Cakung', 51, 'x', -6.190, 106.955], ['Rorotan', 56, 'x', -6.145, 106.950], ['JCT Cilincing', 60, 'j', -6.120, 106.950]]),
@@ -45,13 +45,13 @@ export const CORRIDORS = [
     ['Tarumajaya', 25, 'x', -6.130, 107.010], ['JCT Cilincing', 34, 'j']]),
   C('jag', 'Tol Jagorawi', 'Jagorawi', 4, 100, [
     ['JCT Cawang', 0, 'j'], ['JCT Taman Mini', 5, 'j'], ['GT Cibubur', 9, 'g', -6.355, 106.885], ['Cibubur', 11, 'x', -6.370, 106.890],
-    ['Cimanggis', 15, 'x', -6.400, 106.885], ['Gunung Putri', 21, 'x', -6.450, 106.880], ['Citeureup', 26, 'x', -6.490, 106.870],
+    ['JCT Cimanggis', 14, 'j', -6.392, 106.886], ['Cimanggis', 15, 'x', -6.400, 106.885], ['Gunung Putri', 21, 'x', -6.450, 106.880], ['Citeureup', 26, 'x', -6.490, 106.870],
     ['Sentul', 29, 'x', -6.530, 106.860], ['Rest Area KM 30', 30, 'r'], ['Sentul Selatan', 35, 'x', -6.565, 106.858],
     ['Bogor', 43, 'x', -6.600, 106.820], ['JCT Ciawi', 47, 'j', -6.660, 106.845]]),
   C('bocimi', 'Tol Bogor–Ciawi–Sukabumi', 'Bocimi', 2, 80, [
     ['JCT Ciawi', 0, 'j'], ['Cigombong', 15, 'x', -6.750, 106.800], ['Cibadak', 26, 't', -6.890, 106.780]]),
   C('serpong', 'Tol Ulujami–Serpong', 'Ulujami–Serpong', 3, 80, [
-    ['JCT Ulujami', 0, 'j'], ['Bintaro', 3, 'x', -6.272, 106.740], ['Pondok Aren', 6, 'x', -6.272, 106.710], ['Serpong', 11, 't', -6.300, 106.670]]),
+    ['JCT Ulujami', 0, 'j'], ['Bintaro', 3, 'x', -6.272, 106.740], ['Pondok Aren', 6, 'x', -6.272, 106.710], ['Serpong', 11, 'j', -6.300, 106.670]]),
   C('cipularang', 'Tol Cipularang', 'Cipularang', 2, 100, [
     ['JCT Dawuan', 66, 'j'], ['GT Kalihurip Utama', 67, 'g', -6.400, 107.440], ['Sadang', 76, 'x', -6.500, 107.440],
     ['Jatiluhur', 84, 'x', -6.560, 107.400], ['Rest Area KM 88', 88, 'r'], ['Rest Area KM 97', 97, 'r'], ['JCT Padalarang', 121, 'j', -6.845, 107.480]]),
@@ -128,6 +128,32 @@ export const CORRIDORS = [
     ['Besuki', 870, 'x'], ['Situbondo', 900, 'x', -7.700, 114.000], ['Asembagus', 925, 'x', -7.750, 114.220],
     ['Ketapang', 960, 't', -8.140, 114.400]], true),
 
+  C('kunser', 'Tol Kunciran–Serpong', 'Kunciran–Serpong', 3, 80, [
+    ['JCT Kunciran', 0, 'j'], ['Parigi', 5, 'x', -6.255, 106.690], ['Pondok Kacang', 8, 'x', -6.275, 106.685], ['Serpong', 11, 'j']]),
+  C('serbal', 'Tol Serpong–Balaraja', 'Serpong–Balaraja', 2, 80, [
+    ['Serpong', 0, 'j'], ['CBD BSD', 3, 'x', -6.302, 106.645], ['Legok', 8, 't', -6.300, 106.600]]),
+  C('kunban', 'Tol Kunciran–Bandara (JORR 2)', 'Kunciran–Bandara', 3, 80, [
+    ['JCT Kunciran', 0, 'j'], ['Batuceper', 6, 'x', -6.165, 106.670], ['Bandara Soekarno-Hatta', 11, 't']]),
+  C('desari', 'Tol Depok–Antasari (Desari)', 'Desari', 2, 80, [
+    ['JCT Antasari', 0, 'j'], ['Cilandak', 3, 'x', -6.310, 106.805], ['Brigif', 7, 'x', -6.340, 106.808], ['JCT Krukut', 12, 'j', -6.362, 106.785], ['Sawangan', 21, 't', -6.400, 106.760]]),
+  C('cijago', 'Tol Cinere–Jagorawi (Cijago)', 'Cijago', 2, 80, [
+    ['JCT Cimanggis', 0, 'j'], ['Jalan Raya Bogor', 3, 'x', -6.390, 106.862], ['Margonda', 7, 'x', -6.380, 106.832], ['Kukusan', 10, 'x', -6.370, 106.810],
+    ['JCT Krukut', 12, 'j'], ['Cinere', 15, 't', -6.345, 106.775]]),
+  C('cimcib', 'Tol Cimanggis–Cibitung', 'Cimanggis–Cibitung', 2, 80, [
+    ['JCT Cimanggis', 0, 'j'], ['Cikeas', 8, 'x', -6.400, 106.935], ['Narogong', 16, 'x', -6.380, 107.000], ['Setu', 21, 'x', -6.340, 107.040], ['JCT Cibitung', 26, 'j']]),
+  C('becakayu', 'Tol Bekasi–Cawang–Kampung Melayu (Becakayu)', 'Becakayu', 2, 60, [
+    ['Kampung Melayu', 0, 't', -6.225, 106.860], ['Cipinang', 4, 'x', -6.240, 106.890], ['Jakasampurna', 9, 'x', -6.250, 106.965], ['Bekasi Kota', 13, 't', -6.238, 107.000]]),
+  C('mbz', 'Tol Layang Mohammed bin Zayed (Japek II)', 'Layang MBZ', 2, 80, [
+    ['JCT Cikunir', 10, 'j'], ['Karawang Barat', 46, 'x']]),
+  C('borr', 'Tol Lingkar Luar Bogor (BORR)', 'BORR', 2, 80, [
+    ['Sentul Selatan', 0, 'x'], ['Kedung Halang', 4, 'x', -6.560, 106.810], ['Kayu Manis', 8, 'x', -6.550, 106.780], ['Simpang Yasmin', 11, 't', -6.560, 106.760]]),
+  C('serpan', 'Tol Serang–Panimbang', 'Serang–Panimbang', 2, 100, [
+    ['Serang Timur', 0, 'x'], ['Walantaka', 6, 'x', -6.150, 106.220], ['Rangkasbitung', 26, 't', -6.360, 106.240]]),
+  C('surges', 'Tol Surabaya–Gresik', 'Surabaya–Gresik', 2, 80, [
+    ['Dupak', 0, 't'], ['Tandes', 4, 'x', -7.250, 112.680], ['Romokalisari', 10, 'x', -7.200, 112.660], ['Manyar', 18, 'j', -7.120, 112.600]]),
+  C('klbm', 'Tol Krian–Legundi–Bunder–Manyar', 'KLBM', 2, 100, [
+    ['Krian', 0, 'x'], ['Legundi', 12, 'x', -7.340, 112.550], ['Bunder', 22, 'x', -7.200, 112.580], ['Manyar', 38, 'j']]),
+
   // ---------------- Jalan Nasional (arteri) ----------------
   N('pantura1', 'Jalan Nasional Pantura (Merak–Jakarta)', 'Pantura Merak–Jakarta', 2, 80, [
     ['Merak', 0, -5.935, 106.005], ['Cilegon', 12, -6.010, 106.050], ['Serang', 26, -6.115, 106.150], ['Kragilan', 38, -6.150, 106.300],
@@ -177,6 +203,34 @@ export const CORRIDORS = [
     ['Gempol', 0], ['Pandaan', 12, -7.650, 112.690], ['Lawang', 32, -7.830, 112.700], ['Singosari', 40, -7.890, 112.670], ['Malang', 50, -7.980, 112.630]]),
   N('kediri', 'Jalan Nasional Malang–Blitar–Kediri–Kertosono', 'Malang–Kediri', 1, 60, [
     ['Malang', 0], ['Kepanjen', 20, -8.130, 112.570], ['Blitar', 75, -8.100, 112.170], ['Kediri', 115, -7.820, 112.010], ['Kertosono', 150]]),
+  N('garut', 'Jalan Nasional Nagreg–Garut–Tasikmalaya', 'Nagreg–Garut', 1, 60, [
+    ['Nagreg', 0], ['Garut', 25, -7.220, 107.900], ['Tasikmalaya', 80]]),
+  N('kuningan', 'Jalan Nasional Cirebon–Kuningan–Ciamis', 'Cirebon–Kuningan', 1, 60, [
+    ['Cirebon', 0], ['Kuningan', 35, -6.976, 108.484], ['Kawali', 70, -7.190, 108.370], ['Ciamis', 85]]),
+  N('lembang', 'Jalan Nasional Bandung–Lembang–Subang–Pamanukan', 'Bandung–Subang', 1, 60, [
+    ['Bandung', 0], ['Lembang', 15, -6.812, 107.618], ['Subang', 55, -6.570, 107.760], ['Pamanukan', 85]]),
+  N('pelratu', 'Jalan Nasional Sukabumi–Palabuhanratu', 'Sukabumi–Palabuhanratu', 1, 60, [
+    ['Sukabumi', 0], ['Palabuhanratu', 60, -6.985, 106.545]]),
+  N('banten', 'Jalan Nasional Serang–Pandeglang–Labuan', 'Serang–Labuan', 1, 60, [
+    ['Serang', 0], ['Pandeglang', 25, -6.310, 106.105], ['Labuan', 60, -6.378, 105.830]]),
+  N('wonosobo', 'Jalan Nasional Purwokerto–Wonosobo–Magelang', 'Purwokerto–Magelang', 1, 60, [
+    ['Purwokerto', 0], ['Purbalingga', 20, -7.390, 109.360], ['Banjarnegara', 50, -7.400, 109.690], ['Wonosobo', 80, -7.360, 109.900],
+    ['Temanggung', 115, -7.320, 110.170], ['Magelang', 140]]),
+  N('wonogiri', 'Jalan Nasional Solo–Wonogiri–Pacitan', 'Solo–Pacitan', 1, 60, [
+    ['Solo', 0], ['Sukoharjo', 12, -7.680, 110.840], ['Wonogiri', 35, -7.810, 110.920], ['Pacitan', 110, -8.200, 111.100]]),
+  N('ponorogo', 'Jalan Nasional Madiun–Ponorogo–Pacitan', 'Madiun–Pacitan', 1, 60, [
+    ['Madiun', 0], ['Ponorogo', 30, -7.870, 111.460], ['Pacitan', 85]]),
+  N('blora', 'Jalan Nasional Semarang–Purwodadi–Blora–Bojonegoro–Lamongan', 'Semarang–Bojonegoro', 1, 60, [
+    ['Semarang', 0], ['Purwodadi', 60, -7.090, 110.920], ['Blora', 125, -6.970, 111.420], ['Cepu', 160, -7.150, 111.590],
+    ['Bojonegoro', 195, -7.150, 111.880], ['Babat', 230, -7.110, 112.170], ['Lamongan', 260]]),
+  N('tuban', 'Jalan Nasional Tuban–Bojonegoro', 'Tuban–Bojonegoro', 1, 60, [
+    ['Tuban', 0], ['Bojonegoro', 45]]),
+  N('batu', 'Jalan Nasional Malang–Batu–Kediri', 'Malang–Batu–Kediri', 1, 60, [
+    ['Malang', 0], ['Batu', 18, -7.870, 112.520], ['Pujon', 30, -7.840, 112.460], ['Kediri', 85]]),
+  N('tulungagung', 'Jalan Nasional Kediri–Tulungagung–Blitar', 'Kediri–Blitar', 1, 60, [
+    ['Kediri', 0], ['Tulungagung', 30, -8.070, 111.900], ['Blitar', 60]]),
+  N('bondowoso', 'Jalan Nasional Jember–Bondowoso–Situbondo', 'Jember–Situbondo', 1, 60, [
+    ['Jember', 0], ['Bondowoso', 35, -7.910, 113.820], ['Situbondo', 70]]),
   N('jember', 'Jalan Nasional Probolinggo–Jember–Banyuwangi', 'Probolinggo–Jember', 1, 60, [
     ['Probolinggo', 0], ['Lumajang', 45, -8.130, 113.220], ['Jember', 110, -8.170, 113.700], ['Genteng', 165, -8.370, 114.150],
     ['Banyuwangi', 200, -8.220, 114.370], ['Ketapang', 208]]),
@@ -258,7 +312,9 @@ export function placeList(){
 }
 
 // mode: 'mix' (fastest), 'toll' (toll roads only), 'nr' (national roads only)
-export function findRoute(from, to, mode = 'mix'){
+const edgeOK = (e, mode) => !(mode === 'toll' && e.cls === 'n') && !(mode === 'nr' && e.cls === 't');
+// Dijkstra on travel time; ban = a neighbour of `from` that must not be the first hop (no U-turn on the spot)
+export function findRoute(from, to, mode = 'mix', ban = null){
   const dist = new Map([[from, 0]]), prev = new Map(), done = new Set();
   while (true) {
     let u = null, best = Infinity;
@@ -267,12 +323,11 @@ export function findRoute(from, to, mode = 'mix'){
     if (u === to) break;
     done.add(u);
     for (const e of ADJ.get(u) || []) {
-      if (mode === 'toll' && e.cls === 'n') continue;
-      if (mode === 'nr' && e.cls === 't') continue;
+      if (!edgeOK(e, mode)) continue;
+      if (u === from && e.to === ban) continue;
       const pe = prev.get(u);
       if (pe && pe.cls === 'a' && e.cls === 'a') continue;   // never use two access roads in a row as a shortcut
-      // switching corridor costs a little, so the router prefers staying on one road
-      const turn = pe && pe.c !== e.c ? 0.006 : 0;
+      const turn = pe && pe.c !== e.c ? 0.006 : 0;            // switching road costs a little
       const nd = best + e.w + turn;
       if (nd < (dist.get(e.to) ?? Infinity)) { dist.set(e.to, nd); prev.set(e.to, {from: u, c: e.c, cls: e.cls}); }
     }
@@ -281,35 +336,56 @@ export function findRoute(from, to, mode = 'mix'){
   while (k !== from) { const p = prev.get(k); legs.unshift({a: p.from, b: k, c: p.c}); k = p.from; }
   return legs;
 }
+export const edgesFrom = key => ADJ.get(key) || [];
+function bearing(a, b){ const A = NODES.get(a), B = NODES.get(b); return Math.atan2((B.lon - A.lon)*Math.cos(A.lat*Math.PI/180), B.lat - A.lat)*180/Math.PI; }
+export function turnDeg(prev, n, to){ if (!prev) return 0; const d = bearing(n, to) - bearing(prev, n); return ((d + 540) % 360) - 180; }
+export function turnName(prev, n, to){ const d = turnDeg(prev, n, to); return Math.abs(d) > 150 ? 'Putar balik' : Math.abs(d) < 35 ? 'Lurus' : d > 0 ? 'Kanan' : 'Kiri'; }
+// furthest place along a road in the direction of an edge, for labels ("ke Bogor")
+export function towardOf(key, e){ const c = CORR[e.c]; if (c.cls === 'a') return NODES.get(e.to).name;
+  const i = c.nodes.findIndex(n => n.key === key), j = c.nodes.findIndex(n => n.key === e.to), st = j > i ? 1 : -1;
+  let city = null, last = null; for (let k = j; k >= 0 && k < c.nodes.length; k += st) { const N = NODES.get(c.nodes[k].key); if (N.kind === 'r') continue; last = N.name; if (N.city) city = N.city; }
+  return city || last || NODES.get(e.to).name; }
+export function choicesAt(key, prev, mode = 'mix'){
+  let opts = edgesFrom(key).filter(e => e.to !== prev && edgeOK(e, mode));
+  if (!opts.length) opts = edgesFrom(key).filter(e => edgeOK(e, mode));      // dead end: only a U-turn is left
+  return opts.map(e => ({e, turn: e.cls === 'a' && NODES.get(key).kind !== 'k' ? 'Keluar' : turnName(prev, key, e.to), road: CORR[e.c].cls === 'a' ? (NODES.get(key).kind === 'k' ? `Masuk tol lewat GT ${NODES.get(e.to).name}` : 'Keluar tol') : (CORR[e.c].cls === 'n' ? 'Jalan Nasional ' : 'Tol ') + CORR[e.c].short, toward: towardOf(key, e)})); }
+// the "go straight" continuation: same road if possible, otherwise the smallest turn; access roads only when nothing else is left
+export function straightOf(key, prev, prevC, mode = 'mix'){
+  const opts = choicesAt(key, prev, mode).map(o => o.e); if (!opts.length) return null;
+  const same = opts.find(o => o.c === prevC && o.to !== prev); if (same) return same;
+  const pool = opts.filter(o => CORR[o.c].cls !== 'a'); const P = pool.length ? pool : opts;
+  return P.map(o => ({o, d: Math.abs(turnDeg(prev, key, o.to))})).sort((a, b) => a.d - b.d)[0].o; }
+export function walkFree(from, prev, prevC, first, maxKm, mode = 'mix'){
+  const legs = []; let cur = from, pv = prev, pc = prevC, km = 0, e = first;
+  for (let guard = 0; guard < 400 && km < maxKm; guard++) {
+    if (!e) e = straightOf(cur, pv, pc, mode); if (!e) break;
+    legs.push({a: cur, b: e.to, c: e.c}); km += e.km; pv = cur; pc = e.c; cur = e.to; e = null; }
+  return legs; }
 
-// every event (exit, junction, rest area, toll plaza) passed along the route, in order, with route km
+// every event (exit, junction, rest area, toll plaza, town) passed along the legs, in order, with route km
 function legEvents(leg){
   const c = CORR[leg.c], ia = c.nodes.findIndex(n => n.key === leg.a), ib = c.nodes.findIndex(n => n.key === leg.b);
   const st = ib > ia ? 1 : -1, out = [];
   for (let i = ia + st; i !== ib + st; i += st) out.push({n: c.nodes[i], d: Math.abs(c.nodes[i].km - c.nodes[ia].km), c});
   return out;
 }
-export function buildTrip(from, to, mode = 'mix'){
-  const legs = findRoute(from, to, mode);
-  if (!legs || !legs.length) return null;
+const legKm = l => { const c = CORR[l.c]; return Math.abs(c.nodes.find(n => n.key === l.b).km - c.nodes.find(n => n.key === l.a).km); };
+// dest = key of the destination (route / navigation), or null for free driving
+export function tripFromLegs(from, legs, dest = null, mode = 'mix'){
+  if (!legs.length) return null;
   const c0 = CORR[legs[0].c], n0 = c0.nodes.find(n => n.key === from);
-  const ev = [{key: from, name: n0.name, kind: n0.kind, km: n0.km, rk: 0, c: legs[0].c, origin: true}];
-  let rk = 0;
-  for (const leg of legs) {
-    for (const {n, d, c} of legEvents(leg)) ev.push({key: n.key, name: n.name, kind: n.kind, km: n.km, rk: rk + d, c: c.id});
-    const c = CORR[leg.c]; rk += Math.abs(c.nodes.find(n => n.key === leg.b).km - c.nodes.find(n => n.key === leg.a).km);
+  const ev = [{key: from, name: n0.name, kind: n0.kind, km: n0.km, rk: 0, c: legs[0].c, origin: true, legIdx: -1, end: true}];
+  let rk = 0, destIdx = -1, tail = [];
+  legs.forEach((leg, li) => {
+    for (const {n, d, c} of legEvents(leg)) ev.push({key: n.key, name: n.name, kind: n.kind, km: n.km, rk: rk + d, c: c.id, legIdx: li, end: n.key === leg.b});
+    rk += legKm(leg);
+    if (dest && leg.b === dest && destIdx < 0 && li === legs.length - 1) destIdx = ev.length - 1;
+  });
+  if (destIdx >= 0) { ev[destIdx].dest = true;
+    // keep the road going after the destination, so a missed exit still has somewhere to go
+    const last = legs[legs.length - 1]; tail = walkFree(last.b, last.a, last.c, null, 25, mode);
+    tail.forEach((leg, k) => { for (const {n, d, c} of legEvents(leg)) ev.push({key: n.key, name: n.name, kind: n.kind, km: n.km, rk: rk + d, c: c.id, legIdx: legs.length + k, end: n.key === leg.b, tail: true}); rk += legKm(leg); });
   }
-  const destIdx = ev.length - 1; ev[destIdx].dest = true;
-  // keep the corridor going after the destination, so a missed exit still has somewhere to go
-  const lastLeg = legs[legs.length - 1], lc = CORR[lastLeg.c];
-  const ia = lc.nodes.findIndex(n => n.key === lastLeg.a), ib = lc.nodes.findIndex(n => n.key === lastLeg.b), st = ib > ia ? 1 : -1;
-  if (ev[destIdx].kind !== 't') {
-    let added = 0;
-    for (let i = ib + st; i >= 0 && i < lc.nodes.length && added < 3; i += st) { const n = lc.nodes[i];
-      ev.push({key: n.key, name: n.name, kind: n.kind, km: n.km, rk: rk + Math.abs(n.km - lc.nodes[ib].km), c: lc.id, tail: true});
-      if (n.kind !== 'r') added++; }
-  }
-  // corridor of the stretch leading INTO each event; c of the origin = first corridor
   for (let i = 0; i < ev.length; i++) {
     const e = ev[i], N = NODES.get(e.key);
     e.lat = N.lat; e.lon = N.lon; e.city = N.city;
@@ -324,9 +400,11 @@ export function buildTrip(from, to, mode = 'mix'){
       else if (pc !== 't' && nc !== 't') e.kind = 'n0';
     }
   }
-  return {from, to, mode, legs, ev, destIdx, total: ev[destIdx].rk, corridors: [...new Set(legs.map(l => l.c))].filter(c => CORR[c].cls !== 'a'),
-    tollKm: legs.filter(l => CORR[l.c].cls === 't').reduce((a, l) => a + Math.abs(CORR[l.c].nodes.find(n => n.key === l.b).km - CORR[l.c].nodes.find(n => n.key === l.a).km), 0)};
+  return {from, dest, mode, legs, allLegs: legs.concat(tail), ev, destIdx, total: destIdx >= 0 ? ev[destIdx].rk : rk, free: !dest,
+    corridors: [...new Set(legs.map(l => l.c))].filter(c => CORR[c].cls !== 'a'),
+    tollKm: legs.filter(l => CORR[l.c].cls === 't').reduce((a, l) => a + legKm(l), 0)};
 }
+export function buildTrip(from, to, mode = 'mix'){ const legs = findRoute(from, to, mode); return legs && legs.length ? tripFromLegs(from, legs, to, mode) : null; }
 
 export const fmtKm = km => km < 1 ? `${Math.round(km*1000/50)*50} m` : `${km < 10 ? km.toFixed(1).replace('.', ',') : Math.round(km)} km`;
 export const nodeLabel = n => n.kind === 'j' ? n.name.replace('JCT ', 'Simpang Susun ') : n.kind === 'g' || n.kind === 't' ? n.name.replace('GT ', 'Gerbang Tol ')

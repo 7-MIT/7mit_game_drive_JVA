@@ -8,12 +8,12 @@ import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
 import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
 import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
 import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
-import {CORR, CORRIDORS, NODES, placeList, buildTrip, fmtKm, nodeLabel, JAVA} from './network.js';
+import {CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, walkFree, choicesAt, edgesFrom, turnDeg, fmtKm, nodeLabel, JAVA} from './network.js';
 
 const MOBILE = matchMedia('(pointer:coarse)').matches || innerWidth < 700;
 const LW = 3.6, MED = 1.2, CH = 120, OPEN_HW = 35, OVH = 7.5, PRC = 328, BACK = 460, FWD = 720;
 const DEF = {mode:'mix', cam:'chase', den:1, tod:'day', lanes:'auto', closed:{'1':[1], '-1':[]}, cf:0, cfk:2, ovl:2, scale:5, veh:'car',
-  from:'Bekasi Barat', to:'Pasteur', auto:false};
+  from:'Bekasi Barat', to:'Pasteur', auto:false, trip:'route'};
 let cfg; try { cfg = {...DEF, ...JSON.parse(localStorage.getItem('tj_cfg1') || '{}')}; } catch(e) { cfg = {...DEF}; }
 const saveCfg = () => { try { localStorage.setItem('tj_cfg1', JSON.stringify(cfg)); } catch(e) {} };
 const mod = (a, n) => ((a % n) + n) % n;
@@ -275,8 +275,13 @@ const nCorr = c => cfg.lanes === 'auto' || CORR[c].cls !== 't' ? CORR[c].lanes :
 const PLZK = new Set(['g', 't', 'te', 'ti']), RAMPK = new Set(['x', 'j', 'r']), SITEK = new Set(['x', 'j', 'r', 'g', 't', 'te', 'ti', 'k']);
 const RW_EVERY = 5600, CF_EVERY = 9400, ZEXT = {rw: 1150, cf: 1380};
 
-function layoutTrip(t){
-  trip = t; EV = t.ev.map((e, i) => ({...e, i}));
+// keepN: when re-planning ahead, events 0..keepN keep their identity (and u) so the world already built stays valid
+function layoutTrip(t, keepN = -1){
+  const old = EV, oldZ = ZONES, oldV = OVS, oldO = OPENS;
+  trip = t; EV = t.ev.map((e, i) => { const o = old[i];
+    if (i > keepN || !o || o.key !== e.key) return {...e, i};
+    for (const k of ['dest', 'tail', 'others', 'origin', 'turn']) delete o[k];
+    return Object.assign(o, e, {i}); });
   const sc = cfg.scale; let lastRW = -RW_EVERY + 2600, lastCF = -CF_EVERY + 4400;
   ZONES = []; EV[0].u = 0;
   for (let i = 1; i < EV.length; i++) {
@@ -286,8 +291,8 @@ function layoutTrip(t){
       const pos = Math.max(cur + (ty === 'cf' ? 230 : 0), due);
       // contraflow needs a divided toll road; roadworks need at least two lanes
       if ((ty === 'cf' && CORR[EV[i].c].cls !== 't') || (ty === 'rw' && nCorr(EV[i].c) < 2)) { if (ty === 'rw') lastRW = due; else lastCF = due; continue; }
-      if (pos + ZEXT[ty] > a + gap) { if (due > a + gap || i >= trip.destIdx + 1) break; gap = pos + ZEXT[ty] - a; }
-      ZONES.push({type: ty, u: pos}); if (ty === 'rw') lastRW = pos; else lastCF = pos;
+      if (pos + ZEXT[ty] > a + gap) { if (due > a + gap) break; gap = pos + ZEXT[ty] - a; }
+      ZONES.push(oldZ.find(z => z.type === ty && Math.abs(z.u - pos) < 0.5) || {type: ty, u: pos}); if (ty === 'rw') lastRW = pos; else lastCF = pos;
       cur = pos + 1500;
     }
     EV[i].u = a + gap;
@@ -302,14 +307,15 @@ function layoutTrip(t){
   for (const c of [...CHG].reverse()) laneSegs['-1'].push({p: c.n0 < c.n1 ? -c.c : -(c.c - 150), n: c.n0});
   SITES = EV.filter(e => SITEK.has(e.kind));
   RSITES = SITES.filter(e => RAMPK.has(e.kind)); PLAZAS = SITES.filter(e => PLZK.has(e.kind)); KSITES = SITES.filter(e => e.kind === 'k');
-  for (const s of SITES) { s.id = 's' + s.i; s.bays = {'1': null, '-1': null}; s.phase = Math.random()*SIG_CYCLE; }
+  for (const s of SITES) { s.id = 's' + s.i; if (!s.bays) s.bays = {'1': null, '-1': null}; if (s.phase == null) s.phase = Math.random()*SIG_CYCLE; }
   // overpasses and closed U-turn openings in the empty stretches
   const clear = (u, r) => isToll(u) && !SITES.some(s => Math.abs(s.u - u) < 780 + r) && !ZONES.some(z => Math.abs(z.u - u) < ZEXT[z.type] - 400 + r);
   const lastU = EV[EV.length-1].u;
-  OVS = []; for (let u = -2600; u < lastU + 6000; u += 1450) { let v = u; for (let k = 0; k < 8 && !clear(v, 0); k++) v += 180; if (clear(v, 0)) OVS.push({u: v}); }
+  OVS = []; for (let u = -2600; u < lastU + 6000; u += 1450) { let v = u; for (let k = 0; k < 8 && !clear(v, 0); k++) v += 180; if (clear(v, 0)) OVS.push(oldV.find(o => Math.abs(o.u - v) < 0.5) || {u: v}); }
   OPENS = [];
-  for (const z of ZONES) if (z.type === 'cf') OPENS.push({u: z.u - 200, cf: z}, {u: z.u + 200, cf: z});
-  for (let u = -1800; u < lastU + 6000; u += 2900) if (clear(u, 60) && !OVS.some(o => Math.abs(o.u - u) < 160)) OPENS.push({u});
+  const reuse = o => oldO.find(q => q.cf === o.cf && Math.abs(q.u - o.u) < 0.5) || o;
+  for (const z of ZONES) if (z.type === 'cf') OPENS.push(reuse({u: z.u - 200, cf: z}), reuse({u: z.u + 200, cf: z}));
+  for (let u = -1800; u < lastU + 6000; u += 2900) if (clear(u, 60) && !OVS.some(o => Math.abs(o.u - u) < 160)) OPENS.push(reuse({u}));
   OPENS.sort((a, b) => a.u - b.u);
   // build list of placeable objects
   OBJ = [...SITES.map(s => ({u: s.u, r: s.kind === 'j' ? 700 : s.kind === 'k' ? 560 : 680, type: 'site', s})),
@@ -1171,7 +1177,9 @@ function toRamp(v, site, kind){
   let raw, end = 'merge', park = null, mergeAt = 300;
   if (kind === 'r') { const occ = site.bays[v.sd] || (site.bays[v.sd] = STATIC.map(x => x ? 'static' : null)), free = occ.map((_, i) => i).filter(i => !occ[i]);
     if (free.length && (v.player || Math.random() < 0.75)) { const i = pick(free); occ[i] = v; raw = restPath('out', BAYS[i]); park = {i, t: v.player ? Infinity : rnd(10, 35)}; } else raw = restPath('out'); }
-  else if (kind === 'j') { raw = Math.random() < 0.5 ? ssPath('outA', e) : ssPath('outC', e); end = 'kill'; }
+  else if (kind === 'j') { let side = Math.random() < 0.5 ? 'outA' : 'outC';
+    if (v.player) { v.rampEdge = rampEdge(site); side = v.rampEdge && v.rampEdge.turn === 'Kanan' ? 'outC' : 'outA'; }
+    raw = ssPath(side, e); end = 'kill'; }
   else { raw = trOut(); end = 'pr'; }
   v.rp = {P: mkPath([...head, ...raw]), d: 0, i: 0, pc: v.sd*site.u, sd: v.sd, e, shift: SC, end, park, kind, site, mergeAt};
   v.exitWant = false; v.q = pathAt(v.rp.P, 0, 0);
@@ -1428,7 +1436,10 @@ function steerPlayer(v, dt){
     const ow = CFA.find(z => z.oneWay && z.B === v.sd && v.p - z.bStart > -330 && v.p - z.bStart < -40);
     if (ow) { toDetour(v, ow); toast('Pengalihan lewat Jalan Nasional'); hudLane(); return; }
     const ks = KSITES.find(k => { const d = v.sd*k.u - SL - front; return d > -4 && d < 25; });
-    if (ks && lx > n - 1 + 1.1) { if (sigMain(ks) === 'R') violation('menerobos lampu merah'); stats.done = true; v.vel = 0; if (ks.i === trip.destIdx) arrive(ks); else finishExit(ks); }
+    if (ks && lx > n - 1 + 1.1) { const le = leftEdge(ks);
+      if (!le) { v.lx = n - 1 + 0.6; toast('Tidak ada jalan ke kiri di simpang ini', 'warn'); return; }
+      if (sigMain(ks) === 'R') violation('menerobos lampu merah');
+      if (ks.i === trip.destIdx) { stats.done = true; v.vel = 0; arrive(ks, le); } else continueFrom(ks, le); }
   }
 }
 const HW = {moto:0.4, car:0.92, suv:0.98, van:1.0, police:0.92, truck:1.25, bus:1.25};
@@ -1472,7 +1483,7 @@ function payToll(s){
   const rk = rkAt(PLR.sd*PLR.p), km = Math.max(0, rk - stats.lastPay), rp = Math.max(500, Math.round(km*(VEH[cfg.veh] || VEH.car).rate/500)*500);
   stats.lastPay = rk; stats.toll += rp;
   toast(`Tap e-Toll ${nodeLabel(s)} · Rp ${rp.toLocaleString('id-ID')}`);
-  if (s.kind === 't' && s.i === trip.destIdx) { stats.done = true; setTimeout(() => arrive(s), 1200); }
+  if ((s.kind === 't' || s.kind === 'te') && s.i === trip.destIdx) { stats.done = true; setTimeout(() => arrive(s), 1200); }
 }
 function playerRules(dt){
   const v = PLR; if (!v || v.rp) return;
@@ -1484,7 +1495,7 @@ function playerRules(dt){
   heavyT = heavy(v) && v.lane >= 0 && v.lane < heavyMin(n) ? heavyT + dt : 0;
   if (heavyT > 5) { violation('kendaraan berat wajib di lajur kiri'); heavyT = 0; }
   const pz = plazaAhead(v.sd, v.p + v.len/2);
-  if (!pz) for (const s of PLAZAS) { const d = v.sd*s.u - (v.p + v.len/2); if (d < -2 && d > -40 && v.paid !== s.id) { v.paid = s.id; violation('menerobos gerbang tol'); if (s.kind === 't' && s.i === trip.destIdx) setTimeout(() => arrive(s), 1200); } }
+  if (!pz) for (const s of PLAZAS) { const d = v.sd*s.u - (v.p + v.len/2); if (d < -2 && d > -40 && v.paid !== s.id) { v.paid = s.id; violation('menerobos gerbang tol'); if ((s.kind === 't' || s.kind === 'te') && s.i === trip.destIdx) { stats.done = true; setTimeout(() => arrive(s), 1200); } } }
   const front = v.p + v.len/2;
   if (!cfg.auto) {
     const z = cfAt(v.sd, v.p), legitCf = z && z.A === v.sd && v.lane < 0 && -v.lane <= z.k;
@@ -1498,10 +1509,10 @@ function playerRules(dt){
   }
   for (const s of KSITES) { const ls = v.sd*s.u - SL; if (v.lastFront != null && v.lastFront < ls && front >= ls && sigMain(s) === 'R') violation('menerobos lampu merah'); }
   v.lastFront = front;
-  const dest = EV[trip.destIdx];
-  if (dest.kind === 'k' || dest.kind === 'n0') { if (!stats.done && v.p >= dest.u - (dest.kind === 'k' ? SL : 0)) { stats.done = true; setTimeout(() => arrive(dest), 600); } return; }
-  if (!stats.missed && dest.kind === 'x' && v.p - dest.u > -150) { stats.missed = true; const nx = EV.slice(trip.destIdx + 1).find(e => e.kind === 'x' || e.kind === 't');
-    toast(`Exit ${dest.name} terlewat. ${nx ? `Keluar di ${nx.name} lalu putar balik.` : ''}`, 'bad'); }
+  const dest = EV[trip.destIdx]; if (!dest || stats.done) return;
+  if (dest.kind !== 'x' && dest.kind !== 't' && dest.kind !== 'te') { if (v.p >= dest.u - (dest.kind === 'k' ? SL : 0)) { stats.done = true; setTimeout(() => arrive(dest), 600); } return; }
+  // missed the destination: recalculate from the next place the route can still change (GPS style)
+  if (!stats.missed && v.p - dest.u > (dest.kind === 'x' ? -150 : 60)) { stats.missed = true; toast(`${dest.kind === 'x' ? 'Exit ' : ''}${dest.name} terlewat. Menghitung ulang rute…`, 'bad'); setNav(trip.dest, true); }
 }
 
 // ================================================================
@@ -1603,8 +1614,8 @@ function updateHud(dt){
   $('spdbox').classList.toggle('over', v.vel > lim + 1.4);
   $('corr').textContent = CORR[corrAt(u)].name;
   $('kmpost').textContent = `KM ${kmAt(u).toFixed(1).replace('.', ',')}`;
-  const left = Math.max(0, dest.rk - rk);
-  $('left').textContent = stats.done ? 'Tiba' : fmtKm(left);
+  $('left').textContent = !dest ? 'Bebas' : stats.done ? 'Tiba' : fmtKm(Math.max(0, dest.rk - rk));
+  updateChoice(u);
   $('toll').textContent = 'Rp ' + stats.toll.toLocaleString('id-ID');
   $('viol').textContent = stats.viol; $('crash').textContent = stats.crashes;
   const ne = nextEvents(), list = $('next'); list.innerHTML = '';
@@ -1627,7 +1638,7 @@ function updateHud(dt){
     if (ow) ins = v.p - ow.bStart > -330 ? '← Jalan ditutup: belok kiri ke pengalihan sekarang' : 'Jalan ditutup (one way). Ambil lajur paling kiri untuk pengalihan.';
     else if (bd < 450) ins = v.lane < 0 ? `Contraflow berakhir ${Math.round(bd)} m lagi. Kembali ke jalur kiri.` : `Lajur berakhir/ditutup ${Math.round(bd)} m lagi. Pindah lajur!`;
     else if (z && v.lane === 0 && v.p < z.CF_IN + 30 && v.p > z.CF_IN - 250) ins = 'Contraflow: tekan → di bukaan median untuk masuk';
-    else { const nj = ne.find(x => x.e.turn); if (nj && nj.d < 6) ins = `Lurus terus ke ${CORR[nj.e.cNext].name}`; } }
+    else { const nj = ne.find(x => x.e.turn || (x.e.end && x.e.cNext !== x.e.c && x.e.kind !== 'te' && x.e.kind !== 'ti')); if (nj && nj.d < 6) ins = `${nj.e.kind === 'k' ? 'Di ' + nj.e.name + ', jalan' : 'Lurus'} terus ke ${CORR[nj.e.cNext].name}`; } }
   $('ins').textContent = ins; $('ins').hidden = !ins;
   hudLane();
 }
@@ -1648,8 +1659,9 @@ function drawMap(){
   x.lineWidth = 1.5; x.strokeStyle = 'rgba(32,30,29,0.45)';
   for (const c of CORRIDORS) { if (c.cls === 'a') continue; x.lineWidth = c.cls === 'n' ? 1 : 1.5; x.strokeStyle = c.cls === 'n' ? 'rgba(138,90,40,0.55)' : 'rgba(32,30,29,0.45)'; x.setLineDash(c.planned ? [3, 3] : []); x.beginPath(); c.nodes.forEach((n, i) => { const N = NODES.get(n.key); const [a, b] = P(N.lat, N.lon); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke(); }
   x.setLineDash([]);
-  if (trip) { x.lineWidth = 3; x.strokeStyle = acc; x.beginPath(); EV.slice(0, trip.destIdx + 1).forEach((e, i) => { const [a, b] = P(e.lat, e.lon); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke();
-    const d = EV[trip.destIdx], [dx, dy] = P(d.lat, d.lon); x.fillStyle = ink; x.fillRect(dx - 3, dy - 3, 6, 6);
+  if (trip) { const i0 = PLR ? Math.max(0, evAt(uOfV(PLR))) : 0, i1 = trip.destIdx >= 0 ? trip.destIdx : Math.min(EV.length - 1, i0 + 60);
+    x.lineWidth = 3; x.strokeStyle = acc; x.beginPath(); EV.slice(i0, i1 + 1).forEach((e, i) => { const [a, b] = P(e.lat, e.lon); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke();
+    const d = EV[trip.destIdx]; if (d) { const [dx, dy] = P(d.lat, d.lon); x.fillStyle = ink; x.fillRect(dx - 3, dy - 3, 6, 6); }
     if (PLR) { const p = latLonAt(uOfV(PLR)), [px, py] = P(p.lat, p.lon); x.fillStyle = acc; x.strokeStyle = '#fff'; x.lineWidth = 2; x.beginPath(); x.arc(px, py, 5, 0, Math.PI*2); x.fill(); x.stroke(); } }
   x.fillStyle = ink; x.font = '600 9px Archivo, sans-serif';
   const labels = mapBig ? [...new Set(EV.filter(e => e.city && e.kind !== 'n0').map(e => e.key))].map(k => NODES.get(k)) : ['JCT Cawang','GT Banyumanik','JCT Waru','Merak','JCT Pasir Koja','GT Palimanan','Colomadu','Malang','Ketapang'].map(k => NODES.get(k));
@@ -1657,7 +1669,150 @@ function drawMap(){
 }
 function latLonAt(u){ const i = evAt(u); if (i < 0) return EV[0]; if (i >= EV.length - 1) return EV[EV.length - 1];
   const a = EV[i], b = EV[i+1], f = clamp((u - a.u)/(b.u - a.u), 0, 1); return {lat: a.lat + (b.lat - a.lat)*f, lon: a.lon + (b.lon - a.lon)*f}; }
-map.onclick = () => { mapBig = !mapBig; $('mapbox').classList.toggle('big', mapBig); drawMap(); };
+map.onclick = () => openAtlas();
+
+// ---------- full-screen atlas: every road of the network, pan / zoom / search / navigate ----------
+const NET = {t: CORRIDORS.filter(c => c.cls === 't'), n: CORRIDORS.filter(c => c.cls === 'n'), a: CORRIDORS.filter(c => c.cls === 'a')};
+const NAVABLE = [...NODES.values()].filter(n => edgesFrom(n.key).length);
+const NAV_COUNT = NAVABLE.length;
+const NET_SUMMARY = `${NET.t.length} ruas tol, ${NET.n.length} ruas jalan nasional, ${NET.a.length} jalan akses, ${NAVABLE.filter(n => n.kind === 'k').length} kota, ${NAVABLE.filter(n => n.kind === 'j').length} simpang susun, ${NAVABLE.filter(n => n.kind === 'x' || n.kind === 't' || n.kind === 'g').length} gerbang tol`;
+const KIND_NAME = {x: 'Gerbang tol (exit)', t: 'Gerbang tol (ujung tol)', g: 'Gerbang tol utama', j: 'Simpang susun', r: 'Rest area', k: 'Kota / persimpangan'};
+const KIND_TAG = {x: 'EXIT', t: 'GT', g: 'GT', j: 'JCT', r: 'REST', k: 'KOTA'};
+const atlas = $('atlas'), acv = $('atlas-map'), actx = acv.getContext('2d');
+const COSL = Math.cos(7.2*Math.PI/180);
+const AT = {lon: 110, lat: -7.2, k: 100, sel: null, W: 0, H: 0, kMin: 40, kMax: 9000};
+const atP = (lat, lon) => [AT.W/2 + (lon - AT.lon)*AT.k*COSL, AT.H/2 + (AT.lat - lat)*AT.k];
+const atInv = (x, y) => ({lon: AT.lon + (x - AT.W/2)/(AT.k*COSL), lat: AT.lat - (y - AT.H/2)/AT.k});
+const nodeLL = key => NODES.get(key);
+let atRaf = 0;
+const reqAtlas = () => { if (!atRaf) atRaf = requestAnimationFrame(() => { atRaf = 0; drawAtlas(); }); };
+function atSize(){ const W = acv.clientWidth, H = acv.clientHeight, dpr = Math.min(2, devicePixelRatio);
+  if (acv.width !== Math.round(W*dpr) || acv.height !== Math.round(H*dpr)) { acv.width = Math.round(W*dpr); acv.height = Math.round(H*dpr); }
+  AT.W = W; AT.H = H; AT.kMin = Math.min(W/(10.5*COSL), H/4.5); return dpr; }
+function playerLL(){ if (!PLR || !trip) return null; const u = uOfV(PLR), p = latLonAt(u), i = Math.max(0, evAt(u)), nx = EV[Math.min(EV.length - 1, i + 1)];
+  return {...p, hd: Math.atan2((nx.lon - p.lon)*COSL, nx.lat - p.lat)}; }
+function openAtlas(){
+  atlas.hidden = false; atSize();
+  if (!AT.opened) { AT.opened = true; const p = playerLL(); if (p) { AT.lon = p.lon; AT.lat = p.lat; } AT.k = clamp(AT.W/(2.6*COSL), AT.kMin, AT.kMax); }
+  legendText(); drawAtlas();
+}
+function closeAtlas(){ atlas.hidden = true; $('at-res').hidden = true; $('at-q').blur(); }
+function legendText(){
+  $('lg-t').textContent = `Jalan tol · ${NET.t.length} ruas`; $('lg-n').textContent = `Jalan nasional · ${NET.n.length} ruas`; $('lg-a').textContent = `Jalan akses gerbang tol · ${NET.a.length}`;
+  const d = trip && EV[trip.destIdx];
+  $('at-nav').textContent = d ? `Navigasi ke ${d.name} · ${fmtKm(Math.max(0, d.rk - rkAt(uOfV(PLR))))}` : 'Rute di depan (keliling bebas)';
+}
+function zoomAt(x, y, f){ const p = atInv(x, y); AT.k = clamp(AT.k*f, AT.kMin, AT.kMax); const q = atInv(x, y); AT.lon += p.lon - q.lon; AT.lat += p.lat - q.lat; reqAtlas(); }
+function drawAtlas(){
+  if (atlas.hidden) return;
+  const dpr = atSize(), x = actx, W = AT.W, H = AT.H, k = AT.k; x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  x.fillStyle = '#d5e2ea'; x.fillRect(0, 0, W, H);
+  x.fillStyle = '#f4f1ea'; x.strokeStyle = '#9fb3bf'; x.lineWidth = 1.2; x.beginPath(); JAVA.forEach(([lo, la], i) => { const [a, b] = atP(la, lo); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.closePath(); x.fill(); x.stroke();
+  const inView = (a, b, m = 40) => a > -m && b > -m && a < W + m && b < H + m;
+  const line = (c) => { x.beginPath(); c.nodes.forEach((n, i) => { const N = nodeLL(n.key); const [a, b] = atP(N.lat, N.lon); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke(); };
+  x.lineCap = 'round'; x.lineJoin = 'round';
+  const z = Math.log2(k/100);   // 0 = whole island
+  x.setLineDash([4, 4]); x.strokeStyle = 'rgba(80,88,94,0.75)'; x.lineWidth = clamp(0.6 + z*0.35, 0.6, 2.2); for (const c of NET.a) line(c);
+  x.setLineDash([]); x.strokeStyle = '#a0682e'; x.lineWidth = clamp(1 + z*0.6, 1, 4.5); for (const c of NET.n) line(c);
+  for (const c of NET.t) { x.setLineDash(c.planned ? [7, 5] : []); x.strokeStyle = '#fff'; x.lineWidth = clamp(2.4 + z*0.9, 2.4, 8); line(c); x.strokeStyle = c.planned ? '#6d6a66' : '#201e1d'; x.lineWidth = clamp(1.4 + z*0.7, 1.4, 6); line(c); }
+  x.setLineDash([]);
+  // the route ahead (navigation or free driving plan)
+  const acc = '#ec3013';
+  if (trip && PLR) { const u = uOfV(PLR), i0 = Math.max(0, evAt(u)), i1 = trip.destIdx >= 0 ? trip.destIdx : Math.min(EV.length - 1, i0 + 80), p = latLonAt(u);
+    x.strokeStyle = acc; x.globalAlpha = 0.85; x.lineWidth = clamp(3 + z*0.8, 3, 9); x.beginPath(); const [a0, b0] = atP(p.lat, p.lon); x.moveTo(a0, b0);
+    for (const e of EV.slice(i0 + 1, i1 + 1)) { const [a, b] = atP(e.lat, e.lon); x.lineTo(a, b); } x.stroke(); x.globalAlpha = 1; }
+  // nodes + labels (priority order, no overlaps)
+  const show = n => n.kind === 'j' ? z > 0.6 : n.kind === 'k' ? (n.city && n.city === n.name ? true : z > 0.9) : n.kind === 'r' ? z > 3.2 : z > 1.6;
+  const pts = [];
+  for (const n of NODES.values()) { if (n.lat == null || !show(n)) continue; const [a, b] = atP(n.lat, n.lon); if (!inView(a, b)) continue; pts.push({n, a, b}); }
+  for (const {n, a, b} of pts) { x.fillStyle = n.kind === 'k' ? '#fff' : n.kind === 'j' ? '#0c6a3c' : n.kind === 'r' ? '#0d3b7a' : '#f2c230'; x.strokeStyle = '#201e1d'; x.lineWidth = 1.2;
+    const r = n.kind === 'k' ? clamp(2.5 + z*0.6, 2.5, 5.5) : clamp(2 + z*0.5, 2, 5);
+    x.beginPath(); if (n.kind === 'j') x.rect(a - r, b - r, 2*r, 2*r); else x.arc(a, b, r, 0, Math.PI*2); x.fill(); x.stroke(); }
+  const pri = n => n.kind === 'k' && n.city === n.name ? 0 : n.kind === 'j' ? 2 : n.kind === 'k' ? 1 : n.kind === 'r' ? 4 : 3;
+  const boxes = []; x.textBaseline = 'middle';
+  for (const {n, a, b} of pts.sort((p, q) => pri(p.n) - pri(q.n))) {
+    const big = pri(n) === 0, txt = n.kind === 'j' ? n.name : n.kind === 'x' || n.kind === 't' || n.kind === 'g' ? (n.name.startsWith('GT ') ? n.name : 'GT ' + n.name) : n.name;
+    x.font = `${big ? 800 : 600} ${big ? 13 : 11}px Archivo, sans-serif`; const w = x.measureText(txt).width + 4, h = big ? 15 : 13;
+    const bx = [a + 7, b - h/2, w, h];
+    if (boxes.some(q => bx[0] < q[0] + q[2] && bx[0] + bx[2] > q[0] && bx[1] < q[1] + q[3] && bx[1] + bx[3] > q[1])) continue;
+    boxes.push(bx); x.lineWidth = 3; x.strokeStyle = 'rgba(244,241,234,0.92)'; x.strokeText(txt, a + 8, b); x.fillStyle = n.kind === 'j' ? '#0c6a3c' : '#201e1d'; x.fillText(txt, a + 8, b); }
+  // destination and player
+  const d = trip && EV[trip.destIdx]; if (d) { const [a, b] = atP(d.lat, d.lon); x.fillStyle = acc; x.strokeStyle = '#fff'; x.lineWidth = 2; x.beginPath(); x.moveTo(a, b); x.lineTo(a, b - 22); x.lineTo(a + 13, b - 17); x.lineTo(a, b - 12); x.stroke(); x.fill(); }
+  const sel = AT.sel && nodeLL(AT.sel); if (sel) { const [a, b] = atP(sel.lat, sel.lon); x.strokeStyle = acc; x.lineWidth = 3; x.beginPath(); x.arc(a, b, 11, 0, Math.PI*2); x.stroke(); }
+  const pl = playerLL(); if (pl) { const [a, b] = atP(pl.lat, pl.lon); x.save(); x.translate(a, b); x.rotate(pl.hd); x.fillStyle = acc; x.strokeStyle = '#fff'; x.lineWidth = 2.5;
+    x.beginPath(); x.moveTo(0, -12); x.lineTo(8, 9); x.lineTo(0, 4); x.lineTo(-8, 9); x.closePath(); x.stroke(); x.fill(); x.restore(); }
+  // scale bar
+  const kmPx = k/111, nice = [1, 2, 5, 10, 20, 50, 100, 200].find(v => v*kmPx > 60) || 200; x.fillStyle = '#201e1d'; x.fillRect(W - 20 - nice*kmPx, H - 22, nice*kmPx, 3);
+  x.font = '600 11px Archivo, sans-serif'; x.textAlign = 'right'; x.fillText(`${nice} km`, W - 20, H - 32); x.textAlign = 'left';
+  legendText();
+}
+// tap: nearest place, otherwise nearest road
+function atTap(px, py){
+  let best = null, bd = 18;
+  for (const n of NODES.values()) { if (n.lat == null) continue; const [a, b] = atP(n.lat, n.lon), d = Math.hypot(a - px, b - py); if (d < bd) { bd = d; best = n; } }
+  if (best) return showNode(best.key);
+  let road = null, rd = 10, near = null;
+  for (const c of CORRIDORS) for (let i = 0; i < c.nodes.length - 1; i++) { const A = nodeLL(c.nodes[i].key), B = nodeLL(c.nodes[i+1].key);
+    const [ax, ay] = atP(A.lat, A.lon), [bx, by] = atP(B.lat, B.lon), dx = bx - ax, dy = by - ay, L = dx*dx + dy*dy || 1, f = clamp(((px - ax)*dx + (py - ay)*dy)/L, 0, 1), d = Math.hypot(ax + dx*f - px, ay + dy*f - py);
+    if (d < rd) { rd = d; road = c; near = f < 0.5 ? c.nodes[i] : c.nodes[i+1]; } }
+  if (road) return showRoad(road, near);
+  AT.sel = null; $('at-card').hidden = true; reqAtlas();
+}
+function cardActions(key){
+  const act = $('at-act'); act.innerHTML = '';
+  const add = (t, f, pri) => { const b = document.createElement('button'); b.textContent = t; if (pri) b.className = 'pri'; b.onclick = f; act.append(b); };
+  if (key && edgesFrom(key).length && trip && trip.dest !== key) add('Navigasi ke sini', () => { if (setNav(key)) { $('at-card').hidden = true; drawAtlas(); } }, true);
+  if (trip && trip.dest) add('Hapus navigasi', () => { clearNav(); $('at-card').hidden = true; drawAtlas(); });
+  if (key && edgesFrom(key).length) add('Mulai keliling dari sini', () => { closeAtlas(); $('done').hidden = true; startDrive({from: key}); });
+}
+function showNode(key){
+  const n = nodeLL(key); AT.sel = key;
+  $('at-title').textContent = n.kind === 'j' ? nodeLabel(n) : n.name;
+  const roads = [...n.corr].map(id => CORR[id]).filter(c => c.cls !== 'a').map(c => (c.cls === 'n' ? 'Jl. Nasional ' : 'Tol ') + c.short);
+  const acc = [...n.corr].map(id => CORR[id]).filter(c => c.cls === 'a').map(c => c.nodes.find(q => q.key !== key)).map(q => (q.kind === 'k' ? 'kota ' : 'GT ') + q.name);
+  let info = `${KIND_NAME[n.kind] || ''}${n.city && n.city !== n.name ? ' · ' + n.city : ''}. ${roads.join(', ')}${acc.length ? '. Akses: ' + acc.join(', ') : ''}.`;
+  if (PLR && trip && edgesFrom(key).length) { const u = uOfV(PLR), i = replanIdx(u), e = EV[i], legs = e.key === key ? [] : legsFor(e.key, null, key, prevKeyOf(e));
+    if (legs) { const km = Math.max(0, e.rk - rkAt(u)) + legs.reduce((a, l) => a + Math.abs(CORR[l.c].nodes.find(q => q.key === l.b).km - CORR[l.c].nodes.find(q => q.key === l.a).km), 0);
+      const h = legHours(legs) + Math.max(0, e.rk - rkAt(u))/70;
+      info += ` Dari posisi Anda ±${fmtKm(km)} (±${h >= 1.5 ? Math.round(h) + ' jam' : Math.max(1, Math.round(h*60)) + ' menit'} nyata).`; } }
+  if (!edgesFrom(key).length) info += ' Rest area tidak bisa dijadikan tujuan; masuk saat lewat.';
+  $('at-info').textContent = info; cardActions(key); $('at-card').hidden = false; reqAtlas();
+}
+function showRoad(c, near){
+  AT.sel = near.key;
+  const km = Math.abs(c.nodes[c.nodes.length - 1].km - c.nodes[0].km);
+  $('at-title').textContent = c.cls === 'a' ? c.name : (c.cls === 'n' ? 'Jalan Nasional ' : '') + c.name;
+  $('at-info').textContent = `${c.cls === 't' ? 'Jalan tol' : c.cls === 'n' ? 'Jalan nasional' : 'Jalan akses'} · ${fmtKm(km)} · ${c.lanes} lajur per arah · batas ${c.limit} km/jam${c.planned ? ' · rencana' : ''}. ${c.nodes[0].name} – ${c.nodes[c.nodes.length - 1].name}, ${c.nodes.filter(q => q.kind !== 'r').length} titik. Terdekat: ${near.name}.`;
+  cardActions(edgesFrom(near.key).length ? near.key : null); $('at-card').hidden = false; reqAtlas();
+}
+// pointer: drag = pan, two fingers = pinch zoom, tap = select
+const ptrs = new Map(); let moved = 0, pinch = null;
+acv.addEventListener('pointerdown', e => { acv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, {x: e.offsetX, y: e.offsetY}); if (ptrs.size === 1) moved = 0; acv.classList.add('drag');
+  if (ptrs.size === 2) { const [p, q] = [...ptrs.values()]; pinch = {d: Math.hypot(p.x - q.x, p.y - q.y), mx: (p.x + q.x)/2, my: (p.y + q.y)/2}; } });
+acv.addEventListener('pointermove', e => { const o = ptrs.get(e.pointerId); if (!o) return; const dx = e.offsetX - o.x, dy = e.offsetY - o.y; o.x = e.offsetX; o.y = e.offsetY;
+  if (ptrs.size === 1) { moved += Math.abs(dx) + Math.abs(dy); AT.lon -= dx/(AT.k*COSL); AT.lat += dy/AT.k; reqAtlas(); }
+  else if (ptrs.size === 2 && pinch) { moved = 99; const [p, q] = [...ptrs.values()], d = Math.hypot(p.x - q.x, p.y - q.y), mx = (p.x + q.x)/2, my = (p.y + q.y)/2;
+    AT.lon -= (mx - pinch.mx)/(AT.k*COSL); AT.lat += (my - pinch.my)/AT.k; zoomAt(mx, my, d/(pinch.d || d)); pinch = {d, mx, my}; } });
+const ptrUp = e => { if (!ptrs.has(e.pointerId)) return; ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = null;
+  if (!ptrs.size) { acv.classList.remove('drag'); if (moved < 7 && e.type === 'pointerup') atTap(e.offsetX, e.offsetY); } };
+for (const t of ['pointerup', 'pointercancel']) acv.addEventListener(t, ptrUp);
+acv.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.offsetX, e.offsetY, Math.exp(-e.deltaY*(e.deltaMode ? 0.05 : 0.0018))); }, {passive: false});
+$('at-in').onclick = () => zoomAt(AT.W/2, AT.H/2, 1.6); $('at-out').onclick = () => zoomAt(AT.W/2, AT.H/2, 1/1.6);
+$('at-me').onclick = () => { const p = playerLL(); if (p) { AT.lon = p.lon; AT.lat = p.lat; AT.k = Math.max(AT.k, 400); reqAtlas(); } };
+$('at-close').onclick = closeAtlas;
+// search every place of the network
+const norm = t => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+$('at-q').oninput = () => { const q = norm($('at-q').value.trim()), ul = $('at-res'); ul.innerHTML = '';
+  if (q.length < 2) { ul.hidden = true; return; }
+  const hits = [...NODES.values()].filter(n => n.lat != null && (norm(n.name).includes(q) || (n.city && norm(n.city).includes(q))))
+    .sort((a, b) => (norm(b.name).startsWith(q) - norm(a.name).startsWith(q)) || ((a.kind === 'k' ? 0 : 1) - (b.kind === 'k' ? 0 : 1)) || a.name.localeCompare(b.name)).slice(0, 14);
+  for (const n of hits) { const li = document.createElement('li'), b = document.createElement('button'), t = document.createElement('b'), sp = document.createElement('span'), sm = document.createElement('small');
+    t.textContent = KIND_TAG[n.kind] || '•'; sp.textContent = n.kind === 'j' ? nodeLabel(n) : n.name;
+    sm.textContent = [...n.corr].map(id => CORR[id]).filter(c => c.cls !== 'a').map(c => c.short).join(' · '); sp.append(sm);
+    b.append(t, sp); b.onclick = () => { ul.hidden = true; AT.lon = n.lon; AT.lat = n.lat; AT.k = Math.max(AT.k, 700); showNode(n.key); }; li.append(b); ul.append(li); }
+  if (!hits.length) { const li = document.createElement('li'); li.style.padding = '10px'; li.textContent = 'Tidak ditemukan'; ul.append(li); }
+  ul.hidden = false; };
+$('at-q').onkeydown = e => { if (e.key === 'Enter') { const b = $('at-res').querySelector('button'); if (b) b.click(); } };
 
 // ---------- settings panel ----------
 const hud = $('top'), ctrl = $('ctrl');
@@ -1709,7 +1864,7 @@ function apply(id, v){
   else if (id === 'den') { fillTraffic(); rebuildObjects(['site', 'ov']); }
   else if (id === 'cf' || id === 'cfk') { applyTraffic(['cf', 'ut']); fillTraffic(); }
   else if (id === 'ovl') rebuildObjects(['ov']);
-  else if (id === 'lanes' || id === 'scale') startTrip(trip.from, trip.to, true);
+  else if (id === 'lanes' || id === 'scale') startDrive({from: trip.from, legs: trip.dest ? trip.legs : trip.allLegs, dest: trip.dest, keepPos: true});
   renderUI();
 }
 
@@ -1724,12 +1879,29 @@ function fillSelect(sel, val){
 const PRESETS = [['Jakarta → Surabaya (Pantura)', 'N:Jakarta', 'N:Surabaya', 'nr'], ['Bandung → Yogyakarta (Lintas Selatan)', 'N:Bandung', 'N:Yogyakarta', 'nr'],
   ['Jakarta → Puncak → Bandung', 'N:Jakarta', 'N:Bandung', 'nr'], ['Jakarta (kota) → Malang', 'N:Jakarta', 'N:Malang', 'mix'],['Jakarta → Bandung', 'Halim', 'Pasteur'], ['Jakarta → Surabaya', 'Halim', 'Dupak'], ['Merak → Banyuwangi', 'Merak', 'Ketapang'],
   ['Bekasi → Bogor', 'Bekasi Barat', 'Bogor'], ['Bandung → Cirebon', 'Buahbatu', 'Kedawung'], ['Semarang → Solo', 'Krapyak', 'Colomadu'], ['Surabaya → Malang', 'Dupak', 'Malang']];
+const legHours = legs => legs.reduce((a, l) => { const c = CORR[l.c], km = Math.abs(c.nodes.find(n => n.key === l.b).km - c.nodes.find(n => n.key === l.a).km); return a + km/({t: 90, n: 50, a: 30}[c.cls]); }, 0);
+let firstPick = null;
 function planPreview(){
-  const t = buildTrip($('from').value, $('to').value, cfg.mode), el = $('preview');
+  const free = cfg.trip === 'free', el = $('preview');
+  $('to-field').hidden = $('swap').hidden = $('presets-field').hidden = free; $('first-field').hidden = !free;
+  [...$('tripsel').children].forEach(c => c.setAttribute('aria-pressed', c.dataset.t === (free ? 'free' : 'route') ? 'true' : 'false'));
+  if (free) {
+    const from = $('from').value, ch = choicesAt(from, null, 'mix'), fs = $('firstsel'); fs.innerHTML = '';
+    if (firstPick && !ch.some(o => o.e === firstPick)) firstPick = null;
+    const a = btn('Otomatis', !firstPick); a.onclick = () => { firstPick = null; planPreview(); }; fs.append(a);
+    for (const o of ch) { const b = btn(`${o.road} → ${o.toward}`, firstPick === o.e); b.onclick = () => { firstPick = o.e; planPreview(); }; fs.append(b); }
+    const t = tripFromLegs(from, walkFree(from, null, null, firstPick, 60, 'mix'), null, 'mix'); $('go').disabled = !t;
+    el.innerHTML = '';
+    const d = document.createElement('div'); d.className = 'big'; d.textContent = 'Keliling bebas'; el.append(d);
+    const s1 = document.createElement('div'); s1.textContent = `Mulai dari ${NODES.get(from).name}${t ? ' lewat ' + CORR[t.legs[0].c].name : ''}. Tanpa tujuan: jalan terus mengikuti jalan, dan Anda memilih arah di tiap simpang susun, exit atau persimpangan (panel "Arah di").`; el.append(s1);
+    const s2 = document.createElement('div'); s2.className = 'path'; s2.textContent = `Buka Peta (tombol Peta / tombol M) untuk navigasi ke salah satu dari ${NAV_COUNT} tempat: ${NET_SUMMARY}.`; el.append(s2);
+    return;
+  }
+  const t = buildTrip($('from').value, $('to').value, cfg.mode);
   if (!t) { el.textContent = $('from').value === $('to').value ? 'Pilih tujuan yang berbeda.' : 'Rute tidak ditemukan.'; $('go').disabled = true; return; }
   $('go').disabled = false;
   const jcts = t.ev.slice(0, t.destIdx + 1).filter(e => e.turn).length, exits = t.ev.slice(1, t.destIdx).filter(e => e.kind === 'x').length, towns = t.ev.slice(1, t.destIdx + 1).filter(e => e.kind === 'k').length;
-  const hrs = t.legs.reduce((a, l) => { const c = CORR[l.c], km = Math.abs(c.nodes.find(n => n.key === l.b).km - c.nodes.find(n => n.key === l.a).km); return a + km/({t: 90, n: 50, a: 30}[c.cls]); }, 0);
+  const hrs = legHours(t.legs);
   const planned = t.corridors.some(c => CORR[c].planned);
   el.innerHTML = '';
   const d = document.createElement('div'); d.className = 'big'; d.textContent = fmtKm(t.total); el.append(d);
@@ -1740,35 +1912,41 @@ function planPreview(){
 const MODES = [['mix', 'Tol + jalan nasional (tercepat)'], ['toll', 'Utamakan tol'], ['nr', 'Jalan nasional saja']];
 function setMode(m){ cfg.mode = m; saveCfg(); [...$('modesel').children].forEach(c => c.setAttribute('aria-pressed', c.dataset.m === m ? 'true' : 'false')); }
 function openPlanner(){
-  fillSelect($('from'), trip ? trip.from : cfg.from); fillSelect($('to'), trip ? trip.to : cfg.to);
+  fillSelect($('from'), trip ? trip.from : cfg.from); fillSelect($('to'), trip && trip.dest && [...$('to').options].some(o => o.value === trip.dest) ? trip.dest : cfg.to);
+  const ts = $('tripsel'); ts.innerHTML = '';
+  for (const [k, l] of [['route', 'Rute (A → B)'], ['free', 'Keliling bebas']]) { const x = btn(l, (cfg.trip || 'route') === k); x.dataset.t = k; x.onclick = () => { cfg.trip = k; saveCfg(); planPreview(); }; ts.append(x); }
   const pr = $('presets'); pr.innerHTML = '';
   for (const [label, a, b, m] of PRESETS) { const x = btn(label, false); x.onclick = () => { $('from').value = a; $('to').value = b; setMode(m || 'mix'); planPreview(); }; pr.append(x); }
   const ms = $('modesel'); ms.innerHTML = '';
   for (const [k, l] of MODES) { const x = btn(l, cfg.mode === k); x.dataset.m = k; x.onclick = () => { setMode(k); planPreview(); }; ms.append(x); }
   const vs = $('vehsel'); vs.innerHTML = '';
   for (const [k, s] of Object.entries(VEH)) { const x = btn(`${s.label} · ${s.gol}`, cfg.veh === k); x.onclick = () => { cfg.veh = k; [...vs.children].forEach(c => c.setAttribute('aria-pressed', 'false')); x.setAttribute('aria-pressed', 'true'); }; vs.append(x); }
-  planPreview(); $('plan').hidden = false; $('done').hidden = true;
+  firstPick = null; planPreview(); $('plan').hidden = false; $('done').hidden = true;
 }
-$('from').onchange = $('to').onchange = planPreview;
+$('from').onchange = () => { firstPick = null; planPreview(); }; $('to').onchange = planPreview;
 $('swap').onclick = () => { const a = $('from').value; $('from').value = $('to').value; $('to').value = a; planPreview(); };
-$('go').onclick = () => { $('plan').hidden = true; cfg.from = $('from').value; cfg.to = $('to').value; saveCfg(); startTrip(cfg.from, cfg.to); };
+$('go').onclick = () => { $('plan').hidden = true; cfg.from = $('from').value; if (cfg.trip !== 'free') cfg.to = $('to').value; saveCfg();
+  if (cfg.trip === 'free') startDrive({from: cfg.from, first: firstPick}); else startTrip(cfg.from, cfg.to); };
 $('plan-close').onclick = () => { if (trip) $('plan').hidden = true; };
 
+// leaving the route on a ramp or at an intersection keeps you driving: the trip continues from that place
 function finishExit(site){
-  stats.done = true; PLR.vel = 0;
-  if (site.i === trip.destIdx) return arrive(site);
-  const d = $('done'); $('done-title').textContent = `Keluar di ${site.name}`;
-  if (site.kind === 'k') $('done-title').textContent = `Belok kiri di ${site.name}`;
-  if (site.kind === 'j') $('done-title').textContent = `Keluar rute di ${nodeLabel(site)}`;
-  $('done-body').textContent = site.kind === 'j' ? `Anda mengambil ramp simpang susun dan meninggalkan rute. Rute baru dari ${nodeLabel(site)} ke ${EV[trip.destIdx].name} siap dihitung.` : site.kind === 'k' ? `Anda meninggalkan rute. Rute baru dari ${site.name} ke ${EV[trip.destIdx].name} siap dihitung.` : site.i > trip.destIdx ? `Exit tujuan (${EV[trip.destIdx].name}) terlewat. Putar balik dari ${site.name} untuk kembali ke tujuan.` : `Exit ini bukan tujuan Anda. Rute baru dari ${site.name} ke ${EV[trip.destIdx].name} siap dihitung.`;
-  $('done-go').textContent = 'Lanjut ke tujuan'; $('done-go').onclick = () => { d.hidden = true; startTrip(site.key, trip.to); };
-  d.hidden = false;
+  const v = PLR; v.vel = 0;
+  if (site.i === trip.destIdx) { stats.done = true; return arrive(site, site.kind === 'j' ? v.rampEdge && v.rampEdge.e : exitEdge(site)); }
+  const ed = site.kind === 'j' ? v.rampEdge && v.rampEdge.e : exitEdge(site);
+  if (!ed) { stats.done = true; return arrive(site, null); }
+  continueFrom(site, ed);
 }
-function arrive(site){
-  stats.done = true; const d = $('done'), mins = Math.round((clock - stats.t0)/60);
+function arrive(site, onward){
+  stats.done = true; const d = $('done'), mins = Math.round((clock - stats.t0)/60), routeTrip = !!trip.home && trip.home !== site.key;
   $('done-title').textContent = `Tiba di ${site.name}`;
-  $('done-body').textContent = `${fmtKm(trip.total)} lewat ${trip.corridors.length} ruas tol dalam ${mins} menit simulasi. Tarif tol (perkiraan): Rp ${stats.toll.toLocaleString('id-ID')}. Pelanggaran: ${stats.viol}. Tabrakan: ${stats.crashes}.`;
-  $('done-go').textContent = 'Kembali ke asal'; $('done-go').onclick = () => { d.hidden = true; startTrip(trip.to, trip.from); };
+  $('done-body').textContent = `${fmtKm(rkAt(site.u) + (stats.km0 || 0))} ditempuh dalam ${mins} menit simulasi. Tarif tol (perkiraan): Rp ${stats.toll.toLocaleString('id-ID')}. Pelanggaran: ${stats.viol}. Tabrakan: ${stats.crashes}.`;
+  // keep driving from here without a destination
+  $('done-free').onclick = () => { d.hidden = true; stats.done = false;
+    if (onward !== undefined && onward) continueFrom(site, onward, true); else clearNav(); };
+  $('done-go').hidden = !routeTrip;
+  $('done-go').textContent = 'Kembali ke asal'; $('done-go').onclick = () => { d.hidden = true; const home = trip.home; stats.done = false;
+    if (onward) continueFrom(site, onward, true, home); else setNav(home); };
   d.hidden = false;
 }
 $('done-new').onclick = () => { $('done').hidden = true; openPlanner(); };
@@ -1782,8 +1960,10 @@ hold($('gas'), 'gas'); hold($('brake'), 'brake'); hold($('lft'), 'left'); hold($
 $('auto').onclick = () => { cfg.auto = !cfg.auto; saveCfg(); hudAuto();
   if (cfg.auto && PLR && !PLR.rp) { const n = nAvail(PLR.sd, PLR.p); PLR.lane = clamp(Math.round(PLR.lx), 0, n - 1); if (PLR.vel < 0) PLR.vel = 0; }
   toast(cfg.auto ? 'Autopilot aktif: mengikuti rute dan aturan sampai tujuan' : 'Kemudi manual: bebas, pelanggaran tetap dicatat'); };
+$('mapb').onclick = () => openAtlas();
 $('camb').onclick = () => { const order = ['chase', 'cockpit', 'drone', 'ic', 'orbit'], m = order[(order.indexOf(cfg.cam) + 1) % order.length]; apply('cam', m); };
-addEventListener('keydown', e => { if (e.target.closest && e.target.closest('select')) return;
+addEventListener('keydown', e => { if (e.key === 'Escape' && !$('atlas').hidden) { closeAtlas(); return; }
+  if (e.target.closest && e.target.closest('select,input')) return;
   const k = e.key.toLowerCase();
   if (k === 'arrowup' || k === 'w') { input.gas = true; manualNow(); e.preventDefault(); }
   else if (k === 'arrowdown' || k === 's') { input.brake = true; manualNow(); e.preventDefault(); }
@@ -1791,7 +1971,7 @@ addEventListener('keydown', e => { if (e.target.closest && e.target.closest('sel
   else if (k === 'arrowright' || k === 'd') { input.right = true; manualNow(); e.preventDefault(); }
   else if (k === 'p' && !e.repeat) $('auto').click();
   else if (k === 'c' && !e.repeat) $('camb').click();
-  else if (k === 'm' && !e.repeat) map.click(); });
+  else if (k === 'm' && !e.repeat) { if ($('atlas').hidden) openAtlas(); else closeAtlas(); } });
 addEventListener('keyup', e => { const k = e.key.toLowerCase(); if (k === 'arrowup' || k === 'w') input.gas = false; if (k === 'arrowdown' || k === 's') input.brake = false;
   if (k === 'arrowleft' || k === 'a') input.left = false; if (k === 'arrowright' || k === 'd') input.right = false; });
 addEventListener('blur', () => { input.gas = input.brake = input.left = input.right = false; });
@@ -1800,38 +1980,174 @@ renderer.domElement.addEventListener('pointerdown', () => { if (MOBILE && camMod
 // ================================================================
 // TRIP START
 // ================================================================
-function startTrip(from, to, keepPos){
-  const t = buildTrip(from, to, cfg.mode) || buildTrip(from, to, 'mix'); if (!t) return toast('Rute tidak ditemukan', 'bad');
+const LOCK = 1100;   // world metres: closer than this the road ahead is already built and the plan can no longer change
+const prevKeyOf = e => { const l = trip.allLegs[e.legIdx]; return l ? l.a : null; };
+const isFree = () => !trip.dest;
+function legsFor(from, first, dest, prev = null){
+  if (!dest) return walkFree(from, prev, null, first, 60, 'mix');
+  const head = first ? [{a: from, b: first.to, c: first.c}] : [], s0 = first ? first.to : from;
+  if (s0 === dest) return head;
+  const ban = first ? from : prev, r = findRoute(s0, dest, cfg.mode, ban) || findRoute(s0, dest, cfg.mode) || findRoute(s0, dest, 'mix', ban) || findRoute(s0, dest, 'mix');
+  return r ? head.concat(r) : null;
+}
+function startDrive({from, first = null, dest = null, legs = null, keepPos = false, cont = false, prev = null, home}){
+  legs = legs || legsFor(from, first, dest, prev);
+  const t = legs && legs.length ? tripFromLegs(from, legs, dest, cfg.mode) : null; if (!t) { toast('Rute tidak ditemukan', 'bad'); return false; }
+  t.home = home !== undefined ? home : (cont || keepPos) && trip ? trip.home : (dest ? from : null);
   const keepU = keepPos && PLR ? rkAt(uOfV(PLR)) : null;
   clearWorld(); vehicles.forEach(killVehicle); rampers.forEach(killVehicle); locals.forEach(killVehicle); vehicles = []; rampers = []; locals = []; PLR = null; PCACHE.clear();
+  EV = []; ZONES = []; OVS = []; OPENS = [];
   layoutTrip(t);
-  Object.assign(stats, {t0: clock, toll: 0, viol: 0, crashes: 0, lastPay: 0, missed: false, done: false, log: []});
+  if (!cont && !keepPos) Object.assign(stats, {t0: clock, toll: 0, viol: 0, crashes: 0, lastPay: 0, km0: 0, log: []});
+  Object.assign(stats, {missed: false, done: false});
   spawnPlayer();
   if (keepU != null) { let u = 0; for (let i = 1; i < EV.length; i++) if (EV[i].rk >= keepU) { const a = EV[i-1], b = EV[i]; u = a.u + (b.u - a.u)*(keepU - a.rk)/((b.rk - a.rk) || 1); break; }
     const rs = RSITES.concat(PLAZAS).find(s => Math.abs(s.u - u) < 400); if (rs) u = rs.u + 420;
-    PLR.p = Math.max(PLR.p, u); camU = PLR.p; stats.lastPay = keepU; }
+    PLR.p = Math.max(PLR.p, u); camU = PLR.p; }
   setupBlocks(true); updateWorld(); fillTraffic();
   rm(vehicles, PLR);
   for (let i = 0; i < 120; i++) { sim(1/20); rampStep(1/20); }
   for (const v of [...vehicles]) if (v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); }
   for (const v of [...rampers]) if (v.rp.sd === PLR.sd && Math.abs(v.p - PLR.p) < 60) { rm(rampers, v); killVehicle(v); }
   vehicles.push(PLR);
-  $('route').textContent = `${EV[0].name} → ${EV[t.destIdx].name}`;
+  setTitle(); choiceSig = '';
   $('plan').hidden = true; setRest(false); hudAuto(); hudLane(); renderUI(); setCam(cfg.cam); drawMap();
-  toast(`${CORR[EV[0].cNext].name} · ${fmtKm(t.total)} ke ${EV[t.destIdx].name}`);
+  if (!cont) toast(dest ? `${CORR[EV[0].cNext].name} · ${fmtKm(t.total)} ke ${EV[t.destIdx].name}` : `Keliling bebas dari ${EV[0].name}: pilih arah di tiap simpang, buka Peta untuk navigasi`);
+  return true;
+}
+function startTrip(from, to, keepPos){ return startDrive({from, dest: to, keepPos}); }
+function setTitle(){ const d = EV[trip.destIdx];
+  $('route').textContent = d ? `${trip.home && trip.home !== trip.from ? NODES.get(trip.home).name : EV[0].name} → ${d.name}` : `Keliling bebas · ${NODES.get(trip.home || trip.from).name}`; }
+
+// continue driving from a site along edge ed (after an exit/junction ramp or a turn at an intersection)
+function continueFrom(site, ed, quiet = false, dest = trip.dest){
+  if (dest === site.key) dest = null;
+  const rkHere = rkAt(site.u), toll = CORR[ed.c].cls === 't';
+  stats.km0 = (stats.km0 || 0) + rkHere;
+  const owed = toll ? Math.max(0, rkHere - stats.lastPay) : 0;
+  const ok = startDrive({from: site.key, first: ed, dest, cont: true, prev: prevKeyOf(site)});
+  if (!ok) return;
+  stats.lastPay = -owed;
+  if (!quiet) toast(`${ed.cls === 'a' ? (site.kind === 'k' ? 'Menuju gerbang tol ' + NODES.get(ed.to).name : 'Jalan akses ke ' + NODES.get(ed.to).name) : CORR[ed.c].name + ' arah ' + towardOfEdge(site.key, ed)}${dest ? ' · rute dihitung ulang' : ''}`);
+}
+const towardOfEdge = (key, ed) => { const o = choicesAt(key, null, 'mix').find(o => o.e.to === ed.to && o.e.c === ed.c); return o ? o.toward : NODES.get(ed.to).name; };
+// the road a junction ramp leads to: the planned turn if there is one, otherwise the road to the left
+function rampEdge(s){
+  const opts = choicesAt(s.key, prevKeyOf(s), 'mix').filter(o => o.e.c !== s.c && CORR[o.e.c].cls === 't'); if (!opts.length) return null;
+  const nl = trip.allLegs[s.legIdx + 1], planned = nl && opts.find(o => o.e.to === nl.b && o.e.c === nl.c);
+  return planned || opts.find(o => o.turn === 'Kiri') || opts[0];
+}
+function exitEdge(s){
+  const a = edgesFrom(s.key).find(e => CORR[e.c].cls === 'a'); if (a) return a;
+  const o = choicesAt(s.key, prevKeyOf(s), 'mix').find(o => o.e.c !== s.c); return o ? o.e : null;
+}
+function leftEdge(s){
+  const prev = prevKeyOf(s), opts = choicesAt(s.key, prev, 'mix').map(o => ({o, d: turnDeg(prev, s.key, o.e.to)})).filter(x => x.d < -35 && x.d > -160);
+  if (!opts.length) return null;
+  return opts.sort((a, b) => Math.abs(a.d + 90) - Math.abs(b.d + 90))[0].o.e;
+}
+
+// ---------- re-planning the road ahead without rebuilding the world ----------
+function relayout(t, keepN){
+  const s0 = EV[keepN], before = s0 && [s0.kind, s0.cNext, !!s0.turn].join();
+  layoutTrip(t, keepN);
+  const s1 = EV[keepN], changed = !s0 || before !== [s1.kind, s1.cNext, !!s1.turn].join(), cut = s1.u;
+  const byRef = new Map(OBJ.map(o => [o.s || o.z || o.o, o]));
+  for (const [o, gs] of [...built]) { built.delete(o); const n = byRef.get(o.s || o.z || o.o);
+    if (n && n.type === o.type && !(changed && o.s === s1)) { built.set(n, gs); continue; }
+    freeObj(gs);
+    if (o.type === 'site') { o.s.bays = {'1': null, '-1': null}; for (const v of [...rampers]) if (!v.player && v.rp.site === o.s) { rm(rampers, v); killVehicle(v); } } }
+  for (const [ci, g] of [...chunks]) if ((ci + 1)*CH > cut - 1) { dropSolids([g]); dispose(g); chunks.delete(ci); }
+  setupBlocks(true); updateWorld();
+  for (const v of [...vehicles]) if (!v.player && v.sd*v.p > cut - 200 && v.lane >= nAvail(v.sd, v.p)) { rm(vehicles, v); killVehicle(v); }
+  choiceSig = ''; setTitle(); drawMap(); if (!$('atlas').hidden) drawAtlas();
+}
+// first route event far enough ahead that the road after it can still change
+function replanIdx(u, needChoice = false){
+  for (let i = Math.max(1, evAt(u) + 1); i < EV.length; i++) { const e = EV[i];
+    if (!e.end || e.u < u + LOCK) continue;
+    if (!needChoice || choicesAt(e.key, prevKeyOf(e), 'mix').length >= 2) return i;
+    if (e.u > u + 80000) break; }
+  return needChoice ? -1 : EV.length - 1;
+}
+function replan(i, tail, dest){
+  const e = EV[i], legs = trip.allLegs.slice(0, e.legIdx + 1).concat(tail);
+  const t = tripFromLegs(trip.from, legs, dest, cfg.mode); if (!t) return false;
+  t.home = trip.home; relayout(t, i); return true;
+}
+function ensureAhead(){
+  if (!trip || !PLR) return;
+  const u = uOfV(PLR), lastE = EV[EV.length - 1]; if (lastE.u - u > 16000) return;
+  const last = trip.allLegs[trip.allLegs.length - 1], tail = walkFree(last.b, last.a, last.c, null, 60, 'mix');
+  // past the destination (arrived, or still on the tail): keep the destination where it is and extend the road
+  const keep = trip.dest, dl = keep ? EV[trip.destIdx].legIdx : -1, done = stats.done;
+  if (!tail.length || !replan(EV.length - 1, tail, null) || !keep) return;
+  const j = EV.findIndex(e => e.key === keep && e.legIdx === dl && e.end); if (j >= 0) markDest(j, true); stats.done = done;
+}
+// Maps navigation: route from the next changeable place to dest (any node of the network)
+function setNav(dest, quiet = false){
+  if (!trip || !PLR || !NODES.has(dest)) return false;
+  const u = uOfV(PLR), i = replanIdx(u);
+  // the destination is already on the road ahead: just mark it
+  for (let j = Math.max(1, evAt(u) + 1); j <= i; j++) if (EV[j].key === dest && EV[j].end && EV[j].u > u + 30) return markDest(j);
+  const e = EV[i], tail = e.key === dest ? [] : legsFor(e.key, null, dest, prevKeyOf(e));
+  if (!tail) { toast('Rute ke ' + NODES.get(dest).name + ' tidak ditemukan', 'bad'); return false; }
+  if (!replan(i, tail, dest)) return false;
+  if (!trip.home) trip.home = trip.from;
+  Object.assign(stats, {missed: false, done: false});
+  if (!quiet) toast(`Navigasi ke ${NODES.get(dest).name} · ${fmtKm(Math.max(0, EV[trip.destIdx].rk - rkAt(u)))}`);
+  setTitle(); return true;
+}
+function markDest(j, quiet = false){
+  for (const e of EV) delete e.dest;
+  trip.dest = EV[j].key; trip.destIdx = j; trip.total = EV[j].rk; trip.free = false; EV[j].dest = true;
+  trip.legs = trip.allLegs.slice(0, EV[j].legIdx + 1);
+  Object.assign(stats, {missed: false, done: false}); setTitle(); drawMap(); if (!quiet) toast(`Navigasi ke ${EV[j].name} · ${fmtKm(EV[j].rk - rkAt(uOfV(PLR)))}`);
+  return true;
+}
+function clearNav(){
+  for (const e of EV) delete e.dest;
+  trip.dest = null; trip.destIdx = -1; trip.free = true; trip.legs = trip.allLegs; stats.done = false;
+  setTitle(); drawMap(); toast('Navigasi dimatikan · keliling bebas');
+}
+// pick the road to take at route event i (free driving)
+function chooseAt(i, ed){
+  const e = EV[i]; if (!e || e.u < uOfV(PLR) + LOCK - 50) return toast('Terlalu dekat untuk ganti arah', 'warn');
+  const tail = [{a: e.key, b: ed.to, c: ed.c}].concat(walkFree(ed.to, e.key, ed.c, null, 50, 'mix'));
+  replan(i, tail, null);
+}
+let choiceSig = '';
+function updateChoice(u){
+  const el = $('choice');
+  const di = trip && !trip.dest && !stats.done && PLR && !PLR.rp ? replanIdx(u, true) : -1;
+  if (di < 0) { el.hidden = true; choiceSig = ''; return; }
+  const e = EV[di], prev = prevKeyOf(e), nl = trip.allLegs[e.legIdx + 1], ch = choicesAt(e.key, prev, 'mix');
+  const d = Math.max(0, e.rk - rkAt(u));
+  $('ch-d').textContent = fmtKm(d);
+  const sig = e.i + '|' + (nl ? nl.b + nl.c : '');
+  if (sig === choiceSig && !el.hidden) return; choiceSig = sig;
+  $('ch-name').textContent = e.kind === 'j' ? nodeLabel(e) : e.kind === 'k' ? 'Simpang ' + e.name : e.kind === 'x' || e.kind === 'te' ? 'Exit ' + e.name : e.name;
+  const box = $('ch-opts'); box.innerHTML = '';
+  for (const o of ch.sort((a, b) => turnDeg(prev, e.key, a.e.to) - turnDeg(prev, e.key, b.e.to))) {
+    const on = nl && nl.b === o.e.to && nl.c === o.e.c, b = btn('', on);
+    const t = document.createElement('b'); t.textContent = o.turn; const r = document.createElement('span'); r.textContent = `${o.road} → ${o.toward}`;
+    b.append(t, r); b.onclick = () => { if (!on) chooseAt(e.i, o.e); };
+    box.append(b); }
+  el.hidden = false;
 }
 
 try { await Promise.race([document.fonts.load('700 64px Archivo'), new Promise(r => setTimeout(r, 2500))]); } catch(e) {}
 setTod(cfg.tod);
-startTrip(NODES.has(cfg.from) ? cfg.from : DEF.from, NODES.has(cfg.to) ? cfg.to : DEF.to);
+if (cfg.trip === 'free') startDrive({from: NODES.has(cfg.from) ? cfg.from : DEF.from}); else startTrip(NODES.has(cfg.from) ? cfg.from : DEF.from, NODES.has(cfg.to) ? cfg.to : DEF.to);
 if (!localStorage.getItem('tj_seen')) { try { localStorage.setItem('tj_seen', '1'); } catch(e) {} openPlanner(); }
-window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam};
+window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam, startDrive, setNav, clearNav, chooseAt, replanIdx, openAtlas, closeAtlas, atTap, AT, get chunks(){ return chunks; }, get OBJ(){ return OBJ; }};
 
 let last = performance.now(), mapT = 0, frames = 0;
 function tick(dt){
   clock += dt;
   sim(dt); rampStep(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt);
   if (PLR) camU = uOfV(PLR);
+  ensureAhead();
   setupBlocks(false); updateWorld(); updateSignals();
 }
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
@@ -1839,10 +2155,10 @@ window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.
 window.__tj.step = (n, dt = 1/20) => { for (let i = 0; i < n; i++) tick(dt); placeGroups(); place(); for (let k = 0; k < 40; k++) updateCam(dt); updateBend(); hudT = 0; updateHud(dt); drawMap(); };
 renderer.setAnimationLoop(now => {
   const dt = Math.min(0.05, (now - last)/1000); last = now; frames++;
-  if (!$('plan').hidden && trip && !stats.done) { composer.render(); return; }
+  if ((!$('plan').hidden && trip && !stats.done) || !$('atlas').hidden) { composer.render(); return; }
   tick(dt);
   placeGroups(); place(); updateCam(dt); flash(); updateBend(); updateHud(dt);
   mapT -= dt; if (mapT <= 0) { mapT = 0.5; drawMap(); }
   composer.render();
 });
-addEventListener('resize', () => { camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); composer.setSize(innerWidth,innerHeight); drawMap(); });
+addEventListener('resize', () => { camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); composer.setSize(innerWidth,innerHeight); drawMap(); reqAtlas(); });

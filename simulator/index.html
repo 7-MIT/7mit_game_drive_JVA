@@ -47,7 +47,19 @@
   .hint{font-size:10px;opacity:.6;width:100%}
 
   /* instruction line: its own row, never inside another panel */
-  #ins{grid-area:ins;align-self:start;justify-self:stretch;border:2px solid var(--color-accent-800);padding:6px 12px;font-size:13px;font-weight:600;background:var(--color-accent);color:#fff;line-height:1.3;text-wrap:balance}
+  #guide{grid-area:ins;align-self:start;display:flex;flex-direction:column;gap:6px;min-width:0}
+  #ins{border:2px solid var(--color-accent-800);padding:6px 12px;font-size:13px;font-weight:600;background:var(--color-accent);color:#fff;line-height:1.3;text-wrap:balance}
+
+  /* free driving: choose the road at the next junction / intersection */
+  #choice{padding:6px 8px 8px;display:grid;gap:5px}
+  .ch-head{display:flex;gap:8px;align-items:baseline;font-size:12px;min-width:0;padding:0 4px}
+  .ch-head span{font-size:9px;letter-spacing:.08em;text-transform:uppercase;opacity:.7;flex:none}
+  #ch-name{font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+  #ch-d{margin-left:auto;font-style:normal;font-weight:600;font-variant-numeric:tabular-nums;flex:none}
+  #ch-opts{display:grid;gap:4px}
+  #ch-opts .opt{display:grid;grid-template-columns:62px minmax(0,1fr);gap:6px;align-items:center;min-height:32px}
+  #ch-opts .opt b{font-size:10px;letter-spacing:.06em;text-transform:uppercase}
+  #ch-opts .opt span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
   /* map + next events */
   #mapbox{grid-area:map;align-self:start;display:flex;flex-direction:column}
@@ -93,7 +105,7 @@
   #brake:active{background:var(--color-accent);border-color:var(--color-accent);color:#fff}
   #lft{grid-column:1;grid-row:2}#rgt{grid-column:1;grid-row:3}
   .mini{grid-column:1/-1;grid-row:1;display:flex;gap:6px}
-  .mini .dbtn{flex:1;min-height:36px;font-size:11px;align-items:center}
+  .mini .dbtn{flex:1;min-height:36px;font-size:11px;align-items:center;padding:6px 5px}
   #auto[aria-pressed="true"]{background:var(--color-accent);border-color:var(--color-accent);color:#fff}
   .keys{grid-column:1/-1;grid-row:4;font-size:10px;line-height:1.35;opacity:.8;text-align:right;color:#111;text-shadow:0 0 6px rgba(255,255,255,.8);width:192px;justify-self:end}
   @media (hover:none), (pointer:coarse){ .keys{display:none} }
@@ -127,7 +139,7 @@
     .lbl{padding:10px 14px 2px;border:0}
     .cell{padding:4px 14px 10px}
     .opt{min-height:44px;flex:1 1 auto}
-    #top.open ~ #mapbox, #top.open ~ #dash, #top.open ~ #ins{visibility:hidden}
+    #top.open ~ #mapbox, #top.open ~ #dash, #top.open ~ #guide{visibility:hidden}
     #dash{align-self:start;justify-self:stretch;grid-template-columns:minmax(0,1fr)}
     #spdbox{border-right:0;border-bottom:2px solid var(--color-text);padding:6px 10px;gap:10px;justify-content:space-between}
     #spd{font-size:34px}
@@ -143,6 +155,8 @@
     #mapbox.big #map{height:min(240px,40dvh)}
     #mapbox.big #next li:nth-child(n+3){display:grid}
     #ins{font-size:12px;padding:5px 10px}
+    #ch-opts{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+    #ch-opts .opt{grid-template-columns:minmax(0,1fr);gap:0;min-height:40px;font-size:11px;padding:3px 7px}
     #drive{justify-self:stretch;grid-template-columns:68px 68px minmax(0,1fr) 84px 84px;grid-template-rows:auto 68px}
     #lft{grid-column:1;grid-row:2}#rgt{grid-column:2;grid-row:2}
     #brake{grid-column:4;grid-row:2}#gas{grid-column:5;grid-row:2}
@@ -159,8 +173,12 @@
     #route{font-size:14px}
     #toggle{min-height:40px;padding:6px 10px}
     #ctrl{grid-area:2/1/3/3;grid-template-columns:110px minmax(0,1fr);z-index:4}
-    #top.open ~ #dash, #top.open ~ #ins{visibility:hidden}
-    #ins{font-size:12px;padding:4px 10px;align-self:start}
+    #top.open ~ #dash, #top.open ~ #guide{visibility:hidden}
+    #ins{font-size:12px;padding:4px 10px}
+    #guide{max-height:100%;overflow:auto}
+    #choice{padding:4px 6px 6px;gap:3px}
+    #ch-opts{grid-template-columns:repeat(auto-fit,minmax(110px,1fr))}
+    #ch-opts .opt{grid-template-columns:minmax(0,1fr);gap:0;min-height:30px;font-size:11px;padding:2px 6px}
     #dash{align-self:end;grid-template-columns:auto}
     #spdbox{border-right:0;border-bottom:2px solid var(--color-text);padding:4px 10px;gap:10px;justify-content:space-between}
     #spd{font-size:30px}
@@ -174,7 +192,7 @@
     #mapbox.big #map{height:min(200px,55dvh)}
     #drive{justify-self:stretch;grid-template-columns:60px 60px auto minmax(0,1fr) 72px 72px;grid-template-rows:54px;gap:6px}
     .mini{grid-column:3;grid-row:1;display:flex}
-    .mini .dbtn{min-width:84px}
+    .mini .dbtn{min-width:70px}
     #lft{grid-column:1;grid-row:1}#rgt{grid-column:2;grid-row:1}
     #brake{grid-column:5;grid-row:1}#gas{grid-column:6;grid-row:1}
   }
@@ -202,6 +220,34 @@
   .help{font-size:12px;line-height:1.5;opacity:.8;margin:0}
   .actions{display:flex;gap:8px;flex-wrap:wrap}
   #done-new{padding:12px 16px;border:2px solid var(--color-text);background:transparent;cursor:pointer;font-weight:600}
+
+  /* full-screen road atlas: drag to pan, wheel / pinch / buttons to zoom, tap a place to navigate */
+  #atlas{position:fixed;inset:0;z-index:8;background:#dfe6ea;display:grid}
+  #atlas-map{width:100%;height:100%;cursor:grab;touch-action:none}
+  #atlas-map.drag{cursor:grabbing}
+  .at-bar{position:absolute;top:max(10px,env(safe-area-inset-top));left:max(10px,env(safe-area-inset-left));right:max(10px,env(safe-area-inset-right));display:flex;gap:0;max-width:560px}
+  .at-bar input{flex:1;min-width:0;border:0;padding:10px 12px;font:inherit;font-size:15px;background:transparent;color:inherit;outline:none}
+  .at-bar button{border:0;border-left:2px solid var(--color-text);background:var(--color-text);color:var(--color-bg);font-weight:800;padding:0 16px;cursor:pointer;min-height:44px}
+  #at-res{position:absolute;top:calc(max(10px,env(safe-area-inset-top)) + 52px);left:max(10px,env(safe-area-inset-left));width:min(560px,calc(100% - 20px));margin:0;padding:0;list-style:none;max-height:50dvh;overflow:auto}
+  #at-res li button{display:grid;grid-template-columns:52px minmax(0,1fr);gap:8px;width:100%;text-align:left;border:0;border-bottom:1px solid var(--color-divider);background:transparent;padding:8px 10px;cursor:pointer;font-size:13px}
+  #at-res li button:hover{background:color-mix(in srgb,var(--color-text) 7%,transparent)}
+  #at-res b{font-size:9px;letter-spacing:.08em;padding:2px 4px;background:var(--color-text);color:var(--color-bg);align-self:center;text-align:center}
+  #at-res small{display:block;opacity:.65;font-size:11px}
+  .at-zoom{position:absolute;right:max(10px,env(safe-area-inset-right));top:50%;transform:translateY(-50%);display:grid;gap:6px}
+  .at-zoom button{width:48px;height:48px;font-size:22px;font-weight:800;cursor:pointer;display:grid;place-items:center;padding:0}
+  #at-me{font-size:12px!important}
+  #at-legend{position:absolute;left:max(10px,env(safe-area-inset-left));bottom:max(10px,env(safe-area-inset-bottom));padding:8px 10px;font-size:11px;display:grid;gap:3px;max-width:calc(100% - 20px)}
+  #at-legend i{display:inline-block;width:22px;height:0;vertical-align:middle;margin-right:6px;border-top:3px solid #201e1d}
+  #at-legend i.n{border-top:2px solid #8a5a28}#at-legend i.a{border-top:1.5px dashed #6d7378}#at-legend i.r{border-top:4px solid var(--color-accent)}
+  #at-nav{font-weight:700}
+  #at-card{position:absolute;right:max(10px,env(safe-area-inset-right));bottom:max(10px,env(safe-area-inset-bottom));width:min(360px,calc(100% - 20px));padding:10px 12px;display:grid;gap:8px}
+  #at-card h3{margin:0;font-size:18px;font-family:var(--font-heading)}
+  #at-card p{margin:0;font-size:12px;line-height:1.45}
+  #at-card .actions button{padding:10px 12px;font-weight:700;cursor:pointer;border:2px solid var(--color-text);background:transparent}
+  #at-card .actions button.pri{background:var(--color-accent);border-color:var(--color-accent);color:#fff}
+  @media (max-width:600px){ #at-legend{display:none} #at-card{left:max(10px,env(safe-area-inset-left));width:auto} .at-zoom{top:auto;bottom:calc(max(10px,env(safe-area-inset-bottom)) + 4px);transform:none} #at-card:not([hidden]) ~ .at-zoom{display:none} }
+  #done-free{padding:12px 16px;border:2px solid var(--color-text);background:var(--color-text);color:var(--color-bg);cursor:pointer;font-weight:800}
+  #tripsel,#firstsel{margin-top:2px}
 
   @media (max-width:600px){ .row2{grid-template-columns:1fr} #swap{justify-self:start} }
 </style>
@@ -243,7 +289,13 @@
     </div>
   </div>
 
-  <div id="ins" hidden></div>
+  <div id="guide">
+    <div id="ins" hidden></div>
+    <div id="choice" class="panel" hidden>
+      <div class="ch-head"><span>Arah di</span><b id="ch-name">—</b><em id="ch-d"></em></div>
+      <div id="ch-opts"></div>
+    </div>
+  </div>
   <div id="toast" class="panel" role="status" aria-live="polite"></div>
   <button id="resume" hidden>Lanjut perjalanan →</button>
 
@@ -251,6 +303,7 @@
     <div class="mini">
       <button id="auto" class="dbtn" aria-pressed="false">Autopilot</button>
       <button id="camb" class="dbtn">Kamera</button>
+      <button id="mapb" class="dbtn">Peta</button>
     </div>
     <button id="lft" class="dbtn" aria-label="Setir ke kiri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"><path d="M15 5l-7 7 7 7"/></svg></button>
     <button id="rgt" class="dbtn" aria-label="Setir ke kanan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"><path d="M9 5l7 7-7 7"/></svg></button>
@@ -264,17 +317,19 @@
   <div class="dlg panel" role="dialog" aria-labelledby="plan-title">
     <div class="dlg-head"><h2 id="plan-title">Rencana perjalanan</h2><button id="plan-close" class="x" aria-label="Tutup">×</button></div>
     <div class="dlg-body">
+      <div class="field"><label>Jenis perjalanan</label><div id="tripsel" class="chips"></div></div>
       <div class="row2">
         <div class="field"><label for="from">Dari (gerbang tol / kota)</label><select id="from" class="input"></select></div>
         <button id="swap" aria-label="Tukar asal dan tujuan">⇄</button>
-        <div class="field"><label for="to">Ke (gerbang tol / kota)</label><select id="to" class="input"></select></div>
+        <div class="field" id="to-field"><label for="to">Ke (gerbang tol / kota)</label><select id="to" class="input"></select></div>
       </div>
-      <div class="field"><label>Jenis jalan</label><div id="modesel" class="chips"></div></div>
-      <div class="field"><label>Rute cepat</label><div id="presets" class="chips"></div></div>
+      <div class="field" id="first-field"><label>Arah awal</label><div id="firstsel" class="chips"></div></div>
+      <div class="field"><label>Jenis jalan (rute dan navigasi Peta)</label><div id="modesel" class="chips"></div></div>
+      <div class="field" id="presets-field"><label>Rute cepat</label><div id="presets" class="chips"></div></div>
       <div class="field"><label>Kendaraan</label><div id="vehsel" class="chips"></div></div>
       <div id="preview"></div>
       <button id="go">Mulai mengemudi →</button>
-      <p class="help">Lalu lintas lajur kiri. Kemudi manual itu bebas: tahan ← / → untuk menyetir ke mana saja, termasuk bahu jalan, lajur lawan di jalan nasional, atau lajur yang ditutup. Tahan rem saat berhenti untuk mundur. Untuk keluar, setir ke kiri ke ramp saat papan EXIT terlihat (berlaku juga di simpang susun dan rest area); di jalan nasional, setir ke kiri di persimpangan untuk belok. Pelanggaran dan tabrakan tetap dicatat. Autopilot selalu mengikuti rute dan aturan: berhenti di gerbang tol dan lampu merah, patuh batas kecepatan, truk dan bus di lajur kiri.</p>
+      <p class="help">Lalu lintas lajur kiri. Kemudi manual itu bebas: tahan ← / → untuk menyetir ke mana saja, termasuk bahu jalan, lajur lawan di jalan nasional, atau lajur yang ditutup. Tahan rem saat berhenti untuk mundur. Untuk keluar, setir ke kiri ke ramp saat papan EXIT terlihat (berlaku juga di simpang susun dan rest area); di jalan nasional, setir ke kiri di persimpangan untuk belok. Perjalanan berlanjut dari jalan yang Anda ambil. Mode Keliling bebas tidak punya tujuan: pilih arah di panel tiap simpang, atau buka Peta (M) untuk navigasi ke kota, gerbang tol atau simpang mana saja. Pelanggaran dan tabrakan tetap dicatat. Autopilot selalu mengikuti rute dan aturan: berhenti di gerbang tol dan lampu merah, patuh batas kecepatan, truk dan bus di lajur kiri.</p>
     </div>
   </div>
 </div>
@@ -284,9 +339,27 @@
     <div class="dlg-head"><h2 id="done-title">Tiba</h2></div>
     <div class="dlg-body">
       <p id="done-body" class="help" style="opacity:1;font-size:14px"></p>
-      <div class="actions"><button id="done-go">Lanjut</button><button id="done-new">Rute lain</button></div>
+      <div class="actions"><button id="done-go">Kembali ke asal</button><button id="done-free">Lanjut keliling</button><button id="done-new">Rute lain</button></div>
     </div>
   </div>
+</div>
+
+<div id="atlas" hidden>
+  <canvas id="atlas-map" aria-label="Peta jaringan jalan Pulau Jawa (geser dan zoom)"></canvas>
+  <div class="at-bar panel"><input id="at-q" type="search" placeholder="Cari kota, gerbang tol, simpang susun…" autocomplete="off" aria-label="Cari tempat"><button id="at-close" aria-label="Tutup peta">Tutup</button></div>
+  <ul id="at-res" class="panel" hidden></ul>
+  <div id="at-legend" class="panel">
+    <div><i></i><span id="lg-t">Jalan tol</span></div>
+    <div><i class="n"></i><span id="lg-n">Jalan nasional</span></div>
+    <div><i class="a"></i><span id="lg-a">Jalan akses gerbang tol</span></div>
+    <div><i class="r"></i><span id="at-nav">Rute di depan</span></div>
+  </div>
+  <div id="at-card" class="panel" hidden>
+    <h3 id="at-title">—</h3>
+    <p id="at-info"></p>
+    <div class="actions" id="at-act"></div>
+  </div>
+  <div class="at-zoom"><button id="at-in" class="dbtn" aria-label="Perbesar">+</button><button id="at-out" class="dbtn" aria-label="Perkecil">−</button><button id="at-me" class="dbtn" aria-label="Posisi saya">Saya</button></div>
 </div>
 
 <script type="module" src="main.js"></script>
