@@ -64,29 +64,41 @@ composer.addPass(bloom); composer.addPass(new OutputPass());
 // near the car with their own winding (z, metres) and hill (w, metres) amplitude: the Lintas Selatan and other mountain
 // roads wind (kelak-kelok) and climb, Cipularang / Semarang–Solo / Bocimi roll over the hills.
 const SEG_N = 6, segU = Array.from({length: SEG_N}, () => new THREE.Vector4(0, -1, 0, 0));
-const CU = {uW:{value:0}, uCz:{value:0}, uB0:{value:0}, uB1:{value:0}, vB0:{value:0}, vB1:{value:0}, uSeg:{value:segU}, uX:{value:new THREE.Vector3(1, 0, 0)}};   // uX: base bend × , extra winding, extra hills
+const EL_N = 3, elU = Array.from({length: EL_N}, () => new THREE.Vector4(0, -1, 0, 1));
+const CU = {uW:{value:0}, uCz:{value:0}, uB0:{value:0}, uB1:{value:0}, vB0:{value:0}, vB1:{value:0}, uSeg:{value:segU}, uX:{value:new THREE.Vector3(1, 0, 0)}, uEl:{value:elU}};   // uX: base bend × , extra winding, extra hills
 const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a)/(b - a))); return t*t*(3 - 2*t); };
 function segAmp(u){ let w = CU.uX.value.y, h = CU.uX.value.z; for (const q of segU) { if (q.y <= q.x) continue; const k = sstep(q.x, q.x + 400, u)*(1 - sstep(q.y - 400, q.y, u)); w += k*q.z; h += k*q.w; } return [w, h]; }
 const gC = u => { const w = segAmp(u)[0]; return CU.uX.value.x*(45*Math.sin(u/450) + 20*Math.sin(u/200+1.3)) + w*(Math.sin(u/80 + 0.7) + 0.45*Math.sin(u/45 + 2.1)); };
 const gY = u => { const h = segAmp(u)[1]; return h*(0.7*Math.sin(u/520) + 0.3*Math.sin(u/230 + 2)); };
 const gD = u => gC(u + 0.5) - gC(u - 0.5), gYD = u => gY(u + 0.5) - gY(u - 0.5);
-const BEND_HEAD = `uniform float uW; uniform float uCz; uniform float uB0; uniform float uB1; uniform float vB0; uniform float vB1; uniform vec4 uSeg[${SEG_N}]; uniform vec3 uX;
+const BEND_HEAD = `uniform float uW; uniform float uCz; uniform float uB0; uniform float uB1; uniform float vB0; uniform float vB1; uniform vec4 uSeg[${SEG_N}]; uniform vec3 uX; uniform vec4 uEl[${EL_N}];
 float segK(vec4 q, float u){ if (q.y <= q.x) return 0.0; return smoothstep(q.x, q.x + 400.0, u)*(1.0 - smoothstep(q.y - 400.0, q.y, u)); }
 float bendX(float z){ float u = uW - z, w = uX.y; for (int i = 0; i < ${SEG_N}; i++) w += segK(uSeg[i], u)*uSeg[i].z;
   return uX.x*(45.0*sin(u/450.0) + 20.0*sin(u/200.0 + 1.3)) + w*(sin(u/80.0 + 0.7) + 0.45*sin(u/45.0 + 2.1)) - uB0 - uB1*(z - uCz); }
 float bendY(float z){ float u = uW - z, h = uX.z; for (int i = 0; i < ${SEG_N}; i++) h += segK(uSeg[i], u)*uSeg[i].w;
   return h*(0.7*sin(u/520.0) + 0.3*sin(u/230.0 + 2.0)) - vB0 - vB1*(z - uCz); }
+float elevY(float z){ float u = uW - z, e = 0.0; for (int i = 0; i < ${EL_N}; i++){ vec4 q = uEl[i]; if (q.y > q.x) e += q.z*smoothstep(q.x, q.x + q.w, u)*(1.0 - smoothstep(q.y - q.w, q.y, u)); } return e; }
 `;
 const BEND_CHUNK = THREE.ShaderChunk.project_vertex.replace('mvPosition = modelViewMatrix * mvPosition;',
-  'vec4 bwp = modelMatrix * mvPosition; bwp.x += bendX(bwp.z); bwp.y += bendY(bwp.z); mvPosition = viewMatrix * bwp;');
-const WORLD_CHUNK = '#include <worldpos_vertex>\n#if defined( USE_ENVMAP ) || defined( DISTANCE ) || defined ( USE_SHADOWMAP ) || defined ( USE_TRANSMISSION ) || NUM_SPOT_LIGHT_COORDS > 0\nworldPosition.x += bendX(worldPosition.z); worldPosition.y += bendY(worldPosition.z);\n#endif';
+  'vec4 bwp = modelMatrix * mvPosition; bwp.x += bendX(bwp.z); bwp.y += bendY(bwp.z);\n#ifdef TERRAIN\nbwp.y -= elevY(bwp.z);\n#endif\nmvPosition = viewMatrix * bwp;');
+const WORLD_CHUNK = '#include <worldpos_vertex>\n#if defined( USE_ENVMAP ) || defined( DISTANCE ) || defined ( USE_SHADOWMAP ) || defined ( USE_TRANSMISSION ) || NUM_SPOT_LIGHT_COORDS > 0\nworldPosition.x += bendX(worldPosition.z); worldPosition.y += bendY(worldPosition.z);\n#ifdef TERRAIN\nworldPosition.y -= elevY(worldPosition.z);\n#endif\n#endif';
 // winding / hill amplitude per road
 const ROADFORM = {selatan1: [24, 18], garut: [24, 20], pansela1: [22, 14], pansela2: [26, 18], pansela3: [18, 10], pansela4: [22, 16], pansela5: [24, 16],
   puncak: [26, 22], sindang: [26, 20], kuningan: [20, 14], wonosobo: [24, 20], magelang: [16, 12], batu: [24, 20], pelratu: [22, 14], sukabumi: [16, 12],
   banjar: [16, 8], malsel: [20, 14], ponorogo: [20, 14], wonogiri: [20, 14], lembang: [22, 18], tegal: [14, 10], jasinga: [14, 8], sumedang: [18, 14],
   cipularang: [6, 14], semsol: [5, 12], bocimi: [6, 12], cisumdawu: [6, 14], gempan: [4, 8], soroja: [4, 8]};
+// jalan layang: these toll roads run on a viaduct (deck height in metres)
+const ELEVATED = {juanda: 10, mbz: 16, becakayu: 18, wiyoto: 12};
+let ELV = [];
+function layoutElev(){ ELV = [];
+  for (let i = 0; i < EV.length - 1; i++) { const H = ELEVATED[EV[i].cNext]; if (!H) continue; const a = EV[i].u, b = EV[i + 1].u, last = ELV[ELV.length - 1];
+    if (last && Math.abs(last[1] - a) < 1 && last[2] === H) last[1] = b; else ELV.push([a, b, H]); }
+  for (const q of ELV) q[3] = Math.min(700, (q[1] - q[0])/3); }
+function elevAt(u){ let e = 0; for (const [a, b, H, r] of ELV) if (u > a && u < b) e += H*sstep(a, a + r, u)*(1 - sstep(b - r, b, u)); return e; }
 let segT = 0;
 function updateSegs(){
+  for (const q of elU) q.set(0, -1, 0, 1);
+  ELV.filter(q => q[1] > camU - 3000 && q[0] < camU + 4000).slice(0, EL_N).forEach((q, j) => elU[j].set(...q));
   for (const q of segU) q.set(0, -1, 0, 0);
   if (!EV.length) return;
   const out = []; let i0 = Math.max(0, evAt(camU - 2600)), i1 = Math.min(EV.length - 1, evAt(camU + 3200) + 1);
@@ -94,13 +106,14 @@ function updateSegs(){
     if (last && Math.abs(last[1] - a) < 1 && last[2] === f[0] && last[3] === f[1]) last[1] = b; else out.push([a, b, f[0], f[1]]); }
   out.sort((p, q) => Math.abs((p[0] + p[1])/2 - camU) - Math.abs((q[0] + q[1])/2 - camU)).slice(0, SEG_N).forEach((q, j) => segU[j].set(...q));
 }
-function patchMat(m){ if (!m || m.userData.bent) return; m.userData.bent = true;
+function patchMat(m){ if (!m || m.userData.bent) return; m.userData.bent = true; if (m.userData.terrain) m.defines = {...(m.defines || {}), TERRAIN: ''};
   m.onBeforeCompile = sh => { Object.assign(sh.uniforms, CU);
     sh.vertexShader = BEND_HEAD + sh.vertexShader.replace('#include <project_vertex>', BEND_CHUNK).replace('#include <worldpos_vertex>', WORLD_CHUNK); };
   m.needsUpdate = true; }
 const depthMat = new THREE.MeshDepthMaterial({depthPacking: THREE.RGBADepthPacking}); patchMat(depthMat);
+const depthMatT = new THREE.MeshDepthMaterial({depthPacking: THREE.RGBADepthPacking}); depthMatT.userData.terrain = true; patchMat(depthMatT);
 const bendAt = z => gC(camU - z) - CU.uB0.value - CU.uB1.value*(z - CU.uCz.value);
-function bendObj(g){ g.traverse(o => { if (!o.isMesh) return; o.frustumCulled = false; (Array.isArray(o.material) ? o.material : [o.material]).forEach(patchMat); if (o.castShadow) o.customDepthMaterial = depthMat; }); }
+function bendObj(g){ g.traverse(o => { if (!o.isMesh) return; o.frustumCulled = false; (Array.isArray(o.material) ? o.material : [o.material]).forEach(patchMat); if (o.castShadow) o.customDepthMaterial = (Array.isArray(o.material) ? o.material[0] : o.material).userData.terrain ? depthMatT : depthMat; }); }
 function updateBend(){ const cz = camera.position.z; if (--segT <= 0) { segT = 20; updateSegs(); }
   CU.uW.value = camU; CU.uCz.value = cz; CU.uB0.value = gC(camU - cz); CU.uB1.value = -gD(camU - cz); CU.vB0.value = gY(camU - cz); CU.vB1.value = -gYD(camU - cz); }
 
@@ -330,6 +343,7 @@ function layoutTrip(t, keepN = -1){
     }
     EV[i].u = a + gap;
   }
+  layoutElev();
   for (const z of oldZ) if (z.user && !ZONES.includes(z)) ZONES.push(z);
   ZONES.sort((a, b) => a.u - b.u);
   // corridor KM of each event on the corridor that LEAVES it
@@ -347,7 +361,7 @@ function layoutTrip(t, keepN = -1){
   const clear = (u, r) => isToll(u) && !SITES.some(s => Math.abs(s.u - u) < 780 + r) && !ZONES.some(z => Math.abs(z.u - u) < ZEXT[z.type] - 400 + r);
   const lastU = EV[EV.length-1].u;
   // overpasses over toll roads every ~1.5 km, over national roads (outside towns) every ~3 km
-  const clearOv = (u, r) => (isToll(u) || nAt(u) >= 2) && !SITES.some(s => Math.abs(s.u - u) < 780 + r) && !ZONES.some(z => Math.abs(z.u - u) < ZEXT[z.type] - 400 + r);
+  const clearOv = (u, r) => (isToll(u) || nAt(u) >= 2) && elevAt(u) < 0.5 && elevAt(u + 300) < 0.5 && elevAt(u - 300) < 0.5 && !SITES.some(s => Math.abs(s.u - u) < 780 + r) && !ZONES.some(z => Math.abs(z.u - u) < ZEXT[z.type] - 400 + r);
   OVS = []; for (let u = -2600, j = 0; u < lastU + 6000; u += 1450, j++) { let v = u; for (let k = 0; k < 8 && !clearOv(v, 0); k++) v += 180; if (clearOv(v, 0) && (isToll(v) || j % 2 === 0)) OVS.push(oldV.find(o => Math.abs(o.u - v) < 0.5) || {u: v}); }
   OPENS = [];
   const reuse = o => oldO.find(q => q.cf === o.cf && Math.abs(q.u - o.u) < 0.5) || o;
@@ -573,13 +587,13 @@ function buildChunk(i){
     g.add(instanced(dashGeo, white, dp, 0.012));
     // parallel road (Jalan Nasional, 2 lajur per arah)
     const pr = u => eAt(u) + PRC;
-    g.add(strip(us, u => s*(pr(u) - 7.2), u => s*(pr(u) + 7.2), 0.004, asphalt, Z));
+    g.add(strip(us, u => s*(pr(u) - 7.2), u => s*(pr(u) + 7.2), 0.004, prAsphalt, Z));
     g.add(strip(us, u => s*(pr(u) + 7.2), u => s*(pr(u) + 10), 0.003, prVerge, Z));
     g.add(strip(us, u => s*(pr(u) - 9.5), u => s*(pr(u) - 7.2), 0.003, prVerge, Z));
-    for (const o of [-6.9, 6.9]) g.add(strip(us, u => s*(pr(u) + o - 0.07), u => s*(pr(u) + o + 0.07), 0.012, white, Z));
-    for (const o of [-0.15, 0.15]) g.add(strip(us, u => s*(pr(u) + o - 0.06), u => s*(pr(u) + o + 0.06), 0.012, yellowLine, Z));
+    for (const o of [-6.9, 6.9]) g.add(strip(us, u => s*(pr(u) + o - 0.07), u => s*(pr(u) + o + 0.07), 0.012, prWhite, Z));
+    for (const o of [-0.15, 0.15]) g.add(strip(us, u => s*(pr(u) + o - 0.06), u => s*(pr(u) + o + 0.06), 0.012, prYellow, Z));
     const np = []; for (const o of [-3.5, 3.5]) for (let u = Math.ceil(u0/8)*8; u < u1; u += 8) np.push([s*(pr(u) + o), Z(u + 1.5)]);
-    g.add(instanced(prDashGeo, white, np, 0.012));
+    g.add(instanced(prDashGeo, prWhite, np, 0.012));
     // KM post (patok KM)
     const ku = u0 + 60;
     if (!rampSiteNear(ku, 200) && EV.length) { const p = panelMesh(0.5, 0.7, kmPostTex(kmAt(ku).toFixed(1).replace('.', ','))); p.position.set(s*(eAt(ku) + 4.2), 1.1, Z(ku)); p.rotation.y = s < 0 ? 0 : Math.PI; g.add(p, solid(0.1, 0.75, 0.1, signBackMat, s*(eAt(ku) + 4.2), 0.375, Z(ku) + 0.1*(s<0?-1:1))); }
@@ -608,6 +622,7 @@ function buildChunk(i){
   crowns.count = pts.filter((_, j) => j % 2).length; blobs.count = pts.length - crowns.count;
   for (const m of [trunks, crowns, blobs]) { m.castShadow = true; g.add(m); }
   roadside(g, u0, u1, Z, R, true);
+  viaduct(g, u0, u1, Z);
   addSutet(g, u0, u1, Z);
   bendObj(g); scene.add(g); return g;
 }
@@ -681,6 +696,11 @@ function roadside(g, u0, u1, Z, R, toll){
     m.castShadow = true; g.add(m); }
 }
 
+// materials that belong to the land: they drop below an elevated toll road
+const prAsphalt = asphalt.clone(), prWhite = white.clone(), prYellow = yellowLine.clone();
+for (const m of [ground.material, vergeMat, prVerge, prAsphalt, prWhite, prYellow, trunkMat, crownMat, blobMat, shrubMat, roofMat, roofMat2, ...RUKO, ...PADDY, bldMat, bldRoof, hillMat, uPoleMat, uBarMat]) m.userData.terrain = true;
+ground.material.userData.bent = false; ground.material.needsUpdate = true; patchMat(ground.material);
+
 // volcanoes on the horizon at their real bearing; height scaled to the real angle they fill
 const VOLCANO = [['Karang', -6.27, 106.04, 1778], ['Halimun', -6.73, 106.47, 1929], ['Salak', -6.715, 106.73, 2211], ['Gede-Pangrango', -6.78, 106.98, 3019],
   ['Burangrang', -6.75, 107.53, 2050], ['Tangkuban Perahu', -6.77, 107.6, 2084], ['Patuha', -7.16, 107.40, 2434], ['Malabar', -7.13, 107.65, 2343], ['Papandayan', -7.32, 107.73, 2665],
@@ -706,12 +726,23 @@ function updateVolcanoes(dt){
   }
 }
 
+function viaduct(g, u0, u1, Z){
+  const hm = Math.max(elevAt(u0), elevAt(u1), elevAt(u0 + CH/2)); if (hm < 0.4) return;
+  const e = eAt(u0 + CH/2);
+  g.add(solid(2*(e + 3.2), 0.9, CH, concrete, 0, -0.75, -CH/2));
+  for (const s of [-1, 1]) g.add(solid(0.35, 1.3, CH, fasciaMat, s*(e + 3.3), -0.4, -CH/2));
+  for (let u = Math.ceil(u0/32)*32; u < u1; u += 32) { const h = elevAt(u); if (h < 1.2) continue;
+    for (const s of [-1, 1]) { const x = s*(MED + (e - MED)/2), c = new THREE.Mesh(viaPierGeo, concrete); c.position.set(x, -h/2 - 0.6, Z(u)); c.scale.set(1, h, 1); c.castShadow = true; g.add(c);
+      g.add(solid(e - MED + 1, 1.0, 2.2, concrete, x, -1.6, Z(u))); } }
+}
+const viaPierGeo = (() => { const g = new THREE.CylinderGeometry(0.9, 1.0, 1, 12); g.userData.keep = true; return g; })();
+
 // ================================================================
 // POWER LINES: PLN distribution poles along national roads, SUTET 500 kV transmission towers
 // ================================================================
 const distWireMat = new THREE.LineBasicMaterial({color: 0x26282a}), hvWireMat = new THREE.LineBasicMaterial({color: 0x3a3d40});
-patchMat(distWireMat); patchMat(hvWireMat);
-const insMat = M(0xd8d2c4, {roughness: 0.5});
+distWireMat.userData.terrain = hvWireMat.userData.terrain = true; patchMat(distWireMat); patchMat(hvWireMat);
+const insMat = M(0xd8d2c4, {roughness: 0.5}); insMat.userData.terrain = true;
 const insGeo = new THREE.CylinderGeometry(0.07, 0.07, 0.35, 6); insGeo.userData.keep = true;
 // [lateral offset from the pole, height, sag over a 40 m span]: three phase wires on the cross-arm, neutral on the pole top, telecom cable lower down
 const PLN_WIRES = [[-0.7, 8.7, 0.55], [0, 9.0, 0.5], [0.7, 8.7, 0.55], [0, 7.2, 0.6], [0.15, 5.6, 0.7]];
@@ -726,7 +757,7 @@ function wireMesh(arr, mat){ const geo = new THREE.BufferGeometry(); geo.setAttr
   const l = new THREE.LineSegments(geo, mat); l.frustumCulled = false; return l; }
 
 // lattice tower (double circuit, ~56 m): legs, girts, X-bracing, three cross-arms per side and an earth-wire peak; arms along local x
-const steelMat = M(0x8b9196, {metalness: 0.55, roughness: 0.45});
+const steelMat = M(0x8b9196, {metalness: 0.55, roughness: 0.45}); steelMat.userData.terrain = true;
 const SUTET_ARMS = [[32, 9], [40, 11.5], [48, 9]], SUTET_EARTH = [[56, 4]];
 const towerGeo = (() => {
   const parts = [], up = new THREE.Vector3(0, 1, 0);

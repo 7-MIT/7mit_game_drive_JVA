@@ -33,7 +33,7 @@ export const CORRIDORS = [
     ['Cikarang Barat', 31, 'x', -6.290, 107.140], ['Cikarang Timur', 37, 'x', -6.310, 107.190], ['Rest Area KM 39', 39, 'r'],
     ['Karawang Barat', 46, 'x', -6.330, 107.270], ['Karawang Timur', 54, 'x', -6.350, 107.340], ['Rest Area KM 57', 57, 'r'],
     ['JCT Dawuan', 66, 'j', -6.390, 107.430], ['Cikampek', 71, 'x', -6.410, 107.460], ['JCT Cikopo', 73, 'j', -6.430, 107.490]]),
-  C('jorr', 'Tol Lingkar Luar Jakarta (JORR)', 'JORR', 4, 80, [
+  C('jorr', 'Tol Lingkar Luar Jakarta (JORR)', 'JORR', 3, 80, [
     ['Penjaringan', 0, 't', -6.115, 106.765], ['Kembangan', 7, 'x', -6.180, 106.742], ['JCT Kebon Jeruk', 9, 'j'],
     ['Joglo', 12, 'x', -6.215, 106.745], ['Ciledug', 14, 'x', -6.235, 106.755], ['Veteran', 16, 'x', -6.252, 106.765],
     ['JCT Ulujami', 18, 'j', -6.262, 106.772], ['Pondok Pinang', 21, 'x', -6.280, 106.782], ['Fatmawati', 24, 'x', -6.290, 106.797], ['JCT Antasari', 25, 'j', -6.292, 106.807],
@@ -44,7 +44,7 @@ export const CORRIDORS = [
     ['JCT Cawang', 0, 'j'], ['Cempaka Putih', 7, 'x', -6.180, 106.872], ['Sunter', 10, 'x', -6.148, 106.872], ['JCT Tanjung Priok', 14, 'j', -6.118, 106.880]]),
   C('atp', 'Tol Akses Tanjung Priok', 'Akses Tj. Priok', 3, 80, [
     ['JCT Tanjung Priok', 0, 'j'], ['Pelabuhan Tanjung Priok', 2, 't', -6.105, 106.885], ['Koja', 5, 'x', -6.117, 106.910], ['JCT Cilincing', 11.4, 'j']]),
-  C('jjc', 'Tol Cibitung–Cilincing (JORR 2)', 'Cibitung–Cilincing', 2, 80, [
+  C('jjc', 'Tol Cibitung–Cilincing (JORR 2)', 'Cibitung–Cilincing', 3, 80, [
     ['JCT Cibitung', 0, 'j'], ['Telaga Asih', 4, 'x', -6.240, 107.080], ['Gabus', 15, 'x', -6.180, 107.040],
     ['Tarumajaya', 25, 'x', -6.130, 107.010], ['JCT Cilincing', 34, 'j']]),
   C('jag', 'Tol Jagorawi', 'Jagorawi', 4, 100, [
@@ -115,7 +115,7 @@ export const CORRIDORS = [
   C('sugem', 'Tol Surabaya–Gempol', 'Surabaya–Gempol', 3, 100, [
     ['Dupak', 724, 't', -7.240, 112.720], ['Gunungsari', 729, 'x', -7.290, 112.720], ['JCT Waru', 734, 'j'],
     ['Sidoarjo', 745, 'x', -7.450, 112.710], ['Porong', 755, 'x', -7.540, 112.690], ['JCT Gempol', 760, 'j', -7.560, 112.690]]),
-  C('juanda', 'Tol Waru–Juanda', 'Waru–Juanda', 2, 80, [
+  C('juanda', 'Tol Waru–Juanda (jalan layang)', 'Waru–Juanda', 2, 80, [
     ['JCT Waru', 0, 'j'], ['Bandara Juanda', 6, 't', -7.370, 112.780]]),
   C('gempan', 'Tol Gempol–Pandaan–Malang', 'Pandaan–Malang', 2, 100, [
     ['JCT Gempol', 0, 'j'], ['Pandaan', 13, 'x', -7.650, 112.690], ['Purwodadi', 22, 'x', -7.780, 112.720],
@@ -139,14 +139,14 @@ export const CORRIDORS = [
   C('kunban', 'Tol Cengkareng–Kunciran (JORR 2)', 'Cengkareng–Kunciran', 3, 80, [
     ['JCT Kunciran', 0, 'j'], ['Benda', 4, 'x', -6.185, 106.672], ['Batuceper', 8, 'x', -6.165, 106.670], ['Bandara Soekarno-Hatta', 14.2, 't']]),
   // JORR 2 Serpong–Cinere: seksi 1 Serpong–Pamulang (2021), seksi 2 Pamulang–Cinere (Des 2023), 10,14 km, tersambung ke Cijago
-  C('sercin', 'Tol Serpong–Cinere (JORR 2)', 'Serpong–Cinere', 2, 80, [
+  C('sercin', 'Tol Serpong–Cinere (JORR 2)', 'Serpong–Cinere', 3, 80, [
     ['Serpong', 0, 'j'], ['Pamulang', 6.5, 'x', -6.338, 106.727], ['Cinere', 9.2, 'x', -6.343, 106.770], ['JCT Cinere', 10.1, 'j', -6.348, 106.779]]),
   C('desari', 'Tol Depok–Antasari (Desari)', 'Desari', 2, 80, [
     ['JCT Antasari', 0, 'j'], ['Cilandak', 3, 'x', -6.310, 106.805], ['Brigif', 7, 'x', -6.340, 106.808], ['JCT Krukut', 12, 'j', -6.362, 106.785], ['Sawangan', 21, 't', -6.400, 106.760]]),
-  C('cijago', 'Tol Cinere–Jagorawi (Cijago, JORR 2)', 'Cijago', 2, 80, [
+  C('cijago', 'Tol Cinere–Jagorawi (Cijago, JORR 2)', 'Cijago', 3, 80, [
     ['JCT Cimanggis', 0, 'j'], ['Jalan Raya Bogor', 3, 'x', -6.390, 106.862], ['Margonda', 7, 'x', -6.380, 106.832], ['Kukusan', 10, 'x', -6.370, 106.810],
     ['JCT Krukut', 12, 'j'], ['Limo', 13.6, 'x', -6.358, 106.781], ['JCT Cinere', 14.9, 'j']]),
-  C('cimcib', 'Tol Cimanggis–Cibitung (JORR 2)', 'Cimanggis–Cibitung', 2, 80, [
+  C('cimcib', 'Tol Cimanggis–Cibitung (JORR 2)', 'Cimanggis–Cibitung', 3, 80, [
     ['JCT Cimanggis', 0, 'j'], ['Cikeas', 8, 'x', -6.400, 106.935], ['Narogong', 16, 'x', -6.380, 107.000], ['Setu', 21, 'x', -6.340, 107.040], ['JCT Cibitung', 26, 'j']]),
   C('becakayu', 'Tol Bekasi–Cawang–Kampung Melayu (Becakayu)', 'Becakayu', 2, 60, [
     ['Kampung Melayu', 0, 't', -6.225, 106.860], ['Cipinang', 4, 'x', -6.240, 106.890], ['Jakasampurna', 9, 'x', -6.250, 106.965], ['Bekasi Kota', 13, 't', -6.238, 107.000]]),
