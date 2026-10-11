@@ -1525,7 +1525,7 @@ function updateHud(dt){
   const left = Math.max(0, dest.rk - rk);
   $('left').textContent = stats.done ? 'Tiba' : fmtKm(left);
   $('toll').textContent = 'Rp ' + stats.toll.toLocaleString('id-ID');
-  $('viol').textContent = `${stats.viol} / ${stats.crashes}`;
+  $('viol').textContent = stats.viol; $('crash').textContent = stats.crashes;
   const ne = nextEvents(), list = $('next'); list.innerHTML = '';
   for (const {e, d} of ne) { const li = document.createElement('li'); if (e.i === trip.destIdx) li.className = 'dest';
     const tag = document.createElement('b'); tag.textContent = e.i === trip.destIdx ? 'TUJUAN' : ICON[e.kind]; tag.className = 'k-' + e.kind;
