@@ -33,6 +33,13 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
 
   Rear-end crashes and hitting cones are counted separately. Toll is charged at each mainline toll plaza and at the exit (Rp per km, an estimate).
 - **AI traffic.** Cars, SUVs, vans, trucks and buses follow the vehicle ahead (IDM model) and obey limits and the heavy-vehicles-left rule. They change lanes, zipper-merge at closures, take exits and rest areas, and enter from on-ramps. Roads alongside the toll road and overpasses have their own traffic.
+- **Road construction.**
+  - Ramps follow real-world rules: an 8 m junction bridge (5.1 m clearance) and grades of at most about 8 % with parabolic vertical curves.
+  - In each cloverleaf quadrant the outer connector wraps around its loop, so no ramps cross at grade.
+  - Ramps reach deck height before they pass under the deck.
+  - Low ramp sections sit on grassed embankments with 1:1.5 slopes; high sections are viaducts with piers, crossbeams and concrete parapets.
+  - Overpasses have earth fills with side slopes and abutment walls. No lamp post stands under a bridge deck or a toll-plaza canopy.
+  - A geometry check run during development reports no clashes between ramps, decks, the main road, the parallel road or signs.
 - **Interchanges.** Ordinary exits are trumpets with a toll gate on the stem road that connects to the Jalan Nasional. Junctions are Cikunir-style cloverleafs: two loops and two direct ramps per side, with the crossing toll road on a flyover. Mainline toll plazas (Cikupa, Kalihurip, Palimanan, Kalikangkung, Banyumanik, Warugunung, …) have booths across every lane.
 - **Roadworks and contraflow.**
   - Roadworks: choose which lanes to close in each direction.
