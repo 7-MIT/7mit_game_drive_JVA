@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tol Jakarta–Cikampek · Simulasi Lalu Lintas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="_ds/modernist-5bd1f109-a724-4267-bf9a-037adc66abef/styles.css">
+<style>
+  html,body{margin:0;height:100%;overflow:hidden;background:#b9c8d3;font-family:var(--font-body, Archivo, sans-serif)}
+  a{color:var(--color-text)}a:hover{color:var(--color-accent)}
+  canvas{display:block;touch-action:none}
+  #hud{position:fixed;left:16px;bottom:16px;background:var(--color-bg,#f3f2f2);color:var(--color-text,#201e1d);border:2px solid var(--color-text,#201e1d);
+       width:min(520px,calc(100vw - 32px));max-height:calc(100vh - 32px);display:flex;flex-direction:column}
+  .hud-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 6px 6px 12px}
+  #hud.open .hud-head{border-bottom:2px solid var(--color-text,#201e1d)}
+  .kick{font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:600}
+  .kick b{color:var(--color-accent,#c0392b);font-weight:800}
+  #toggle{font:inherit;font-size:12px;font-weight:600;background:var(--color-text,#201e1d);color:var(--color-bg,#f3f2f2);border:0;padding:8px 14px;cursor:pointer;min-height:36px}
+  #ctrl{display:none;overflow:auto;grid-template-columns:120px minmax(0,1fr)}
+  #hud.open #ctrl{display:grid}
+  .lbl{font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:8px 10px 8px 12px;display:flex;align-items:center;border-bottom:1px solid var(--color-divider,#d8d6d5);text-wrap:pretty}
+  .cell{padding:6px 8px 6px 0;border-bottom:1px solid var(--color-divider,#d8d6d5);display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+  .opt{font:inherit;font-size:12px;background:transparent;color:inherit;border:1px solid currentColor;padding:5px 9px;cursor:pointer;min-height:30px}
+  .opt[aria-pressed="true"]{background:var(--color-text,#201e1d);color:var(--color-bg,#f3f2f2)}
+  .opt:disabled{opacity:.3;cursor:default}
+  .hint{font-size:10px;opacity:.6;width:100%}
+  @media (max-width:700px){
+    #hud{left:0;right:0;bottom:0;width:auto;max-height:72vh;border-width:2px 0 0;padding-bottom:env(safe-area-inset-bottom)}
+    .hud-head{padding:4px 4px 4px 14px}
+    #toggle{min-height:44px;min-width:110px}
+    .kick .long{display:none}
+    #ctrl{grid-template-columns:1fr}
+    .lbl{padding:10px 14px 2px;border:0}
+    .cell{padding:4px 14px 10px}
+    .opt{min-height:44px;flex:1 1 auto}
+  }
+</style>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+</head>
+<body>
+<div id="hud">
+  <div class="hud-head">
+    <span class="kick"><b>Tol</b> Jakarta–Cikampek<span class="long"> · Lajur kiri</span></span>
+    <button id="toggle">Kontrol</button>
+  </div>
+  <div id="ctrl"></div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
+import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
+import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
+import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
+
+const MOBILE = matchMedia('(pointer:coarse)').matches || innerWidth < 700;
+const T = 360, L = T*3, HALF = L/2, LW = 3.6, MED = 1.2, OVH = 7.5, OPEN_HW = 35;
+const DEF = {cam:'overpass', dir:-1, lanes:5, den:1, tod:'day', closed:{'-1':[1], '1':[]}, cf:0, cfk:2, ovl:2};
+let cfg; try { cfg = {...DEF, ...JSON.parse(localStorage.getItem('fw_cfg2') || '{}')}; } catch(e) { cfg = {...DEF}; }
+const saveCfg = () => localStorage.setItem('fw_cfg2', JSON.stringify(cfg));
+let LANES = cfg.lanes, span, roadW, NRX;
+const wrap = z => ((z + HALF) % L + L) % L - HALF;
+const mod = (a, n) => ((a % n) + n) % n;
+const rnd = (a,b) => a + Math.random()*(b-a);
+const pick = a => a[Math.floor(Math.random()*a.length)];
+// lane 0 = fast lane next to the median; negative lanes = contraflow lanes on the opposite carriageway
+function posX(side, lx){ const c = MED + LW/2;
+  if (lx >= 0) return side*(c + lx*LW);
+  if (lx >= -1) return side*c*(1 + 2*lx);
+  return -side*(c + (-lx-1)*LW); }
+let W = 0;
+
+const renderer = new THREE.WebGLRenderer({antialias:!MOBILE, preserveDrawingBuffer:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, MOBILE ? 1.5 : 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0xb9c8d3, 120, 420);
+scene.background = new THREE.Color(0xb9c8d3);
+const camera = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.5, 1200);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.maxPolarAngle = Math.PI*0.48; controls.enabled = false;
+
+const hemi = new THREE.HemisphereLight(0xdfeaf5, 0x55603a, 1.1); scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff1dc, 2.4);
+sun.castShadow = true; const sm = MOBILE ? 1024 : 2048; sun.shadow.mapSize.set(sm, sm);
+Object.assign(sun.shadow.camera, {left:-90,right:90,top:90,bottom:-90,near:1,far:400});
+sun.shadow.bias = -0.0005;
+scene.add(sun, sun.target);
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.2, 0.5, 0.9);
+composer.addPass(bloom); composer.addPass(new OutputPass());
+
+// ---------- curved road (vertex-shader bend, straight at the camera) ----------
+const CU = {uW:{value:0}, uCz:{value:0}, uB0:{value:0}, uB1:{value:0}};
+const gC = u => 45*Math.sin(u/450) + 20*Math.sin(u/200+1.3);
+const gD = u => 45/450*Math.cos(u/450) + 20/200*Math.cos(u/200+1.3);
+const BEND_HEAD = 'uniform float uW; uniform float uCz; uniform float uB0; uniform float uB1;\nfloat bendX(float z){ return 45.0*sin((uW - z)/450.0) + 20.0*sin((uW - z)/200.0 + 1.3) - uB0 - uB1*(z - uCz); }\n';
+const BEND_CHUNK = THREE.ShaderChunk.project_vertex.replace('mvPosition = modelViewMatrix * mvPosition;',
+  'vec4 bwp = modelMatrix * mvPosition; bwp.x += bendX(bwp.z); mvPosition = viewMatrix * bwp;');
+const WORLD_CHUNK = '#include <worldpos_vertex>\n#if defined( USE_ENVMAP ) || defined( DISTANCE ) || defined ( USE_SHADOWMAP ) || defined ( USE_TRANSMISSION ) || NUM_SPOT_LIGHT_COORDS > 0\nworldPosition.x += bendX(worldPosition.z);\n#endif';
+function patchMat(m){ if (!m || m.userData.bent) return; m.userData.bent = true;
+  m.onBeforeCompile = sh => { Object.assign(sh.uniforms, CU);
+    sh.vertexShader = BEND_HEAD + sh.vertexShader.replace('#include <project_vertex>', BEND_CHUNK).replace('#include <worldpos_vertex>', WORLD_CHUNK); };
+  m.needsUpdate = true; }
+const depthMat = new THREE.MeshDepthMaterial({depthPacking: THREE.RGBADepthPacking}); patchMat(depthMat);
+const bendAt = z => gC(W - z) - CU.uB0.value - CU.uB1.value*(z - CU.uCz.value);
+function bendAll(){ scene.traverse(o => { if (!o.isMesh) return; o.frustumCulled = false; (Array.isArray(o.material) ? o.material : [o.material]).forEach(patchMat); if (o.castShadow) o.customDepthMaterial = depthMat; }); }
+function updateBend(){ const cz = camera.position.z; CU.uW.value = W; CU.uCz.value = cz; CU.uB0.value = gC(W - cz); CU.uB1.value = -gD(W - cz); }
+
+const M = (c, o={}) => new THREE.MeshStandardMaterial({color:c, roughness:0.9, ...o});
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(3000, 3000, 1, 300), M(0x6f8a4a));
+ground.rotation.x = -Math.PI/2; ground.position.y = -0.05; ground.receiveShadow = true; scene.add(ground);
+
+const asphalt = M(0x3b3d40, {roughness:0.95});
+const concrete = M(0xa9a59c);
+const white = new THREE.MeshBasicMaterial({color:0xe9e7df});
+const railMat = M(0x9aa1a6, {metalness:0.6, roughness:0.4});
+const lampMat = M(0x8c9196, {metalness:0.5, roughness:0.5});
+const lampHeadMat = new THREE.MeshStandardMaterial({color:0x222222, emissive:0xffc98a, emissiveIntensity:0});
+const signBackMat = M(0x8f969b, {metalness:0.4, roughness:0.5});
+const grassBank = M(0x7d8a55);
+const tm = new THREE.Matrix4();
+
+const segs = d => d > 40 ? Math.ceil(d/6) : 1;
+function flat(w, d, mat, x, y, z){ const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d, 1, segs(d)), mat); m.rotation.x = -Math.PI/2; m.position.set(x,y,z); m.receiveShadow = true; return m; }
+function solid(w,h,d,mat,x,y,z){ const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d,1,1,segs(d)), mat); m.position.set(x,y,z); m.castShadow = m.receiveShadow = true; return m; }
+function dispose(g){ g.traverse(o => { if (o.geometry && !o.geometry.userData.keep) o.geometry.dispose(); if (o.material && o.material.map && !o.material.map.userData.keep) o.material.map.dispose(); }); if (g.parent) g.parent.remove(g); }
+function instanced(geo, mat, pts, y=0){ const m = new THREE.InstancedMesh(geo, mat, Math.max(1, pts.length)); m.count = pts.length;
+  pts.forEach(([x,z], i) => { tm.makeTranslation(x, y, z); m.setMatrixAt(i, tm); }); return m; }
+
+// ---------- traffic signs (rambu) ----------
+const MATC = new Map();
+function signMat(key, w, h, draw, px=256){ if (!MATC.has(key)) { const c = document.createElement('canvas'); c.width = px; c.height = Math.round(px*h/w);
+  draw(c.getContext('2d'), c.width, c.height); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; t.userData.keep = true;
+  const m = new THREE.MeshStandardMaterial({map:t, emissive:0xffffff, emissiveMap:t, emissiveIntensity:signI, roughness:0.6}); m.userData.sign = true; MATC.set(key, m); } return MATC.get(key); }
+const drawSpeed = (n, min) => (x, w) => { const r = w/2; x.beginPath(); x.arc(r,r,r-2,0,Math.PI*2); x.fillStyle = min ? '#1d4fa3' : '#fff'; x.fill();
+  x.lineWidth = min ? 6 : w*0.11; x.strokeStyle = min ? '#fff' : '#d0202a'; x.beginPath(); x.arc(r,r, min ? r-12 : r-2-w*0.055, 0, Math.PI*2); x.stroke();
+  x.fillStyle = min ? '#fff' : '#111'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = `800 ${n >= 100 ? w*0.36 : w*0.44}px Archivo, sans-serif`; x.fillText(String(n), r, r + w*0.02); };
+const drawNoU = (x, w) => { const r = w/2; x.beginPath(); x.arc(r,r,r-2,0,Math.PI*2); x.fillStyle = '#fff'; x.fill();
+  x.lineWidth = w*0.07; x.strokeStyle = '#111'; x.beginPath(); x.moveTo(r+w*0.12, r+w*0.24); x.lineTo(r+w*0.12, r-w*0.02); x.arc(r, r-w*0.02, w*0.12, 0, Math.PI, true); x.lineTo(r-w*0.12, r+w*0.1); x.stroke();
+  x.fillStyle = '#111'; x.beginPath(); x.moveTo(r-w*0.21, r+w*0.08); x.lineTo(r-w*0.03, r+w*0.08); x.lineTo(r-w*0.12, r+w*0.24); x.closePath(); x.fill();
+  x.lineWidth = w*0.11; x.strokeStyle = '#d0202a'; x.beginPath(); x.arc(r,r,r-2-w*0.055,0,Math.PI*2); x.stroke();
+  x.lineWidth = w*0.08; x.beginPath(); x.moveTo(r - r*0.62, r - r*0.62); x.lineTo(r + r*0.62, r + r*0.62); x.stroke(); };
+const drawPlate = (lines, bg, fg) => (x, w, h) => { x.fillStyle = bg; x.fillRect(0,0,w,h); x.strokeStyle = fg; x.lineWidth = 8; x.strokeRect(10,10,w-20,h-20);
+  x.fillStyle = fg; x.textAlign = 'center'; x.textBaseline = 'middle'; const lh = (h-30)/lines.length;
+  lines.forEach((t, i) => { fit(x, t, w-50, lh*0.8, 700); x.fillText(t, w/2, 15 + lh*(i+0.5)); }); };
+const SP = n => ({d:0.9, m: signMat('sp'+n, 1, 1, drawSpeed(n, false))});
+const MN = n => ({d:0.75, m: signMat('mn'+n, 1, 1, drawSpeed(n, true))});
+const NU = () => ({d:0.9, m: signMat('nu', 1, 1, drawNoU)});
+const PL = (lines, bg='#fff', fg='#111', w=1.4, h=0.55) => ({w, h, m: signMat('pl'+lines.join('|')+bg+w+h, w, h, drawPlate(lines, bg, fg), 512)});
+const discGeo = new THREE.CircleGeometry(0.5, 32); discGeo.userData.keep = true;
+const backDiscGeo = discGeo.clone(); backDiscGeo.rotateY(Math.PI); backDiscGeo.translate(0, 0, -0.02); backDiscGeo.userData.keep = true;
+const postGeoS = new THREE.BoxGeometry(0.09, 1, 0.09); postGeoS.translate(0, 0.5, 0); postGeoS.userData.keep = true;
+const PGC = new Map(); const pgeo = (w,h) => { const k = w+'|'+h; if (!PGC.has(k)) { const g = new THREE.PlaneGeometry(w,h); g.userData.keep = true; PGC.set(k, g); } return PGC.get(k); };
+function signPost(parent, x, z, rot, items, y0=0, sc=1){
+  const g = new THREE.Group(); g.position.set(x, y0, z); g.rotation.y = rot; g.scale.setScalar(sc);
+  let y = 1.9; const placed = [];
+  for (let i = items.length-1; i >= 0; i--) { const h = items[i].d || items[i].h; placed.push([items[i], y + h/2]); y += h + 0.08; }
+  const post = new THREE.Mesh(postGeoS, signBackMat); post.scale.y = y - 0.08; post.position.z = -0.07; post.castShadow = true; g.add(post);
+  for (const [it, cy] of placed) {
+    if (it.d) { const f = new THREE.Mesh(discGeo, it.m), b = new THREE.Mesh(backDiscGeo, signBackMat); f.scale.setScalar(it.d); b.scale.setScalar(it.d); f.position.y = b.position.y = cy; g.add(f, b); }
+    else { const f = new THREE.Mesh(pgeo(it.w, it.h), it.m), b = new THREE.Mesh(pgeo(it.w, it.h), signBackMat); f.position.y = cy; b.rotation.y = Math.PI; b.position.set(0, cy, -0.02); g.add(f, b); }
+  }
+  parent.add(g); return g;
+}
+
+// ---------- periodic world (period T) ----------
+let world, lampPos = [], gates = null, uturnG = null, OVC = 0, OVS = 600;
+const Z0 = -1080, Z1 = 1080, LEN = Z1 - Z0;
+const ovDir = i => i < Math.ceil(cfg.ovl/2) ? 1 : -1;            // overpass lane heading along x (left-hand traffic)
+const ovZ = i => (i - (cfg.ovl-1)/2) * 3.5;
+function buildWorld(){
+  if (world) dispose(world);
+  world = new THREE.Group(); scene.add(world);
+  span = LANES*LW; roadW = MED + span + 3; NRX = -(roadW + ND);
+  const add = (...o) => world.add(...o);
+  for (const s of [-1,1]) {
+    add(flat(roadW - MED + 0.2, LEN, asphalt, s*(MED + (roadW-MED)/2), 0, 0));
+    add(flat(4, LEN, M(0x8b8a7c), s*(roadW+2), 0.005, 0));
+    add(flat(0.15, LEN, white, s*(MED+0.2), 0.012, 0));
+  }
+  add(flat(MED*2, LEN, M(0x55574f), 0, 0.003, 0));
+  // median barrier with U-turn openings (putaran balik) halfway between bridges
+  const barMat = M(0xb8b4aa);
+  for (let r=-3; r<=3; r++) add(solid(0.6, 0.9, T - 2*OPEN_HW, barMat, 0, 0.45, r*T));
+  const gp = [];
+  for (let r=-3; r<=2; r++) for (let z=-OPEN_HW+0.6; z<OPEN_HW-0.5; z+=1.15) gp.push([0, r*T + T/2 + z]);
+  gates = instanced(new THREE.BoxGeometry(0.6, 0.85, 1.05), new THREE.MeshStandardMaterial({color:0xffffff, roughness:0.6}), gp, 0.425);
+  const cA = new THREE.Color(0xf05a14), cB = new THREE.Color(0xf2f2f2);
+  gp.forEach((_, i) => gates.setColorAt(i, i%2 ? cA : cB)); gates.castShadow = true; gates.visible = !cf.on; add(gates);
+
+  const dashGeo = new THREE.PlaneGeometry(0.15, 3); dashGeo.rotateX(-Math.PI/2);
+  const dp = [];
+  for (const s of [-1,1]) for (let l=1; l<LANES; l++) for (let z=Z0; z<Z1; z+=9) dp.push([s*(MED+l*LW), z]);
+  add(instanced(dashGeo, white, dp, 0.012));
+
+  // median lamps (none inside the openings)
+  const poleGeo = new THREE.CylinderGeometry(0.12,0.16,11,8); poleGeo.translate(0,5.5,0);
+  const armGeo = new THREE.BoxGeometry(6, 0.14, 0.14); armGeo.translate(0,10.9,0);
+  const lz = []; for (let n=0; n<LEN/T; n++) for (const off of [22,67,112,247,292,337]) lz.push(Z0 + n*T + off);
+  const poles = instanced(poleGeo, lampMat, lz.map(z => [0,z])), arms = instanced(armGeo, lampMat, lz.map(z => [0,z]));
+  const hp = []; lampPos = [];
+  lz.forEach(z => { for (const s of [-1,1]) { hp.push([s*2.8, z]); lampPos.push({x:s*4, z}); } });
+  const heads = instanced(new THREE.BoxGeometry(0.9,0.18,0.4), lampHeadMat, hp, 10.8);
+  poles.castShadow = true; add(poles, arms, heads);
+
+  // toll signs: max 100, min 60, heavy vehicles keep left; no U-turn at median openings
+  const eT = MED + span;
+  uturnG = new THREE.Group(); add(uturnG);
+  for (let r=-3; r<=3; r++) for (const s of [-1,1]) {
+    signPost(world, s*(eT+4.2), s*140 + r*T, s<0 ? 0 : Math.PI, [SP(100), MN(60), PL(['Kendaraan berat', 'lajur kiri'], '#fff', '#111', 1.5, 0.6)], 0, 1.5);
+    signPost(world, NRX + s*9.5, r*T - s*90, s<0 ? 0 : Math.PI, [SP(60), PL(['Sepeda motor', 'lajur kiri'], '#1d4fa3', '#fff', 1.3, 0.55)]);
+    if (r < 3) signPost(uturnG, 0, r*T + T/2 - s*(OPEN_HW + 3), s<0 ? 0 : Math.PI, [NU(), PL(['Khusus', 'petugas'], '#fff', '#111', 1, 0.5)], 0.9, 1.2);
+  }
+  uturnG.visible = !cf.on;
+
+  // national road (Jalan Nasional, 4 lajur) parallel on the west side
+  add(flat(17, LEN, asphalt, NRX, 0.004, 0));
+  for (const s of [-1,1]) { add(flat(3, LEN, M(0x9a8d6e), NRX + s*10, 0.003, 0)); add(flat(0.15, LEN, white, NRX + s*7.2, 0.012, 0)); add(flat(0.12, LEN, white, NRX + s*0.15, 0.012, 0)); }
+  const np = []; for (const s of [-1,1]) for (let z=Z0; z<Z1; z+=8) np.push([NRX + s*3.5, z]);
+  const nGeo = new THREE.PlaneGeometry(0.12, 3); nGeo.rotateX(-Math.PI/2); add(instanced(nGeo, white, np, 0.012));
+
+  // trees
+  const perT = MOBILE ? 110 : 200, pattern = [];
+  while (pattern.length < perT) { const z = rnd(-T/2, T/2); if (Math.abs(z) < 16) continue;
+    const s = Math.random()<.5?-1:1, ax = s<0 && Math.random()<.75 ? rnd(roadW+ND+16, roadW+ND+130) : rnd(roadW+8, roadW+140);
+    if (s<0 && ax < roadW+ND+14 && !(ax > roadW+70 && ax < roadW+ND-10 && z > 16 && z < 110)) continue;
+    if (s>0 && (ax < roadW+80 || Math.abs(Math.abs(z)-180) < 16)) continue;
+    if (s>0 && ax < roadW+175 && (z > 95 || z < -15)) continue;
+    pattern.push({x:s*ax, z, k:rnd(0.7,1.5), h:rnd(.85,1.25), r:rnd(0,6.28)}); }
+  const trunkGeo = new THREE.CylinderGeometry(0.2,0.3,2,6); trunkGeo.translate(0,1,0);
+  const crownGeo = new THREE.ConeGeometry(2.2,6,7); crownGeo.translate(0,4.8,0);
+  const blobGeo = new THREE.IcosahedronGeometry(2.6,0); blobGeo.translate(0,4,0);
+  const n = perT*7;
+  const trunks = new THREE.InstancedMesh(trunkGeo, M(0x5a4330), n);
+  const crowns = new THREE.InstancedMesh(crownGeo, M(0x3f5f34), Math.ceil(n/2));
+  const blobs = new THREE.InstancedMesh(blobGeo, M(0x587a3a, {flatShading:true}), Math.ceil(n/2));
+  const q = new THREE.Quaternion(), sc = new THREE.Vector3(), pv = new THREE.Vector3(), up = new THREE.Vector3(0,1,0);
+  let i = 0;
+  for (let r=-3; r<=3; r++) for (const p of pattern) {
+    pv.set(p.x, 0, p.z + r*T); sc.set(p.k, p.k*p.h, p.k); q.setFromAxisAngle(up, p.r); tm.compose(pv,q,sc);
+    trunks.setMatrixAt(i, tm); (i%2 ? crowns : blobs).setMatrixAt(i>>1, tm); i++;
+  }
+  for (const m of [trunks,crowns,blobs]) { m.castShadow = true; add(m); }
+
+  // overpasses: jalan raya with 1–4 lanes, spanning the toll road and the national road
+  const ovl = cfg.ovl, dw = ovl*3.5 + 2.4, xL = NRX - 18, xR = roadW+8, bankW = 260, rl = xR - xL + 2*bankW, rc = (xL+xR)/2;
+  OVC = rc; OVS = rl - 40;
+  const bd = [], bGeo = new THREE.PlaneGeometry(3, 0.15); bGeo.rotateX(-Math.PI/2);
+  for (let r=-3; r<=3; r++) {
+    const z = r*T;
+    add(solid(xR-xL, 1.2, dw, concrete, rc, OVH, z));
+    for (const sz of [-1,1]) add(solid(xR-xL, 1, 0.3, concrete, rc, OVH+1.1, z+sz*(dw/2-0.15)));
+    for (const x of [0, -(roadW+1.5), roadW+1.5, NRX+10.5, NRX-11, -(roadW+30), -(roadW+60), -(roadW+90)]) for (const dz of [-1,1]) {
+      const c = new THREE.Mesh(new THREE.CylinderGeometry(0.6,0.6,OVH,12), concrete); c.position.set(x, OVH/2, z + dz*Math.max(0.9, dw/2-1.4)); c.castShadow = true; add(c); }
+    for (const [x0, s] of [[xR, 1], [xL, -1]]) { const b = solid(bankW, OVH+0.6, dw+4, grassBank, x0 + s*bankW/2, (OVH+0.6)/2, z); b.castShadow = false; add(b); }
+    add(flat(rl, ovl*3.5, asphalt, rc, OVH+0.62, z));
+    for (const e of [-1,1]) add(flat(rl, 0.15, white, rc, OVH+0.64, z + e*(ovl*3.5/2 - 0.2)));
+    const hz = ovl*3.5/2 + 0.9;
+    signPost(world, xL - 22, z - hz, -Math.PI/2, [SP(40)], OVH+0.6);
+    signPost(world, xR + 22, z + hz, Math.PI/2, [SP(40)], OVH+0.6);
+    for (let k=1; k<ovl; k++) { const zb = z + (k - ovl/2)*3.5;
+      if (ovDir(k-1) === ovDir(k)) for (let x=xL-bankW; x<xR+bankW; x+=7) bd.push([x, zb]);
+      else for (const o of [-0.13, 0.13]) add(flat(rl, 0.1, white, rc, OVH+0.64, zb + o)); }
+  }
+  add(instanced(bGeo, white, bd, OVH+0.64));
+}
+
+// ---------- signs ----------
+const EXITS = [['Cawang',0],['Jatibening',7],['Bekasi Barat',12],['Bekasi Timur',16],['Tambun',22],['Cibitung',25],
+  ['Cikarang Barat',31],['Cikarang Timur',37],['Karawang Barat',46],['Karawang Timur',54],['Kalihurip',66],['Cikampek',72]];
+const SIGN_GREEN = '#0c6a3c';
+function canvasTex(w, h, draw){
+  const c = document.createElement('canvas'); c.width = 1024; c.height = Math.round(1024*h/w);
+  const x = c.getContext('2d'); draw(x, c.width, c.height);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
+}
+function base(x, w, h){ x.fillStyle = SIGN_GREEN; x.fillRect(0,0,w,h); x.strokeStyle = '#fff'; x.lineWidth = 10; x.beginPath(); x.roundRect(14,14,w-28,h-28,22); x.stroke(); }
+function fit(x, text, maxW, size, weight=700){ let s = size; do { x.font = `${weight} ${s}px Archivo, sans-serif`; s -= 4; } while (x.measureText(text).width > maxW && s > 20); }
+function arrow(x, cx, cy, len, ang){
+  x.save(); x.translate(cx, cy); x.rotate(ang); x.fillStyle = '#fff';
+  const sw = len*0.16, hw = len*0.32, hl = len*0.38;
+  x.fillRect(-sw/2, -len/2 + hl - 2, sw, len - hl + 2);
+  x.beginPath(); x.moveTo(0, -len/2); x.lineTo(hw, -len/2 + hl); x.lineTo(-hw, -len/2 + hl); x.closePath(); x.fill(); x.restore();
+}
+function exitPanel(w, h, name){ return canvasTex(w, h, (x, W2, H2) => {
+  base(x, W2, H2);
+  x.fillStyle = '#f2c230'; x.fillRect(48, 44, 190, 78); x.fillStyle = '#111'; x.font = '800 56px Archivo, sans-serif'; x.textBaseline = 'middle'; x.fillText('EXIT', 64, 85);
+  x.fillStyle = '#fff'; x.font = '700 56px Archivo, sans-serif'; x.fillText('1 km', 262, 85);
+  arrow(x, 120, H2*0.66, 130, -Math.PI/4);
+  fit(x, name, W2 - 270, 104); x.fillText(name, 220, H2*0.68);
+}); }
+function destPanel(w, h, lines){ return canvasTex(w, h, (x, W2, H2) => {
+  base(x, W2, H2); x.fillStyle = '#fff'; x.textBaseline = 'middle';
+  arrow(x, 110, H2/2, 170, 0);
+  const lh = (H2 - 80) / lines.length;
+  lines.forEach((t, i) => { fit(x, t, W2 - 250, 100); x.fillText(t, 200, 40 + lh*(i+0.5)); });
+}); }
+function boardPanel(w, h, rows){ return canvasTex(w, h, (x, W2, H2) => {
+  base(x, W2, H2); x.fillStyle = '#fff'; x.textBaseline = 'middle';
+  const lh = (H2 - 80) / rows.length;
+  rows.forEach(([t, d], i) => { const y = 40 + lh*(i+0.5); x.textAlign = 'right'; x.font = '700 84px Archivo, sans-serif'; x.fillText(`${d} km`, W2 - 56, y);
+    x.textAlign = 'left'; fit(x, t, W2 - 380, 84); x.fillText(t, 56, y); });
+}); }
+function panelMesh(w, h){
+  const g = new THREE.Group();
+  g.add(solid(w+0.1, h+0.1, 0.12, signBackMat, 0, 0, -0.08));
+  const mat = new THREE.MeshStandardMaterial({roughness:0.6, emissive:0xffffff, emissiveIntensity:signI});
+  mat.userData.sign = true;
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat); g.add(face); g.face = face; return g;
+}
+function setTex(p, tex){ const m = p.face.material; if (m.map) m.map.dispose(); m.map = tex; m.emissiveMap = tex; m.needsUpdate = true; }
+
+let tiles = [];
+function buildSigns(){
+  tiles.forEach(t => dispose(t.g)); tiles = [];
+  const pw = span/2 - 0.5, ph = 3.2, bw = 5.6, bh = 3.6;
+  for (let k=0; k<3; k++) for (let c=0; c<2; c++){
+    const g = new THREE.Group(); scene.add(g);
+    const t = {g, k, c, b:(k-1)*T, gi:null, p:{}};
+    for (const s of [-1,1]) {           // s=-1: ke Cikampek (travels -z) · s=+1: ke Jakarta (travels +z)
+      const gz = s<0 ? 110 : -110, face = s<0 ? 1 : -1, rot = s<0 ? 0 : Math.PI;
+      for (const x of [s*0.75, s*(roadW+0.6)]) g.add(solid(0.35, 9, 0.35, signBackMat, x, 4.5, gz));
+      g.add(solid(roadW - 0.15, 0.3, 0.3, signBackMat, s*(0.75 + (roadW-0.15)/2), 8.9, gz));
+      const ex = panelMesh(pw, ph), de = panelMesh(pw, ph);
+      ex.position.set(s*(MED + span*0.75), 7.6, gz + face*0.3); de.position.set(s*(MED + span*0.25), 7.6, gz + face*0.3);
+      ex.rotation.y = de.rotation.y = rot; g.add(ex, de);
+      const bz = s<0 ? 170 : -170, bx = s*(roadW + 3);
+      for (const dx of [-1.8, 1.8]) g.add(solid(0.18, 4.6, 0.18, signBackMat, bx + dx, 2.3, bz));
+      const bd = panelMesh(bw, bh); bd.position.set(bx, 4.4, bz + face*0.15); bd.rotation.y = rot; g.add(bd);
+      t.p[s] = {ex, de, bd, pw, ph, bw, bh};
+    }
+    tileRoad(g, k);
+    tiles.push(t);
+  }
+}
+function paintTile(t, gi){
+  t.gi = gi; const i = mod(gi, EXITS.length), [name, km] = EXITS[i];
+  const E = t.p[-1], Wb = t.p[1];
+  const k = t.k, wEx = k === 0 ? null : k === 2 ? 'Cikopo · Cipali' : name, eEx = k === 0 ? 'Rest Area' : k === 2 ? 'JORR · Cikunir' : name;
+  setTex(E.ex, wEx ? exitPanel(E.pw, E.ph, wEx) : destPanel(E.pw, E.ph, ['Karawang', 'Cikampek']));
+  setTex(E.de, destPanel(E.pw, E.ph, k === 2 ? ['Cipularang', 'Bandung'] : ['Cikampek', 'Bandung']));
+  const cur = Math.max(0, km - 3);
+  setTex(E.bd, boardPanel(E.bw, E.bh, [[name, Math.max(1, km - cur)], ['Cikampek', Math.max(1, 72 - cur)], ['Bandung', 145 - cur]]));
+  setTex(Wb.ex, exitPanel(Wb.pw, Wb.ph, eEx));
+  setTex(Wb.de, destPanel(Wb.pw, Wb.ph, k === 2 ? ['Jagorawi', 'Tol Dalam Kota'] : ['Bekasi', 'Jakarta']));
+  const curW = km + 3;
+  setTex(Wb.bd, boardPanel(Wb.bw, Wb.bh, [[name, Math.max(1, curW - km)], ['Bekasi', Math.max(1, curW - 16)], ['Jakarta', curW]]));
+}
+function updateTiles(){
+  for (const t of tiles){
+    let m = Math.floor((t.b + W + HALF) / L), z = t.b + W - L*m;
+    if (t.c) { if (z < 0) { z += L; m -= 1; } else { z -= L; m += 1; } }
+    t.g.position.z = z;
+    const gi = 3*m - (t.k - 1);
+    if (gi !== t.gi) paintTile(t, gi);
+  }
+  world.position.z = mod(W, T);
+}
+
+// ---------- vehicles ----------
+const headMat = new THREE.MeshStandardMaterial({color:0xf2f2ee, emissive:0xfff6e0, emissiveIntensity:0.2});
+const tailMat = new THREE.MeshStandardMaterial({color:0x8a1010, emissive:0xff2a1a, emissiveIntensity:0.3});
+const glassMat = new THREE.MeshStandardMaterial({color:0x1d2630, roughness:0.15, metalness:0.6});
+const tyreMat = M(0x161616);
+const polRed = new THREE.MeshStandardMaterial({color:0x550008, emissive:0xff1020, emissiveIntensity:3});
+const polBlue = new THREE.MeshStandardMaterial({color:0x000a55, emissive:0x1040ff, emissiveIntensity:3});
+const polStripe = M(0x1f3f9a, {roughness:0.4});
+const SHARED = new Set([headMat, tailMat, glassMat, tyreMat, polRed, polBlue, polStripe]);
+const wheelGeo = new THREE.CylinderGeometry(1,1,1,14); wheelGeo.rotateZ(Math.PI/2); wheelGeo.userData.keep = true;
+const PAINT = [0xf4f4f2,0xf4f4f2,0x1b1c1f,0x1b1c1f,0x8d939a,0x8d939a,0x5d6670,0xb22a26,0x1f3f73,0x2f5a4a,0xcfc4ae,0x6a1d2b,0xd77b2b];
+const geoCache = new Map();
+const bgeo = (w,h,d) => { const k = `${w}|${h}|${d}`; if (!geoCache.has(k)) { const g = new THREE.BoxGeometry(w,h,d); g.userData.keep = true; geoCache.set(k, g); } return geoCache.get(k); };
+function box(w,h,d,mat,x,y,z,g){ const m = new THREE.Mesh(bgeo(w,h,d),mat); m.position.set(x,y,z); m.castShadow = true; g.add(m); return m; }
+function wheels(g, pts, r, w){ return pts.map(([x,z]) => { const m = new THREE.Mesh(wheelGeo,tyreMat); m.scale.set(w,r,r); m.position.set(x,r,z); g.add(m); return m; }); }
+
+function makeVehicle(type){
+  const g = new THREE.Group(); let len, wh, r, v0;
+  const paint = M(type==='police' ? 0xf6f6f4 : pick(PAINT), {roughness:0.35, metalness:0.4});
+  if (type==='car' || type==='suv' || type==='police'){
+    const suv = type==='suv'; len = suv?4.8:4.5; const w = suv?1.95:1.8, h = suv?0.95:0.75; r = suv?0.38:0.33;
+    box(w, h, len, paint, 0, r+h/2, 0, g);
+    const ch = suv?0.75:0.55, cl = suv?2.9:2.3, cz = suv?-0.3:-0.2;
+    box(w*0.9, ch, cl, paint, 0, r+h+ch/2, cz, g);
+    box(w*0.92, ch*0.75, cl*0.98, glassMat, 0, r+h+ch*0.48, cz, g);
+    for (const s of [-1,1]){ box(0.42,0.14,0.06,headMat, s*w*0.33, r+h*0.7, len/2, g); box(0.4,0.14,0.06,tailMat, s*w*0.35, r+h*0.75, -len/2, g); }
+    if (type==='police') { box(w+0.02, 0.16, len*0.9, polStripe, 0, r+h*0.55, 0, g);
+      box(0.55,0.14,0.3, polRed, -0.3, r+h+ch+0.07, cz, g); box(0.55,0.14,0.3, polBlue, 0.3, r+h+ch+0.07, cz, g); }
+    wh = wheels(g, [[-w/2+0.12,len*0.32],[w/2-0.12,len*0.32],[-w/2+0.12,-len*0.32],[w/2-0.12,-len*0.32]], r, 0.24);
+    v0 = rnd(24, 27.5);
+  } else if (type==='moto'){
+    len = 2; r = 0.3;
+    box(0.32, 0.45, 1.8, paint, 0, r+0.3, 0, g);
+    box(0.48, 0.6, 0.42, M(pick([0x1f3f73,0x2a2a2a,0x6a1d2b,0x3e5a3a,0x8a6a3a])), 0, r+0.95, -0.15, g);
+    box(0.3, 0.3, 0.32, M(pick([0x111111,0xf2f2f2,0xc81e1e,0x1f3f73]), {roughness:0.3}), 0, r+1.4, -0.1, g);
+    box(0.14,0.1,0.06,headMat, 0, r+0.55, 0.92, g); box(0.14,0.08,0.06,tailMat, 0, r+0.5, -0.92, g);
+    wh = wheels(g, [[0,0.62],[0,-0.62]], r, 0.12); v0 = rnd(11,15);
+  } else if (type==='van'){
+    len = 5.6; r = 0.36; const w = 2;
+    box(w, 1.9, len-1, paint, 0, r+1.1, -0.5, g); box(w, 1.1, 1.2, paint, 0, r+0.7, len/2-0.6, g);
+    box(w*0.96, 0.6, 0.9, glassMat, 0, r+1.5, len/2-1.1, g);
+    for (const s of [-1,1]){ box(0.35,0.14,0.06,headMat, s*0.7, r+0.75, len/2, g); box(0.2,0.4,0.06,tailMat, s*0.85, r+1, -len/2, g); }
+    wh = wheels(g, [[-0.88,1.8],[0.88,1.8],[-0.88,-1.8],[0.88,-1.8]], r, 0.25); v0 = rnd(22, 25.5);
+  } else if (type==='truck'){
+    len = 16; r = 0.5; const w = 2.5;
+    const cab = M(pick([0xf4f4f2,0x1f3f73,0xb22a26,0x2f5a4a,0x1b1c1f,0xe0a020]), {roughness:0.4, metalness:0.3});
+    box(w, 2.6, 2.4, cab, 0, r+1.6, len/2-1.2, g); box(w*0.96, 0.9, 0.08, glassMat, 0, r+2.3, len/2+0.01, g);
+    const trailer = M(pick([0xe8e8e4,0xdcdcd6,0x9aa1a6,0x3a5f8f,0xc4462a]), {roughness:0.7});
+    box(w, 3, 13, trailer, 0, r+2.2, -1.2, g); box(w*0.9, 0.4, len, tyreMat, 0, r+0.4, 0, g);
+    for (const s of [-1,1]){ box(0.35,0.18,0.06,headMat, s*0.9, r+0.6, len/2, g); box(0.25,0.2,0.06,tailMat, s*1.05, r+0.8, -7.7, g); }
+    wh = wheels(g, [[-1.1,6.6],[1.1,6.6],[-1.1,4.6],[1.1,4.6],[-1.1,-4.6],[1.1,-4.6],[-1.1,-6],[1.1,-6]], r, 0.38); v0 = rnd(18, 21.5);
+  } else {
+    len = 12.5; r = 0.5; const w = 2.5;
+    const body = M(pick([0xf4f4f2,0x1f3f73,0x2f5a4a,0x5d6670,0xb22a26]), {roughness:0.4, metalness:0.3});
+    box(w, 3, len, body, 0, r+1.6, 0, g); box(w*1.01, 0.9, len*0.92, glassMat, 0, r+2.3, 0.2, g);
+    for (const s of [-1,1]){ box(0.4,0.18,0.06,headMat, s*0.9, r+0.6, len/2, g); box(0.25,0.3,0.06,tailMat, s*1.05, r+1, -len/2, g); }
+    wh = wheels(g, [[-1.1,4.2],[1.1,4.2],[-1.1,-3.4],[1.1,-3.4],[-1.1,-4.8],[1.1,-4.8]], r, 0.38); v0 = rnd(21, 23.5);
+  }
+  return {g, len, wh, r, v0, type};
+}
+function killVehicle(v){ if (v.g.parent) v.g.parent.remove(v.g); v.g.traverse(o => { if (o.isMesh && !SHARED.has(o.material)) o.material.dispose(); }); }
+const heavy = v => v.type==='truck' || v.type==='bus';
+const heavyMin = () => LANES >= 5 ? 2 : 1;
+
+// ---------- closures: roadworks + contraflow (blocked intervals per lane, in each direction's own s) ----------
+const WS = {'-1':650, '1':650}, ZONE = 200, TAPER = 60, STOP = {vel:0};
+const cf = {on:false, A:-1, B:1, k:2, e:360, len:360};
+const CF_IN = () => cf.e - OPEN_HW, CF_OUT = () => cf.e + cf.len - OPEN_HW, CF_END = () => cf.e + cf.len + 30;
+const cfTaper = () => 25*cf.k + 20, cfBStart = () => L - CF_END() - 10 - cfTaper(), cfBEnd = () => L - CF_IN() + 30;
+const blocks = new Map(), SPZ = []; // speed zones [dir, start s, length, limit m/s]
+function zoneCap(d, front){ let c = 27.8;
+  for (const [zd, a, len, vl] of SPZ) { if (zd !== d) continue;
+    if (mod(front - a, L) < len) c = Math.min(c, vl); else { const dist = mod(a - front, L); if (dist < 400) c = Math.min(c, Math.sqrt(vl*vl + 3*dist)); } }
+  return c; }
+const key = (d,l) => d*100 + l;
+function addBlock(d, l, a, len){ const k = key(d,l); if (!blocks.has(k)) blocks.set(k, []); blocks.get(k).push([mod(a, L), len]); }
+function laneExists(d, l){ if (l >= 0) return l < LANES; return cf.on && d === cf.A && l >= -cf.k; }
+function blockAhead(d, l, front){
+  if (!laneExists(d, l)) return 0;
+  const b = blocks.get(key(d,l)); if (!b) return Infinity;
+  let best = Infinity;
+  for (const [a, len] of b) { if (mod(front - a, L) < len) return 0; const dd = mod(a - front, L); if (dd < best) best = dd; }
+  return best;
+}
+function spanFree(d, l, x0, x1){
+  if (!laneExists(d, l)) return false;
+  const b = blocks.get(key(d,l)); if (!b) return true;
+  for (const [a, len] of b) if (mod(a - x0, L) < x1 - x0 || mod(x0 - a, L) < len) return false;
+  return true;
+}
+function closedBlocks(d){
+  const idx = [...new Set(cfg.closed[d] || [])].map(n => LANES - n).filter(i => i >= 0 && i < LANES).sort((a,b) => a-b);
+  const out = [];
+  for (const i of idx) { const last = out[out.length-1]; if (last && last.b === i-1) last.b = i; else out.push({a:i, b:i}); }
+  for (const blk of out) { blk.fromOuter = blk.b === LANES-1 || blk.a !== 0;
+    blk.order = []; if (blk.fromOuter) for (let l=blk.b; l>=blk.a; l--) blk.order.push(l); else for (let l=blk.a; l<=blk.b; l++) blk.order.push(l); }
+  return out;
+}
+function setupBlocks(){
+  blocks.clear(); SPZ.length = 0;
+  cf.on = cfg.cf !== 0; cf.A = cfg.cf || -1; cf.B = -cf.A; cf.k = Math.min(cfg.cfk, LANES);
+  for (const d of [-1,1]) if (closedBlocks(d).length) SPZ.push([d, WS[d]-290, 200, 16.7], [d, WS[d]-90, ZONE+160, 11.1]);
+  if (cf.on) SPZ.push([cf.B, cfBStart()-290, cfBEnd()-cfBStart()+330, 16.7], [cf.A, cf.e-290, cf.len+330, 16.7]);
+  for (const d of [-1,1]) for (const blk of closedBlocks(d)) { const n = blk.order.length;
+    blk.order.forEach((l, k) => addBlock(d, l, WS[d] + TAPER*k/n, ZONE + 20 - TAPER*k/n)); }
+  if (cf.on) {
+    for (let j=1; j<=cf.k; j++) addBlock(cf.A, -j, CF_END(), L - (CF_END() - CF_IN()));
+    const st = cfBStart(), tb = cfTaper();
+    for (let j=0; j<cf.k; j++) { const a = st + tb*j/cf.k; addBlock(cf.B, j, a, cfBEnd() - a); }
+  }
+}
+
+// ---------- zone visuals ----------
+const coneGeo = new THREE.ConeGeometry(0.42, 1.4, 12); coneGeo.translate(0, 0.76, 0); coneGeo.userData.keep = true;
+const bandGeo = new THREE.CylinderGeometry(0.22, 0.3, 0.26, 12); bandGeo.translate(0, 0.86, 0); bandGeo.userData.keep = true;
+const coneBaseGeo = new THREE.BoxGeometry(0.8, 0.08, 0.8); coneBaseGeo.translate(0, 0.04, 0); coneBaseGeo.userData.keep = true;
+const lampGeo = new THREE.BoxGeometry(0.22, 0.18, 0.1); lampGeo.translate(0, 1.6, 0); lampGeo.userData.keep = true;
+const barGeo = new THREE.BoxGeometry(0.55, 0.9, 1.9); barGeo.translate(0, 0.45, 0); barGeo.userData.keep = true;
+const amberMat = new THREE.MeshStandardMaterial({color:0xffb21a, emissive:0xffa000, emissiveIntensity:1});
+const orange = M(0xf05a14, {roughness:0.6});
+const bandMat = new THREE.MeshStandardMaterial({color:0xf4f4f4, emissive:0xffffff, emissiveIntensity:0.2});
+const arrowMats = [];
+function arrowTex(right){ return canvasTex(2.4, 1.4, (x, w, h) => {
+  x.fillStyle = '#111'; x.fillRect(0,0,w,h); x.fillStyle = '#ffb21a'; x.save(); x.translate(w/2, h/2); if (!right) x.scale(-1, 1);
+  x.fillRect(-320, -45, 400, 90); x.beginPath(); x.moveTo(400, 0); x.lineTo(70, -220); x.lineTo(70, 220); x.closePath(); x.fill(); x.restore(); }); }
+function warnTex(l1, l2, dist){ return canvasTex(3, 2.4, (x, w, h) => {
+  x.fillStyle = '#f28c00'; x.fillRect(0,0,w,h); x.strokeStyle = '#111'; x.lineWidth = 14; x.strokeRect(24,24,w-48,h-48);
+  x.fillStyle = '#111'; x.textBaseline = 'middle';
+  fit(x, l1, w-120, 110, 800); x.fillText(l1, 60, h*0.28);
+  fit(x, l2, w-120, 70, 600); x.fillText(l2, 60, h*0.5);
+  x.font = '800 130px Archivo, sans-serif'; x.fillText(dist, 60, h*0.76); }); }
+function cones(g, pts){ for (const [geo, mat] of [[coneGeo, orange], [bandGeo, bandMat], [coneBaseGeo, orange]]) { const m = instanced(geo, mat, pts); m.castShadow = true; g.add(m); }
+  g.add(instanced(lampGeo, amberMat, pts.filter((_, i) => i % 3 === 0))); }
+function barriers(g, x, z0, z1){ const a = [], b = []; for (let z = z0, i = 0; z < z1; z += 2, i++) (i % 2 ? b : a).push([x, z]);
+  for (const [p, c] of [[a, 0xf05a14], [b, 0xf4f4f2]]) { const m = instanced(barGeo, M(c, {roughness:0.5}), p); m.castShadow = true; g.add(m); } }
+function line(pts, x0, z0, x1, z1, step){ const n = Math.max(1, Math.round(Math.hypot(x1-x0, z1-z0)/step)); for (let i=0; i<=n; i++) pts.push([x0 + (x1-x0)*i/n, z0 + (z1-z0)*i/n]); }
+function arrowBoard(g, x, z, right){
+  const at = arrowTex(right);
+  g.add(solid(1.8, 0.9, 3, M(0xe8c21a, {roughness:0.5}), x, 0.75, z + 1.5));
+  g.add(solid(2.5, 1.5, 0.1, M(0x222222), x, 2.6, z + 0.05));
+  const mat = new THREE.MeshStandardMaterial({map:at, emissive:0xffffff, emissiveMap:at, emissiveIntensity:0.9}); arrowMats.push(mat);
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.4), mat); face.position.set(x, 2.6, z - 0.02); face.rotation.y = Math.PI; g.add(face);
+}
+function warnBoard(g, z, l1, l2, dist){
+  const sx = roadW + 2.5;
+  for (const dx of [-1.2, 1.2]) g.add(solid(0.12, 3.2, 0.12, signBackMat, sx + dx, 1.6, z));
+  const p = panelMesh(3, 2.4); setTex(p, warnTex(l1, l2, dist)); p.position.set(sx, 3, z - 0.1); p.rotation.y = Math.PI; g.add(p);
+}
+let zones = [];
+function zoneGroup(dir, s0, zMin, zMax){ const g = new THREE.Group(); g.userData = {dir, s0, mid:(zMin+zMax)/2}; scene.add(g); zones.push(g); return g; }
+const laneB = l => MED + l*LW; // lane boundary (local frame: +z = travel, x outward from the median)
+function buildZones(){
+  zones.forEach(dispose); zones = []; arrowMats.length = 0;
+  for (const d of [-1,1]) {
+    const blks = closedBlocks(d); if (!blks.length) continue;
+    const g = zoneGroup(d, WS[d], -320, ZONE + 30), pts = [];
+    for (const blk of blks) {
+      const xa = laneB(blk.a), xb = laneB(blk.b + 1), se = blk.fromOuter ? xb : xa, ot = blk.fromOuter ? xa : xb, sg = Math.sign(ot - se);
+      line(pts, se + sg*0.4, 0, ot - sg*0.3, TAPER, 2.5);
+      line(pts, ot - sg*0.3, TAPER + 3, ot - sg*0.3, ZONE, 3);
+      barriers(g, ot - sg*1.1, TAPER + 4, ZONE - 2);
+      if (blk.fromOuter && blk.b < LANES-1) line(pts, se + sg*0.3, 4, se + sg*0.3, ZONE, 5);
+      line(pts, ot - sg*0.3, ZONE + 5, se + sg*0.4, ZONE + 30, 5);
+      g.add(flat(xb - xa - 0.4, ZONE - TAPER, M(0x4c4b47), (xa + xb)/2, 0.008, (ZONE + TAPER)/2));
+      const ax = laneB(blk.order[0]) + LW/2;
+      arrowBoard(g, ax, 4.5, blk.fromOuter);
+      const tz = ZONE*0.6, cx = (xa + xb)/2;
+      g.add(solid(2.4, 2.6, 2.2, M(0xe8c21a, {roughness:0.5}), cx, 1.6, tz + 3), solid(2.4, 1.2, 5, M(0xd9d6cc), cx, 1.0, tz - 1));
+      for (let k=0; k<5; k++) g.add(solid(0.6, 1, 0.6, orange, cx + rnd(-0.8, 0.8), 0.5, tz - 9 - k*3));
+    }
+    cones(g, pts);
+    warnBoard(g, -320, 'PEKERJAAN JALAN', 'Lajur ditutup', '300 m');
+    warnBoard(g, -120, 'PEKERJAAN JALAN', 'Lajur ditutup', '100 m');
+    signPost(g, roadW+2.5, -290, Math.PI, [SP(60)], 0, 1.4);
+    signPost(g, roadW+2.5, -90, Math.PI, [SP(40), PL(['Hati-hati'], '#f2c230', '#111', 1.2, 0.45)], 0, 1.4);
+    signPost(g, roadW+2.5, ZONE+70, Math.PI, [SP(100), PL(['Akhir', 'pekerjaan jalan'], '#fff', '#111', 1.5, 0.6)], 0, 1.4);
+  }
+  if (cf.on) {
+    const st = cfBStart(), len = cfBEnd() - st, tb = cfTaper(), k = cf.k;
+    const g = zoneGroup(cf.B, st, -320, len), pts = [];
+    if (k < LANES) {
+      line(pts, MED + 0.4, 0, laneB(k) - 0.3, tb, 4);
+      line(pts, laneB(k) - 0.3, tb + 9, laneB(k) - 0.3, len - 30, 9);
+      line(pts, laneB(k) - 0.3, len - 25, MED + 0.4, len, 5);
+      arrowBoard(g, MED + LW/2, 4.5, false);
+    } else {
+      line(pts, MED + 0.4, 0, MED + span - 0.4, 0, 1.3);
+      line(pts, MED + 0.4, len, MED + span - 0.4, len, 1.3);
+      for (let l=0; l<LANES; l+=2) arrowBoard(g, laneB(l) + LW/2, -6, false);
+    }
+    cones(g, pts);
+    const p1 = makeVehicle('police'); p1.g.position.set(MED + LW/2, 0, Math.min(tb*0.5 + 10, tb + 4)); g.add(p1.g);
+    const p2 = makeVehicle('police'); p2.g.position.set(MED + LW/2, 0, len - 14); g.add(p2.g);
+    const p3 = makeVehicle('police'); p3.g.position.set(laneB(Math.min(k, LANES-1)) + 1.4, 0, (tb + len)/2); p3.g.rotation.y = 0.15; g.add(p3.g);
+    const t1 = k < LANES ? 'CONTRAFLOW' : 'ONE WAY', t2 = k < LANES ? `${k} lajur kanan ditutup` : 'Lewat Jalan Nasional';
+    warnBoard(g, -320, t1, t2, '300 m'); warnBoard(g, -120, t1, t2, '100 m');
+    signPost(g, roadW+2.5, -290, Math.PI, [SP(60)], 0, 1.4);
+    signPost(g, roadW+2.5, len+40, Math.PI, [SP(100)], 0, 1.4);
+    // contraflow traffic's own carriageway: police at the entry opening
+    const gA = zoneGroup(cf.A, cf.e - 60, -260, 100);
+    const pA = makeVehicle('police'); pA.g.position.set(MED + 1.6, 0, 6); pA.g.rotation.y = -0.2; gA.add(pA.g);
+    warnBoard(gA, -260, 'CONTRAFLOW', 'Ambil lajur kanan', '200 m');
+    signPost(gA, roadW+2.5, -230, Math.PI, [SP(60)], 0, 1.4);
+  }
+  if (gates) gates.visible = !cf.on;
+  if (uturnG) uturnG.visible = !cf.on;
+}
+
+// ---------- ramps, rest area, toll gates, interchange (per sign tile) ----------
+const ss = t => { t = Math.min(1, Math.max(0, t)); return t*t*(3-2*t); };
+const RE = 24, RW = 14, ND = 150, NRL = 3 + ND + 1.75;
+const asphaltDS = asphalt.clone(); asphaltDS.side = THREE.DoubleSide;
+const whiteDS = white.clone(); whiteDS.side = THREE.DoubleSide;
+const lotMat = M(0x46484b, {side: THREE.DoubleSide});
+const Hh = q => q[2] || 0;
+function chaikin(p){ for (let k=0; k<2; k++){ const q = [p[0]]; for (let i=0; i<p.length-1; i++){ const a = p[i], b = p[i+1]; q.push([a[0]*.75+b[0]*.25, a[1]*.75+b[1]*.25, Hh(a)*.75+Hh(b)*.25], [a[0]*.25+b[0]*.75, a[1]*.25+b[1]*.75, Hh(a)*.25+Hh(b)*.75]); } q.push(p[p.length-1]); p = q; } return p; }
+function dens(p, step=5){ const q = [p[0]]; for (let i=1; i<p.length; i++){ const a = p[i-1], b = p[i], n = Math.max(1, Math.ceil(Math.hypot(b[0]-a[0], b[1]-a[1])/step)); for (let j=1; j<=n; j++) q.push([a[0]+(b[0]-a[0])*j/n, a[1]+(b[1]-a[1])*j/n, Hh(a)+(Hh(b)-Hh(a))*j/n]); } return q; }
+const smooth = p => dens(chaikin(p.filter((x,i) => !i || Math.hypot(x[0]-p[i-1][0], x[1]-p[i-1][1]) > 0.05)));
+const cut = ([a,b], gaps) => { let s = [[a,b]]; for (const [g0,g1] of gaps) s = s.flatMap(([x,y]) => g1 <= x || g0 >= y ? [[x,y]] : [[x,g0],[g1,y]].filter(([p,q]) => q-p > 0.5)); return s; };
+const offPts = R => { const p = [[1.8, 50]]; for (let u=55; u<=110; u+=5) p.push([1.8 + (R-1.8)*ss((u-50)/60), u]); return p; };
+const onPts = R => { const p = []; for (let u=240; u<=300; u+=5) p.push([R - (R-1.8)*ss((u-240)/60), u]); p.push([1.8, 352]); return p; };
+const DK = 14.72;
+function arcP(co, cu, R, a0, a1){ const n = Math.max(2, Math.ceil(R*Math.abs(a1-a0)/4)), p = []; for (let i=0; i<=n; i++){ const a = a0 + (a1-a0)*i/n; p.push([co + R*Math.cos(a), cu + R*Math.sin(a)]); } return p; }
+function grade(p, i0, i1, h0, h1){ const c = [0]; for (let i=1; i<p.length; i++) c.push(c[i-1] + Math.hypot(p[i][0]-p[i-1][0], p[i][1]-p[i-1][1]));
+  return p.map((q, i) => [q[0], q[1], i <= i0 ? h0 : i >= i1 ? h1 : h0 + (h1-h0)*(c[i]-c[i0])/(c[i1]-c[i0])]); }
+function ssPath(kind){ const e = MED + span, far = 300, nfar = -310 - e, P = Math.PI;
+  if (kind === 'outC') { const p = [...offPts(62), [62,145.4], ...arcP(87,145.4,25,P,P/2)]; const i1 = p.length-1; p.push([far,170.4]); return grade(p, 1, i1, 0, DK); }
+  if (kind === 'outA') { const p = [[1.8,50],[1.8,190],[6,215]]; const i0 = p.length; p.push(...arcP(31.4,215,25.4,P,-P/2)); const i1 = p.length-1; p.push([nfar,189.6]); return grade(p, i0, i1, 0, DK); }
+  if (kind === 'inC') { const p = [[far,189.6], ...arcP(125,219.6,30,-P/2,-P)]; for (let u=230; u<=300; u+=5) p.push([95 - 93.2*ss((u-225)/75), u]); const i1 = p.findIndex(q => q[1] >= 270); p.push([1.8,352]); return grade(p, 1, i1, DK, 0); }
+  const p = [[nfar,170.4], ...arcP(25,148.4,22,P/2,-P)]; const i1 = p.length-1; p.push([1.8,165],[1.8,352]); return grade(p, 1, i1, DK, 0); }
+// trumpet interchange (Simpang Susun tipe trompet): diagonal exit ramp to a stem road, loop entry ramp that bridges over the stem
+function prof(p, keys){ const c = [0]; for (let i=1; i<p.length; i++) c.push(c[i-1] + Math.hypot(p[i][0]-p[i-1][0], p[i][1]-p[i-1][1]));
+  return p.map((q, i) => { let h; const K = keys.length;
+    if (i <= keys[0][0]) h = keys[0][1]; else if (i >= keys[K-1][0]) h = keys[K-1][1];
+    else { let j = 0; while (keys[j+1][0] < i) j++; const [a, ha] = keys[j], [b, hb] = keys[j+1]; h = ha + (hb-ha)*(c[i]-c[a])/((c[b]-c[a]) || 1); }
+    return [q[0], q[1], h]; }); }
+const TR_H = 6.8, TR_GO = {gate:200, nrgate:110};
+function trOut(f){ const p = [[1.8,50],[2.6,58],[4.5,66],[8,75],[40,108],[62,130],[74,146],[82,162],[90,174],[100,178.25]];
+  if (f === 'gate') p.push([320,178.25]); else p.push([NRL-14,178.25],[NRL-4,182],[NRL,192],[NRL,200]); return p; }
+function trIn(head){ const p = [...head, ...arcP(35,156.75,25,Math.PI/2,Math.PI*2)], i0 = head.length;
+  p.push([60,181.75]); const i1 = p.length-1; p.push([60,215], ...onPts(60)); const i2 = p.findIndex(q => q[1] >= 262); p.push([1.8,352]);
+  return prof(p, [[i0,0],[i1,TR_H],[i2,0]]); }
+function stemPlaza(g, s, o){ const e = MED + span, x = s*(e+o), z = s*180;
+  g.add(flat(36, 17, asphaltDS, x, -0.004, z), solid(8, 0.6, 17, M(0xf2f2f2), x, 5.8, z), solid(8.2, 0.6, 17.2, M(0x0c6a3c), x, 6.4, z));
+  for (const du of [-4.4, 0, 4.4]) g.add(solid(3.2, 2.6, 1.3, M(0xe4e9ec), x, 1.3, s*(180+du)), solid(0.3, 4.4, 0.3, concrete, x, 3.8, s*(180+du)));
+  for (const sd of [1, -1]) { const p = panelMesh(7.6, 1.2); setTex(p, textPanel(7.6, 1.2, SIGN_GREEN, 'GERBANG TOL')); p.position.set(x + s*sd*4.15, 6.1, z); p.rotation.y = s*sd*Math.PI/2; g.add(p); }
+  const et = [SP(20), PL(['Siapkan', 'kartu e-Toll'], '#fff', '#111', 1.3, 0.55)];
+  signPost(g, s*(e+o+30), s*185.6, s*Math.PI/2, et); signPost(g, s*(e+o-30), s*174.4, -s*Math.PI/2, et); }
+const pierGeo = new THREE.CylinderGeometry(0.55,0.55,1,10); pierGeo.translate(0,0.5,0); pierGeo.userData.keep = true;
+const fasciaMat = M(0xa9a59c, {side: THREE.DoubleSide});
+const runsOf = (p, f) => { const out = []; let r = []; for (const q of p) { if (f(q)) r.push(q); else { if (r.length > 1) out.push(r); r = []; } } if (r.length > 1) out.push(r); return out; };
+function ramp3(g, raw, s, keep = () => true){
+  const e = MED + span, piers = [], q0 = new THREE.Quaternion(), p3 = new THREE.Vector3(), s3 = new THREE.Vector3();
+  for (const p of runsOf(smooth(raw), q => q[0] > -2 && !(q[1] > 166.5 && q[1] < 193.5 && Hh(q) > 13.8))) {
+    g.add(ribbon(p, s, 4.2, asphaltDS, -0.006));
+    for (const r of runsOf(p, q => Hh(q) > 0.8)) g.add(ribbon(r, s, 4.7, fasciaMat, -0.75));
+    for (const lat of [1.95, -1.95]) for (const r of runsOf(p, q => (q[0] > 3.3 || Hh(q) > 0.5) && keep(q))) g.add(ribbon(r, s, 0.15, whiteDS, 0.012, lat));
+    let acc = 0; for (let i=1; i<p.length; i++) { acc += Math.hypot(p[i][0]-p[i-1][0], p[i][1]-p[i-1][1]); if (acc > 16 && Hh(p[i]) > 2.5) { acc = 0; piers.push(p[i]); } }
+  }
+  const pm = new THREE.InstancedMesh(pierGeo, concrete, Math.max(1, piers.length)); pm.count = piers.length;
+  piers.forEach((q, i) => { tm.compose(p3.set(s*(e+q[0]), 0, s*q[1]), q0, s3.set(1, Hh(q) - 0.7, 1)); pm.setMatrixAt(i, tm); });
+  pm.castShadow = true; g.add(pm);
+}
+const BAYS = Array.from({length:20}, (_,i) => 146 + i*4), STATIC = BAYS.map((_,i) => [0,2,3,6,9,10,13,15,18].includes(i));
+const FAC = {'1':['rest','gate','ss'], '-1':[null,'nrgate','nr']};
+const facOf = (d, k) => FAC[d][k];
+const perN = s => Math.floor((mod(s, L) - HALF + 180)/T);
+const uOf = s => mod(s, L) - HALF - perN(s)*T;
+const tileK = (d, n) => d === 1 ? mod(n+1, 3) : mod(1-n, 3);
+const prevK = (d, k) => d === 1 ? mod(k-1, 3) : mod(k+1, 3);
+function facPath(f, part, bay){
+  if (f === 'ss') return ssPath(part === 'out' ? 'outC' : 'inC');
+  if (part === 'out') {
+    if (f === 'rest') return bay == null ? [...offPts(RE), [30,125], [34,138], [34,228], [28,236], ...onPts(RE)] : [...offPts(RE), [30,125], [34,138], [34,bay-7], [40,bay]];
+    return trOut(f);
+  }
+  if (part === 'leave') return [[40,bay], [46,bay+7], [46,228], [30,236], ...onPts(RE)];
+  if (f === 'gate') return trIn([[320,181.75], [40,181.75]]);
+  return trIn([[NRL, part], [NRL,169], [NRL-3,177.5], [NRL-10,181.75], [40,181.75]]);
+}
+function mkPath(raw){ const pts = smooth(raw), c = [0]; for (let i=1; i<pts.length; i++) c.push(c[i-1] + Math.hypot(pts[i][0]-pts[i-1][0], pts[i][1]-pts[i-1][1])); return {pts, c, len: c[c.length-1]}; }
+function pathAt(P, d, i){ i = Math.min(i||0, P.pts.length-2); while (i < P.pts.length-2 && P.c[i+1] < d) i++; while (i > 0 && P.c[i] > d) i--;
+  const a = P.pts[i], b = P.pts[i+1], l = (P.c[i+1]-P.c[i]) || 1, f = Math.min(1, Math.max(0, (d-P.c[i])/l));
+  return {o: a[0]+(b[0]-a[0])*f, u: a[1]+(b[1]-a[1])*f, h: Hh(a)+(Hh(b)-Hh(a))*f, ho: (b[0]-a[0])/l, hu: (b[1]-a[1])/l, i}; }
+const IN = {}; const inPath = f => IN[f] || (IN[f] = mkPath(facPath(f, 'in')));
+function bendObj(g){ g.traverse(o => { if (!o.isMesh) return; o.frustumCulled = false; patchMat(o.material); if (o.castShadow) o.customDepthMaterial = depthMat; }); }
+
+function ribbon(pts, s, w, mat, y, lat=0){ const e = MED + span, pos = [], idx = [];
+  for (let i=0; i<pts.length; i++){ const a = pts[Math.max(0,i-1)], b = pts[Math.min(pts.length-1,i+1)];
+    let dO = b[0]-a[0], dU = b[1]-a[1]; const l = Math.hypot(dO,dU) || 1; dO /= l; dU /= l;
+    for (const sd of [-1,1]) { const k = lat + sd*w/2; pos.push(s*(e + pts[i][0] + k*dU), y + Hh(pts[i]), s*(pts[i][1] - k*dO)); }
+    if (i) { const j = (i-1)*2; idx.push(j, j+1, j+2, j+1, j+3, j+2); } }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+  const m = new THREE.Mesh(g, mat); m.receiveShadow = true; return m; }
+function road(g, raw, s, keepR){ const p = smooth(raw); g.add(ribbon(p, s, 4.2, asphaltDS, -0.006));
+  for (const lat of [1.95, -1.95]) { let run = []; const flush = () => { if (run.length > 1) g.add(ribbon(run, s, 0.15, whiteDS, 0.012, lat)); run = []; };
+    for (const q of p) { if (lat > 0 ? q[0] > 1 : (q[0] > 4.2 && keepR(q))) run.push(q); else flush(); } flush(); } }
+function textPanel(w, h, bg, l1, l2){ return canvasTex(w, h, (x, W2, H2) => { x.fillStyle = bg; x.fillRect(0,0,W2,H2); x.strokeStyle = '#fff'; x.lineWidth = 10; x.strokeRect(16,16,W2-32,H2-32); x.fillStyle = '#fff'; x.textBaseline = 'middle';
+  if (l2) { fit(x, l1, W2-100, H2*0.32, 800); x.fillText(l1, 50, H2*0.38); fit(x, l2, W2-100, H2*0.18, 600); x.fillText(l2, 50, H2*0.72); } else { fit(x, l1, W2-100, H2*0.5, 800); x.fillText(l1, 50, H2/2); } }); }
+function tollGate(g, s, o, u){ const x = s*(MED+span+o), z = s*u;
+  g.add(flat(13, 34, asphaltDS, x, -0.004, z), solid(13, 0.6, 7, M(0xf2f2f2), x, 5.8, z), solid(13.2, 0.6, 7.2, M(0x0c6a3c), x, 6.4, z));
+  for (const dx of [-3.1, 3.1]) g.add(solid(1.3, 2.6, 3.2, M(0xe4e9ec), x+dx, 1.3, z), solid(0.3, 4.4, 0.3, concrete, x+dx, 3.8, z));
+  g.add(solid(2.4, 0.1, 0.1, M(0xe02020), x - 1.2, 1.05, z + s*1.8)); }
+function restArea(g){ const ex = o => MED + span + o, th = Math.atan2(6, 7);
+  g.add(flat(34, 128, lotMat, ex(39), -0.003, 176), flat(18, 36, lotMat, ex(65), -0.003, 222), flat(3.5, 40, M(0xb5b0a5), ex(58), -0.001, 168));
+  const bl = new THREE.PlaneGeometry(0.12, 8); bl.rotateX(-Math.PI/2); bl.rotateY(th);
+  g.add(instanced(bl, white, [...BAYS.map(b => [ex(40), b-2]), [ex(40), BAYS[BAYS.length-1]+2]], 0.01));
+  STATIC.forEach((st, i) => { if (!st) return; const v = makeVehicle(pick(['car','car','suv','van'])); v.g.position.set(ex(40), 0, BAYS[i]); v.g.rotation.y = th; g.add(v.g); });
+  for (const u of [150, 172, 194]) { const v = makeVehicle('truck'); v.g.position.set(ex(52.5), 0, u); g.add(v.g); }
+  g.add(solid(12, 4.2, 34, M(0xe9e2d4), ex(66), 2.1, 168), solid(13.6, 0.5, 36, M(0x9a3b2a), ex(66), 4.45, 168), solid(0.1, 2, 30, glassMat, ex(59.95), 1.6, 168));
+  g.add(solid(7, 4, 7, M(0xf2efe6), ex(66), 2, 140)); const dome = new THREE.Mesh(new THREE.SphereGeometry(2.4, 16, 8, 0, Math.PI*2, 0, Math.PI/2), M(0x2f7a55)); dome.position.set(ex(66), 4, 140); g.add(dome);
+  g.add(solid(10, 0.8, 16, M(0xf4f4f4), ex(66), 5.6, 222), solid(10.2, 0.45, 16.2, M(0xd0202a), ex(66), 5.05, 222));
+  for (const dx of [-3.5, 3.5]) for (const dz of [-5, 5]) g.add(solid(0.35, 5.2, 0.35, M(0xf4f4f4), ex(66)+dx, 2.6, 222+dz));
+  for (const dz of [-4, 4]) g.add(solid(0.8, 1.6, 1.4, M(0xd0202a), ex(66), 0.8, 222+dz));
+  const p = panelMesh(6, 3.2); setTex(p, textPanel(6, 3.2, '#0d3b7a', 'REST AREA', 'SPBU · Musala · Kuliner')); p.position.set(ex(18), 6.5, 128); p.rotation.y = Math.PI;
+  g.add(p, solid(0.4, 5, 0.4, signBackMat, ex(18), 2.5, 128.4)); }
+function flyover(g){ const H = 14, z0 = 180, dw = 25.2, W2 = 660;
+  g.add(solid(W2, 1.4, dw, concrete, 0, H, z0), flat(W2, 23, asphalt, 0, H+0.71, z0), solid(W2, 0.9, 0.5, M(0xb8b4aa), 0, H+1.15, z0));
+  const ex = MED + span;
+  for (const sz of [-1,1]) for (const [a,b] of cut([-W2/2, W2/2], (sz > 0 ? [[24,52],[102,130]] : [[15,44],[66,94]]).map(([p,q]) => [ex+p, ex+q])))
+    g.add(solid(b-a, 1.1, 0.35, concrete, (a+b)/2, H+1.25, z0 + sz*(dw/2-0.2)));
+  const dg = new THREE.PlaneGeometry(3, 0.15); dg.rotateX(-Math.PI/2); const dp = [];
+  for (const sz of [-1,1]) { for (const kk of [1,2]) for (let x=-W2/2; x<W2/2; x+=9) dp.push([x, z0 + sz*(0.6 + kk*3.6)]); for (const ed of [0.5, 11.3]) g.add(flat(W2, 0.15, white, 0, H+0.73, z0 + sz*ed)); }
+  g.add(instanced(dg, white, dp, H+0.73));
+  for (const x of [roadW+6, roadW+110, roadW+190, roadW+260]) for (const sx of [-1,1]) for (const sz of [-1,1]) { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.9,0.9,H,12), concrete); c.position.set(sx*x, H/2, z0 + sz*8); c.castShadow = true; g.add(c); }
+  for (const s of [-1,1]) { const p = panelMesh(span*0.85, 2.4); setTex(p, textPanel(span*0.85, 2.4, SIGN_GREEN, s > 0 ? 'Simpang Susun · JORR' : 'Simpang Susun · Cipali')); p.position.set(s*(MED+span/2), H-0.2, z0 - s*(dw/2+0.25)); p.rotation.y = s > 0 ? Math.PI : 0; g.add(p); } }
+function tileRoad(g, k){
+  const e = MED + span, dg = new THREE.PlaneGeometry(0.3, 3); dg.rotateX(-Math.PI/2); const dp = [], pp = [];
+  for (const s of [-1,1]) {
+    const own = facOf(s, k), prev = facOf(s, prevK(s, k)), dash = [], gap = [];
+    if (own) { dash.push(own === 'ss' ? [15,180] : [15,55]); gap.push(own === 'ss' ? [10,180] : [10,80]); }
+    if (prev) { dash.push(prev === 'ss' ? [-180,-10] : [-62,-10]); gap.push(prev === 'ss' ? [-180,-8] : [-75,-8]); }
+    for (const [a,b] of cut([-180,180], dash)) g.add(flat(0.2, b-a, white, s*e, 0.012, s*(a+b)/2));
+    for (const [a,b] of dash) for (let u=a; u<b; u+=6) dp.push([s*e, s*(u+1.5)]);
+    for (const [a,b] of cut([-180,180], gap)) { g.add(solid(0.08, 0.32, b-a, railMat, s*(roadW-0.2), 0.7, s*(a+b)/2)); for (let u=a; u<b; u+=4) pp.push([s*(roadW-0.15), s*u]); }
+    if (!own) continue;
+    if (own === 'rest') { road(g, [[1.8,12], ...offPts(RE)], s, () => true); road(g, onPts(RE), s, () => true); restArea(g); }
+    else if (own === 'ss') { for (const kd of ['outC','outA','inC','inB']) ramp3(g, ssPath(kd), s); }
+    else { const keep = own === 'gate' ? () => true : q => q[0] < NRL - 12;
+      ramp3(g, [[1.8,12], ...facPath(own,'out')], s, keep); ramp3(g, facPath(own, own === 'gate' ? 'in' : 162), s, keep);
+      if (TR_GO[own]) stemPlaza(g, s, TR_GO[own]); }
+  }
+  const rs = (s, o, u, items) => signPost(g, s*(e+o), s*u, s<0 ? 0 : Math.PI, items);
+  for (const s of [-1,1]) { const own = facOf(s, k); if (!own) continue;
+    const etoll = [SP(20), PL(['Siapkan', 'kartu e-Toll'], '#fff', '#111', 1.3, 0.55)];
+    if (own === 'rest') { rs(s, 12, 70, [SP(40)]); rs(s, 18, 142, [SP(20), PL(['Parkir', 'sesuai marka'], '#1d4fa3', '#fff', 1.3, 0.55)]); }
+    else rs(s, 12, 70, [SP(40)]);
+  }
+  if (dp.length) g.add(instanced(dg, white, dp, 0.012));
+  g.add(instanced(new THREE.BoxGeometry(0.12,0.8,0.12), railMat, pp, 0.4));
+  if (k === 2) flyover(g);
+}
+
+let rampers = [], pend = {w:0, e:0}, entryT = 0, bayOcc = [];
+function resetRamps(){ rampers.forEach(killVehicle); rampers = []; pend = {w:0, e:0}; bayOcc = STATIC.map(s => s ? 'static' : null); }
+function toRamp(v, u0){
+  const n = perN(v.s), k = tileK(v.dir, n), f = facOf(v.dir, k), head = [[-1.8, u0], [1.8, Math.min(u0+25, 48)]];
+  let raw, end = 'merge', park = null;
+  if (f === 'rest') { const free = BAYS.map((_,i) => i).filter(i => !bayOcc[i]);
+    if (free.length && Math.random() < 0.75) { const i = pick(free); bayOcc[i] = v; raw = facPath(f, 'out', BAYS[i]); park = {i, t: rnd(10, 35)}; } else raw = facPath(f, 'out'); }
+  else { raw = f === 'ss' && Math.random() < 0.5 ? ssPath('outA') : facPath(f, 'out'); end = f.startsWith('nr') ? 'nr' : 'out'; }
+  v.rp = {P: mkPath([...head, ...raw]), d: 0, i: 0, sBase: HALF + n*T, end, park, f};
+  v.exitWant = false; v.q = pathAt(v.rp.P, 0, 0); rampers.push(v);
+}
+function capAt(v, q){ const f = v.rp.f;
+  if (f === 'rest' && q.o > 26 && q.u > 112 && q.u < 242) return 5;
+  const go = TR_GO[f];
+  if (go && Math.abs(q.o - go) < 14 && Math.abs(q.u - 180) < 6) return 3.5;
+  if (f && f.startsWith('nr') && q.o > NRL - 20) return 7;
+  return q.o < 3 ? 22 : 11.1; }
+function tryMerge(v){ const front = v.s + v.len/2, outerFree = spanFree(v.dir, LANES-1, v.s - v.len/2 - 2, front + 2);
+  const nl = outerFree ? LANES-1 : LANES-2;
+  if (nl < 0 || (heavy(v) && nl < heavyMin())) return;
+  if (!spanFree(v.dir, nl, v.s - v.len/2 - 2, front + 2) || blockAhead(v.dir, nl, front) < 40) return;
+  if (!gapsOK(v, nl, v.rp.P.len - v.rp.d < 30)) return;
+  rampers.splice(rampers.indexOf(v), 1);
+  Object.assign(v, {lane: nl, lx: LANES, cd: rnd(2,4), yaw: 0, cfWant: false, exitWant: false, rp: null, lastN: perN(v.s)});
+  v.x = posX(v.dir, LANES); vehicles.push(v); }
+function rampStep(dt){
+  const e = MED + span;
+  for (const v of rampers) { if (v.rp.parked) { v.acc = 0; continue; }
+    const q = v.q, su = v.rp.sBase + q.u; let gap = Infinity, lead = null;
+    for (const o of rampers) { if (o === v || o.dir !== v.dir || o.rp.parked) continue;
+      const du = mod(o.rp.sBase + o.q.u - su + HALF, L) - HALF, dO = o.q.o - q.o, d = dO*q.ho + du*q.hu;
+      if (d > 0 && d < 40 && Math.abs(dO*q.hu - du*q.ho) < 2.2 && Math.abs((o.q.h||0) - (q.h||0)) < 3) { const g2 = d - (v.len + o.len)/2; if (g2 < gap) { gap = g2; lead = o; } } }
+    const cap = capAt(v, q); let acc = idm(v, lead, gap, cap);
+    if (v.rp.park || v.rp.end === 'merge') acc = Math.min(acc, idm(v, STOP, v.rp.P.len - v.rp.d - (v.rp.park ? 0.1 : 1), cap));
+    v.acc = acc; }
+  for (const v of [...rampers]) { const rp = v.rp;
+    if (rp.parked) { rp.park.t -= dt; if (rp.park.t <= 0) { bayOcc[rp.park.i] = null; rp.P = mkPath(facPath('rest', 'leave', BAYS[rp.park.i])); rp.d = 0; rp.i = 0; rp.parked = false; rp.park = null; } continue; }
+    v.vel = Math.max(0, v.vel + v.acc*dt); rp.d += v.vel*dt;
+    for (const w of v.wh) w.rotation.x += v.vel*dt / v.r;
+    const q = v.q = pathAt(rp.P, rp.d, rp.i); rp.i = q.i;
+    v.s = mod(rp.sBase + q.u, L); v.x = v.dir*(e + q.o);
+    if (rp.park && rp.d >= rp.P.len - 0.3) { rp.parked = true; v.vel = 0; }
+    else if (rp.end === 'merge' && q.u >= 300) tryMerge(v);
+    else if (rp.d >= rp.P.len) { rampers.splice(rampers.indexOf(v), 1);
+      if (rp.end === 'out') { killVehicle(v); v.dead = true; pend.e++; }
+      else { Object.assign(v, {kind:'nr', dir:-1, lane:0, x: NRX - 1.75, vel: rnd(15,17), rp: null}); v.g.rotation.y = Math.PI; locals.push(v); pend.w++; } } }
+  entryT -= dt;
+  if (pend.e > 0 && entryT <= 0) { entryT = rnd(1, 3);
+    const n = pick([0, 1]), f = facOf(1, tileK(1, n)), sBase = HALF + n*T;
+    if (!rampers.some(o => o.dir === 1 && o.rp.inb && o.rp.sBase === sBase && o.rp.d < 25)) {
+      const t = Math.random(), v = makeVehicle(t<.12?'truck':t<.18?'bus':t<.3?'van':t<.55?'suv':'car'); bendObj(v.g);
+      Object.assign(v, {dir: 1, vel: 12}); v.rp = {P: f === 'ss' && Math.random() < 0.5 ? (IN.ssB || (IN.ssB = mkPath(ssPath('inB')))) : inPath(f), d: 0, i: 0, sBase, end: 'merge', f, inb: true}; v.q = pathAt(v.rp.P, 0, 0);
+      scene.add(v.g); rampers.push(v); pend.e--; } }
+}
+
+// ---------- main traffic ----------
+let vehicles = [];
+function spawn(){
+  vehicles.forEach(killVehicle); vehicles = [];
+  const oneWay = cf.on && cf.k >= LANES;
+  for (const dir of [-1,1]) { if (oneWay && dir === cf.B) continue;
+    for (let lane=0; lane<LANES; lane++){
+      let s = rnd(0,20);
+      while (s < L-20){
+        const t = Math.random(), outer = lane >= LANES-2;
+        let type = lane===0 ? (t<.2?'suv':'car')
+                 : outer ? (t<.3?'truck':t<.4?'bus':t<.55?'van':t<.78?'suv':'car')
+                 : (t<.1?'van':t<.4?'suv':'car');
+        const vlen = type==='truck' ? 16 : type==='bus' ? 12.5 : 6;
+        if (!spanFree(dir, lane, s - vlen/2 - 3, s + vlen/2 + 3)) { s += 8; continue; }
+        if (heavy({type}) && lane < heavyMin()) type = 'car';
+        const v = makeVehicle(type);
+        if (lane===0) v.v0 = Math.min(v.v0 + 2, 27.7);
+        Object.assign(v, {dir, lane, lx: lane, s, vel: v.v0*0.85, cd: rnd(0,4), yaw:0, cfWant: !heavy(v) && Math.random() < 0.65});
+        v.x = posX(dir, lane);
+        scene.add(v.g); vehicles.push(v);
+        s += v.len + rnd(18, 60) / cfg.den;
+      }
+    }
+  }
+}
+const lanesOf = new Map();
+const laneList = (d,l) => lanesOf.get(key(d,l)) || [];
+function gapInfo(v, list){
+  let lead=null, ld=Infinity, fol=null, fd=Infinity;
+  for (const o of list){ if (o===v) continue;
+    let d = o.s - v.s; if (d > HALF) d -= L; if (d < -HALF) d += L;
+    const gap = Math.abs(d) - (o.len+v.len)/2;
+    if (d >= 0 && gap < ld){ ld = gap; lead = o; } else if (d < 0 && gap < fd){ fd = gap; fol = o; }
+  }
+  return {lead, ld, fol, fd};
+}
+function idm(v, lead, gap, v0){
+  const a=1.4, b=2.2, s0=2.5, Th=1.3;
+  let acc = a*(1-Math.pow(v.vel/v0,4));
+  if (lead){ const ss = s0 + v.vel*Th + v.vel*(v.vel-lead.vel)/(2*Math.sqrt(a*b)); acc -= a*Math.pow(ss/Math.max(gap,0.1),2); }
+  return Math.max(acc, -9);
+}
+function gapsOK(v, nl, relaxed){
+  const g = gapInfo(v, laneList(v.dir, nl)), dv = g.fol ? Math.max(0, g.fol.vel - v.vel) : 0;
+  if (relaxed) { const need = v.vel < 4 ? 1.5 : 4 + v.vel*0.25; return g.ld > need && g.fd > need + dv*0.8 ? g : null; }
+  return g.ld > 8 && g.fd > 6 + dv*2.5 ? g : null;
+}
+function transitionOK(v, nl){
+  if (v.lane === -1 && nl === 0) return mod(v.s - CF_OUT(), L) < 40;
+  if (v.lane === 0 && nl === -1) return cf.on && v.dir === cf.A && !heavy(v) && mod(v.s - CF_IN(), L) < 30;
+  return true;
+}
+function tryNormal(v, nl){
+  if (nl < 0 || nl >= LANES) return null;
+  if (heavy(v) && nl < heavyMin()) return null;
+  const front = v.s + v.len/2;
+  if (!spanFree(v.dir, nl, v.s - v.len/2 - 3, front + 3) || blockAhead(v.dir, nl, front) < 500) return null;
+  return gapsOK(v, nl, false);
+}
+function mandatory(v, bd, front){
+  const c = v.lane < 0 ? [v.lane+1] : [v.lane-1, v.lane+1].filter(nl => nl >= 0 && nl < LANES);
+  const opts = c.map(nl => [nl, blockAhead(v.dir, nl, front)]).filter(([nl, b]) => v.lane < 0 || b > bd + 15).sort((a,b) => b[1]-a[1]);
+  for (const [nl] of opts) {
+    if (!transitionOK(v, nl)) continue;
+    if (!spanFree(v.dir, nl, v.s - v.len/2 - 2, front + 2)) continue;
+    if (gapsOK(v, nl, true)) { v.lane = nl; return; }
+  }
+}
+function discretionary(v, lead, nearEntry){
+  if (v.lane < 0) {
+    for (const nl of [v.lane-1, v.lane+1]) { if (nl > -1 || !laneExists(v.dir, nl)) continue;
+      const g = gapsOK(v, nl, false); if (g && idm(v, g.lead, g.ld, v.v0e) > v.acc + 0.25) { v.lane = nl; return; } }
+    return;
+  }
+  if (nearEntry) {
+    if (v.lane === 0) { if (transitionOK(v, -1) && spanFree(v.dir, -1, v.s - v.len/2 - 2, v.s + v.len/2 + 2) && gapsOK(v, -1, true)) v.lane = -1; return; }
+    if (tryNormal(v, v.lane-1)) v.lane--;
+    return;
+  }
+  const right = tryNormal(v, v.lane-1);
+  if (right && idm(v, right.lead, right.ld, v.v0e) > v.acc + 0.4 && lead && lead.vel < v.v0-2) { v.lane--; return; }
+  const left = tryNormal(v, v.lane+1);
+  if (left && idm(v, left.lead, left.ld, v.v0e) > v.acc - 0.15 && left.ld > 40) v.lane++;
+}
+function sim(dt){
+  lanesOf.clear();
+  for (const v of vehicles){ const k = key(v.dir, v.lane); let a = lanesOf.get(k); if (!a) lanesOf.set(k, a = []); a.push(v); }
+  for (const v of vehicles){
+    const front = v.s + v.len/2, pn = perN(v.s);
+    if (v.lastN !== pn) { v.lastN = pn; v.exitWant = v.lane >= 0 && v !== chaseCar && !!facOf(v.dir, tileK(v.dir, pn)) && !(cf.on && v.dir === cf.A && v.cfWant) && Math.random() < 0.16; }
+    const {lead, ld} = gapInfo(v, laneList(v.dir, v.lane));
+    const nearEntry = cf.on && v.dir === cf.A && v.cfWant && v.lane >= 0 && mod(CF_IN() + 30 - v.s, L) < 260;
+    let v0 = Math.min(v.v0, zoneCap(v.dir, front));
+    if (v.lane < 0 || v.lx < 0 || (nearEntry && v.lane === 0)) v0 = Math.min(v0, 16.7);
+    v.v0e = v0;
+    v.acc = idm(v, lead, ld, v0);
+    const bd = blockAhead(v.dir, v.lane, front);
+    if (bd < Infinity) v.acc = Math.min(v.acc, idm(v, STOP, bd - 1.5, v0));
+    const mustD = v.lane < 0 ? 120 + 60*(-v.lane-1) : 450;
+    v.cd -= dt;
+    if (bd < mustD || nearEntry) v.cd = Math.min(v.cd, 0.2);
+    if (v.cd > 0 || Math.abs(v.lx - v.lane) > 0.05) continue;
+    v.cd = rnd(1.5, 4);
+    if (bd < mustD) { v.cd = 0.25; mandatory(v, bd, front); continue; }
+    if (v.exitWant && v.lane >= 0) { const u = uOf(v.s);
+      if (u > -180 && u < 25) { v.cd = 0.5; const nl = v.lane + 1;
+        if (nl < LANES && spanFree(v.dir, nl, v.s - v.len/2 - 3, front + 3) && blockAhead(v.dir, nl, front) > 80 && gapsOK(v, nl, u > -70)) v.lane = nl;
+        continue; } }
+    discretionary(v, lead, nearEntry);
+  }
+  for (const v of vehicles){
+    v.vel = Math.max(0, v.vel + v.acc*dt);
+    let step = v.vel*dt;
+    const bd = blockAhead(v.dir, v.lane, v.s + v.len/2);
+    if (step > bd - 0.5) { step = Math.max(0, bd - 0.5); v.vel = 0; }   // never drive into a closed lane
+    v.s = mod(v.s + step, L);
+    const crossing = (v.lane === -1 && v.lx > -1) || (v.lane === 0 && v.lx < 0);
+    v.lx += Math.sign(v.lane - v.lx) * Math.min(Math.abs(v.lane - v.lx), dt*(crossing ? 0.7 : 0.45));
+    const x = posX(v.dir, v.lx), lat = (x - v.x)/dt; v.x = x;
+    v.yaw += (Math.atan2(lat, Math.max(v.vel,1)) - v.yaw) * Math.min(1, dt*6);
+    for (const w of v.wh) w.rotation.x += v.vel*dt / v.r;
+  }
+  for (let i = vehicles.length-1; i >= 0; i--) { const v = vehicles[i]; if (!v.exitWant) continue; const u = uOf(v.s);
+    if (u > 30 && u < 170) { v.exitWant = false; continue; }
+    if (v.lane === LANES-1 && Math.abs(v.lx - v.lane) < 0.05 && u >= 5 && u <= 25 && v !== chaseCar) { vehicles.splice(i, 1); toRamp(v, u); } }
+}
+
+// ---------- local roads: national road + overpass traffic ----------
+let locals = [];
+function spawnLocals(){
+  locals.forEach(killVehicle); locals = [];
+  const k = MOBILE ? 0.7 : 1;
+  const divB = cf.on && cf.k >= LANES ? cf.B : 0; // one-way contraflow: opposite traffic diverted onto the national road
+  for (const dir of [-1,1]) for (let lane=0; lane<2; lane++) {
+    const div = dir === divB, vel = (lane === 0 ? rnd(14,16.5) : rnd(10,12)) * (div ? 0.55 : 1);
+    let s = rnd(0, 20);
+    while (s < L - 20) {
+      const t = Math.random();
+      let type = div ? (t<.15?'moto':t<.3?'truck':t<.38?'bus':t<.5?'van':t<.75?'suv':'car')
+                 : lane === 1 ? (t<.45?'moto':t<.6?'van':t<.72?'truck':t<.78?'bus':'car') : (t<.6?'car':t<.85?'suv':'van');
+      if (lane === 0 && type === 'moto') type = 'car'; // motorcycles keep to the left lane
+      const v = makeVehicle(type); Object.assign(v, {kind:'nr', dir, lane, s, vel, x: NRX + dir*(1.75 + lane*3.5)});
+      v.g.rotation.y = dir === -1 ? Math.PI : 0; scene.add(v.g); locals.push(v);
+      s += v.len + (div ? rnd(3, 14) : rnd(10, 70) / (cfg.den * k));
+    }
+  }
+  for (let r=-1; r<=1; r++) for (let i=0; i<cfg.ovl; i++) {
+    const dx = ovDir(i), vel = rnd(9, 11);
+    let p = rnd(0, 30);
+    while (p < OVS - 20) {
+      const t = Math.random(), type = t<.35?'moto':t<.7?'car':t<.82?'suv':t<.92?'van':'truck';
+      const v = makeVehicle(type); Object.assign(v, {kind:'ov', dx, p, vel, span:OVS});
+      v.g.position.set(0, OVH + 0.62, r*T + ovZ(i)); v.g.rotation.y = dx*Math.PI/2; world.add(v.g); locals.push(v);
+      p += v.len + rnd(15, 90) / (cfg.den * k);
+    }
+  }
+  for (let i=0; i<6; i++) { if (i % 3 === 2) continue; const dx = i<3 ? 1 : -1, zz = 180 + (dx>0 ? -1 : 1)*(2.4 + 3.6*(i%3)), vel = rnd(20, 27); let p = rnd(0, 40);
+    while (p < 640) { const t = Math.random(), v = makeVehicle(t<.12?'truck':t<.2?'bus':t<.32?'van':t<.56?'suv':'car');
+      Object.assign(v, {kind:'fly', dx, p, vel, zz}); v.g.rotation.y = dx*Math.PI/2; scene.add(v.g); locals.push(v); p += v.len + rnd(30, 120)/(cfg.den*k); } }
+}
+function simLocals(dt){
+  const cz = camera.position.z, conv = [];
+  const fz = tiles.filter(t => t.k === 2).map(t => t.g.position.z).sort((a,b) => Math.abs(a+180-cz) - Math.abs(b+180-cz))[0] ?? 0;
+  for (const v of locals) {
+    if (v.kind === 'nr') { v.s = mod(v.s + v.vel*dt, L); const z = wrap(v.dir*(v.s - HALF) + W); v.g.position.set(v.x, 0, z); v.g.visible = Math.abs(z - cz) < 420;
+      if (v.dir === -1 && v.lane === 0 && pend.w > 0 && v.type !== 'moto') { const n = perN(v.s), u = uOf(v.s);
+        if (u >= 158 && u < 166 && v.cvN !== n) { v.cvN = n; if (facOf(-1, tileK(-1, n)) && Math.random() < 0.7) conv.push(v); } } }
+    else if (v.kind === 'fly') { v.p += v.vel*dt; const m = mod(v.p, 660); v.g.position.set(v.dx > 0 ? -330 + m : 330 - m, 14.71, fz + v.zz); }
+    else { v.p += v.vel*dt; const m = mod(v.p, v.span); v.g.position.x = OVC + (v.dx > 0 ? -v.span/2 + m : v.span/2 - m); }
+    for (const w of v.wh) w.rotation.x += v.vel*dt / v.r;
+  }
+  for (const v of conv) { locals.splice(locals.indexOf(v), 1); const n = perN(v.s), f = facOf(-1, tileK(-1, n));
+    v.rp = {P: mkPath(facPath(f, uOf(v.s))), d: 0, i: 0, sBase: HALF + n*T, end: 'merge', f}; v.q = pathAt(v.rp.P, 0, 0); rampers.push(v); pend.w--; }
+}
+function place(){
+  const cz = camera.position.z;
+  for (const v of vehicles){
+    const z = wrap(v.dir*(v.s - HALF) + W);
+    v.g.position.set(v.x, 0, z);
+    v.g.rotation.y = (v.dir===-1 ? Math.PI : 0) + v.yaw * v.dir;
+    v.g.visible = Math.abs(z - cz) < 470;
+  }
+  for (const v of rampers){ const q = v.q; if (!q) continue;
+    const z = wrap(v.dir*(v.rp.sBase + q.u - HALF) + W);
+    v.g.position.set(v.x ?? v.dir*(MED + span + q.o), q.h || 0, z); v.g.rotation.y = Math.atan2(v.dir*q.ho, v.dir*q.hu); v.g.visible = Math.abs(z - cz) < 470; }
+  for (const g of zones){ const {dir, s0, mid} = g.userData;
+    const zc = wrap(dir*(s0 + mid - HALF) + W); g.position.z = zc - dir*mid; g.rotation.y = dir===-1 ? Math.PI : 0; }
+}
+
+// ---------- time of day ----------
+const TOD = {
+  day:  {sky:0xb9c8d3, fog:[200,620], hemi:1.1, sun:2.4, sunCol:0xfff1dc, sunPos:[60,90,40], head:0.15, tail:0.3, lamp:0, bloom:0.15, exp:1.0, sign:0.12},
+  dusk: {sky:0xd79a7a, fog:[90,380],  hemi:0.55, sun:1.6, sunCol:0xff9a5a, sunPos:[-120,25,-160], head:2, tail:1.5, lamp:1.2, bloom:0.55, exp:0.95, sign:0.35},
+  night:{sky:0x0d1420, fog:[60,320],  hemi:0.12, sun:0.18, sunCol:0x8aa0ff, sunPos:[40,90,60], head:5, tail:3, lamp:4, bloom:1.0, exp:1.1, sign:0.55},
+};
+const sunOff = new THREE.Vector3(60,90,40);
+const lampLights = [];
+for (let i=0;i<(MOBILE?4:6);i++){ const p = new THREE.PointLight(0xffc98a, 0, 40, 1.6); scene.add(p); lampLights.push(p); }
+let lampI = 0, signI = 0.12;
+function setTod(k){
+  const t = TOD[k]; scene.background.set(t.sky); scene.fog.color.set(t.sky); scene.fog.near=t.fog[0]; scene.fog.far=t.fog[1];
+  hemi.intensity=t.hemi; sun.intensity=t.sun; sun.color.set(t.sunCol); sunOff.set(...t.sunPos);
+  headMat.emissiveIntensity=t.head; tailMat.emissiveIntensity=t.tail; lampHeadMat.emissiveIntensity=t.lamp; lampI = t.lamp*60;
+  bloom.strength = MOBILE ? t.bloom*0.7 : t.bloom; renderer.toneMappingExposure=t.exp; signI = t.sign; applySign();
+  ground.material.color.set(k==='night'?0x2c3a24:0x6f8a4a);
+}
+function applySign(){ scene.traverse(o => { if (o.material && o.material.userData && o.material.userData.sign) o.material.emissiveIntensity = signI; }); }
+
+// ---------- cameras ----------
+let camMode = 'overpass', chaseCar = null, prevS = 0, clock = 0;
+function setCam(m){
+  camMode = m; const d = cfg.dir;
+  controls.enabled = m==='orbit'; controls.autoRotate = m==='orbit'; controls.autoRotateSpeed = 0.4;
+  if (m==='overpass' || m==='works' || m==='ic') W = Math.round(W / L) * L;
+  if (m==='orbit'){ camera.position.set(-60, 40, -d*80); controls.target.set(0,0,0); }
+  if (m==='chase'){
+    let pool = vehicles.filter(v => v.dir===d && (v.type==='car'||v.type==='suv'));
+    if (!pool.length) pool = vehicles.filter(v => v.dir===d);
+    chaseCar = pool.length ? pick(pool) : null;
+    if (chaseCar) { prevS = chaseCar.s; W -= wrap(d*(chaseCar.s - HALF) + W); camera.position.set(chaseCar.x - d*1.5, 4.2, -d*13); }
+  }
+}
+function fovFor(base){ const a = camera.aspect; return a < 1.3 ? Math.min(70, 2*Math.atan(Math.tan(base*Math.PI/360)*1.3/a)*180/Math.PI) : base; }
+const tmpV = new THREE.Vector3(), focus = new THREE.Vector3();
+function updateCam(dt){
+  clock += dt; const d = cfg.dir;
+  if (camMode === 'chase' && chaseCar && chaseCar.dead) setCam('chase');
+  if (camMode==='works'){
+    const zs = WS[d] - HALF, ox = MED + span;
+    camera.position.set(d*(ox + 3.5), 3.6, d*(zs - 12)); camera.lookAt(d*(ox - span*0.45), 0.5, d*(zs + 70)); camera.fov = fovFor(58);
+  } else if (camMode==='ic'){
+    const cx = d*(MED + span + 75), cz = d*170, a = clock*0.06, r = camera.aspect < 1 ? 210 : 170;
+    camera.position.set(cx + r*Math.cos(a), camera.aspect < 1 ? 190 : 130, cz + r*Math.sin(a)); camera.lookAt(cx, 0, cz); camera.fov = fovFor(50);
+  } else if (camMode==='overpass'){
+    const x = posX(d, (LANES-1)/2), ez = d*((cfg.ovl*3.5 + 2.4)/2 + 0.3);
+    camera.position.set(x + Math.sin(clock*0.1)*0.6, OVH+2.6, ez); camera.lookAt(x, 0, d*130); camera.fov = fovFor(48);
+  } else if (camMode==='drone'){
+    W -= d*14*dt;
+    const pt = camera.aspect < 1;
+    camera.position.set(Math.sin(clock*0.15)*(pt?10:24), (pt?20:30) + Math.sin(clock*0.2)*4, -d*(pt?40:50)); camera.lookAt(0, 0, d*(pt?40:20)); camera.fov = fovFor(50);
+  } else if (camMode==='chase' && chaseCar){
+    let ds = chaseCar.s - prevS; if (ds < -HALF) ds += L; if (ds > HALF) ds -= L; prevS = chaseCar.s; W -= d*ds;
+    const x = chaseCar.x;
+    tmpV.set(x - d*1.5, 4.2, -d*13); camera.position.lerp(tmpV, Math.min(1, dt*4));
+    camera.lookAt(x, 1.4, d*20); camera.fov = fovFor(58);
+  } else { controls.update(); camera.fov = fovFor(50); }
+  camera.updateProjectionMatrix();
+  camera.getWorldDirection(tmpV); focus.copy(camera.position).addScaledVector(tmpV, 50); focus.y = 0;
+  sun.target.position.copy(focus); sun.position.copy(focus).add(sunOff);
+  const sh = world.position.z;
+  const near = lampPos.map(p => ({x:p.x, z:p.z+sh})).sort((a,b) => Math.abs(a.z-focus.z) - Math.abs(b.z-focus.z));
+  lampLights.forEach((l,i) => { l.position.set(near[i].x*0.9 + bendAt(near[i].z), 10, near[i].z); l.intensity = lampI; });
+}
+function flash(){
+  const ph = Math.floor(clock*5) % 2;
+  polRed.emissiveIntensity = ph ? 6 : 0.2; polBlue.emissiveIntensity = ph ? 0.2 : 6;
+  const on = Math.floor(clock*1.6) % 2 ? 1.2 : 0.15; for (const m of arrowMats) m.emissiveIntensity = on;
+  amberMat.emissiveIntensity = Math.floor(clock*2.4) % 2 ? 3 : 0.3;
+}
+
+// ---------- rebuilds ----------
+function rebuildTraffic(){
+  setupBlocks(); buildZones(); resetRamps(); spawn(); spawnLocals(); bendAll(); applySign();
+  for (let i=0; i<300; i++) { sim(1/20); rampStep(1/20); }
+  setCam(cfg.cam);
+}
+function rebuildAll(){ for (const k in IN) delete IN[k]; setupBlocks(); buildWorld(); buildSigns(); tiles.forEach(t => t.gi = null); rebuildTraffic(); }
+
+// ---------- UI ----------
+const hud = document.getElementById('hud'), ctrl = document.getElementById('ctrl');
+if (!MOBILE) hud.classList.add('open');
+document.getElementById('toggle').onclick = () => hud.classList.toggle('open');
+renderer.domElement.addEventListener('pointerdown', () => { if (MOBILE && camMode !== 'orbit') hud.classList.remove('open'); });
+function rowsSpec(){
+  const laneOpts = Array.from({length:LANES}, (_,i) => [i+1, `Lajur ${i+1}`]);
+  return [
+    ['cam', 'Kamera', [['overpass','Overpass'],['drone','Drone'],['chase','Ikuti mobil'],['works','Pekerjaan jalan'],['ic','Simpang susun'],['orbit','Orbit']]],
+    ['dir', 'Arah', [[-1,'Jakarta → Cikampek'],[1,'Cikampek → Jakarta']]],
+    ['lanes', 'Lajur tol', [[4,'4 per arah'],[5,'5 per arah']]],
+    ['den', 'Lalu lintas', [[0.6,'Sepi'],[1,'Normal'],[1.7,'Padat'],[2.6,'Macet']]],
+    ['tod', 'Waktu', [['day','Siang'],['dusk','Senja'],['night','Malam']]],
+    ['close:-1', 'Tutup lajur · ke Cikampek', laneOpts, true],
+    ['close:1', 'Tutup lajur · ke Jakarta', laneOpts, true],
+    ['cf', 'Contraflow', [[0,'Mati'],[-1,'Untuk ke Cikampek'],[1,'Untuk ke Jakarta']]],
+    ['cfk', 'Lajur contraflow', Array.from({length:LANES}, (_,i) => [i+1, i+1===LANES ? 'Semua (one way)' : `${i+1} lajur`])],
+    ['ovl', 'Jalan overpass', [[1,'1 lajur'],[2,'2 lajur'],[3,'3 lajur'],[4,'4 lajur']]],
+  ];
+}
+function btn(text, on){ const b = document.createElement('button'); b.className = 'opt'; b.textContent = text; b.setAttribute('aria-pressed', on ? 'true' : 'false'); return b; }
+function renderUI(){
+  const sc = ctrl.scrollTop; ctrl.innerHTML = '';
+  for (const [id, label, opts, multi] of rowsSpec()) {
+    if (id === 'cfk' && !cfg.cf) continue;
+    const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = label;
+    const cell = document.createElement('div'); cell.className = 'cell';
+    if (multi) {
+      const d = id.split(':')[1], sel = cfg.closed[d] || [];
+      opts.forEach(([v, t]) => { const on = sel.includes(v), b = btn(t, on);
+        b.disabled = !on && sel.length >= LANES-1;
+        b.onclick = () => { cfg.closed[d] = on ? sel.filter(x => x !== v) : [...sel, v]; saveCfg(); renderUI(); rebuildTraffic(); };
+        cell.append(b); });
+      const h = document.createElement('div'); h.className = 'hint'; h.textContent = 'Lajur 1 = paling kiri. Minimal satu lajur tetap dibuka.'; cell.append(h);
+    } else opts.forEach(([v, t]) => { const b = btn(t, String(cfg[id]) === String(v)); b.onclick = () => apply(id, v); cell.append(b); });
+    ctrl.append(lbl, cell);
+  }
+  ctrl.scrollTop = sc;
+}
+function apply(id, v){
+  cfg[id] = v;
+  if (id === 'lanes') { LANES = v; for (const d of ['-1','1']) { cfg.closed[d] = (cfg.closed[d]||[]).filter(n => n <= LANES).slice(0, LANES-1); } cfg.cfk = Math.min(cfg.cfk, LANES); }
+  saveCfg();
+  if (id === 'cam' || id === 'dir') setCam(cfg.cam);
+  else if (id === 'tod') setTod(v);
+  else if (id === 'lanes' || id === 'ovl') rebuildAll();
+  else rebuildTraffic();
+  renderUI();
+}
+
+try { await Promise.race([document.fonts.load('700 64px Archivo'), new Promise(r => setTimeout(r, 2500))]); } catch(e) {}
+camMode = cfg.cam;
+window.__fw = {get tiles(){ return tiles; }, camera, controls, setCam: m => { cfg.cam = m; setCam(m); }, get W(){ return W; }, set W(v){ W = v; }};
+rebuildAll();
+setTod(cfg.tod);
+renderUI();
+
+let last = performance.now();
+renderer.setAnimationLoop(now => {
+  const dt = Math.min(0.05, (now-last)/1000); last = now;
+  sim(dt); rampStep(dt); simLocals(dt); updateCam(dt); updateTiles(); place(); flash(); updateBend(); composer.render();
+});
+addEventListener('resize', () => { camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); composer.setSize(innerWidth,innerHeight); });
+</script>
+</body>
+</html>
