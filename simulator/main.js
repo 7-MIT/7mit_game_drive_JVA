@@ -2213,7 +2213,10 @@ function chooseAt(i, ed){
   const tail = [{a: e.key, b: ed.to, c: ed.c}].concat(walkFree(ed.to, e.key, ed.c, null, 50, 'mix'));
   replan(i, tail, null);
 }
-let choiceSig = '';
+let choiceSig = '', chT = 0;
+function chOpen(on){ $('ch-opts').hidden = !on; $('ch-sum').setAttribute('aria-expanded', on ? 'true' : 'false'); $('ch-sum').querySelector('u').textContent = on ? 'Tutup' : 'Ubah';
+  clearTimeout(chT); if (on) chT = setTimeout(() => chOpen(false), 12000); }
+$('ch-sum').onclick = () => chOpen($('ch-opts').hidden);
 function updateChoice(u){
   const el = $('choice');
   const di = trip && !trip.dest && !stats.done && PLR && !PLR.rp ? replanIdx(u, true) : -1;
@@ -2222,13 +2225,16 @@ function updateChoice(u){
   const d = Math.max(0, e.rk - rkAt(u));
   $('ch-d').textContent = fmtKm(d);
   const sig = e.i + '|' + (nl ? nl.b + nl.c : '');
-  if (sig === choiceSig && !el.hidden) return; choiceSig = sig;
+  if (sig === choiceSig && !el.hidden) return;
+  if (!choiceSig.startsWith(e.i + '|')) chOpen(false);    // a new place: start collapsed
+  choiceSig = sig;
+  const cur = ch.find(o => nl && nl.b === o.e.to && nl.c === o.e.c); $('ch-pick').textContent = cur ? `${cur.turn} → ${cur.toward}` : '';
   $('ch-name').textContent = e.kind === 'j' ? nodeLabel(e) : e.kind === 'k' ? 'Simpang ' + e.name : e.kind === 'x' || e.kind === 'te' ? 'Exit ' + e.name : e.name;
   const box = $('ch-opts'); box.innerHTML = '';
   for (const o of ch.sort((a, b) => turnDeg(prev, e.key, a.e.to) - turnDeg(prev, e.key, b.e.to))) {
     const on = nl && nl.b === o.e.to && nl.c === o.e.c, b = btn('', on);
     const t = document.createElement('b'); t.textContent = o.turn; const r = document.createElement('span'); r.textContent = `${o.road} → ${o.toward}`;
-    b.append(t, r); b.onclick = () => { if (!on) chooseAt(e.i, o.e); };
+    b.append(t, r); b.onclick = () => { if (!on) chooseAt(e.i, o.e); chOpen(false); };
     box.append(b); }
   el.hidden = false;
 }
