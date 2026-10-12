@@ -9,7 +9,7 @@ import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
 import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
 import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
-import {CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, walkFree, choicesAt, edgesFrom, turnDeg, fmtKm, nodeLabel, JAVA} from './network.js';
+import {CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, walkFree, choicesAt, edgesFrom, turnDeg, fmtKm, nodeLabel, JAVA, RULES} from './network.js';
 
 const MOBILE = matchMedia('(pointer:coarse)').matches || innerWidth < 700;
 const LW = 3.6, MED = 1.2, CH = 120, OPEN_HW = 35, OVH = 7.5, PRC = 328, BACK = 460, FWD = 720;
@@ -292,6 +292,13 @@ function makeVehicle(type, color){
     lights = lightBar(g, 1.8, r + 2.56, len/2 - 0.4);
     for (const s2 of [-1,1]){ box(0.35,0.18,0.06,headMat, s2*0.9, r+0.6, len/2, g); box(0.25,0.25,0.06,tail, s2*1.05, r+0.8, -len/2, g); }
     wh = wheels(g, [[-1.1,2.9],[1.1,2.9],[-1.1,-2.2],[1.1,-2.2],[-1.1,-3.3],[1.1,-3.3]], r, 0.36); v0 = rnd(21, 24);
+  } else if (type==='pickup'){
+    // pickup (Gran Max / L300 / Hilux style): cab in front, open load bed behind
+    len = 4.9; r = 0.36; const w = 1.75;
+    box(w, 0.7, len, paint, 0, r + 0.55, 0, g); box(w*0.96, 0.75, 1.7, paint, 0, r + 1.27, len/2 - 1.15, g); box(w*0.97, 0.5, 1.6, glassMat, 0, r + 1.3, len/2 - 1.12, g);
+    for (const s2 of [-1, 1]) box(0.08, 0.45, 2.6, paint, s2*(w/2 - 0.04), r + 1.12, -0.95, g); box(w, 0.45, 0.08, paint, 0, r + 1.12, -len/2 + 0.04, g);
+    for (const s2 of [-1,1]){ box(0.38,0.14,0.06,headMat, s2*w*0.33, r+0.7, len/2, g); box(0.16,0.3,0.06,tail, s2*w*0.42, r+0.95, -len/2, g); }
+    wh = wheels(g, [[-w/2+0.12,1.55],[w/2-0.12,1.55],[-w/2+0.12,-1.4],[w/2-0.12,-1.4]], r, 0.24); v0 = rnd(21, 25);
   } else if (type==='car' || type==='suv' || type==='police'){
     const suv = type==='suv'; len = suv?4.8:4.5; const w = suv?1.95:1.8, h = suv?0.95:0.75; r = suv?0.38:0.33;
     box(w, h, len, paint, 0, r+h/2, 0, g);
@@ -688,6 +695,7 @@ function roadside(g, u0, u1, Z, R, toll){
     // keep only the real footprint of each interchange clear: trumpet + stem, cloverleaf loops, rest area
     for (const st of RSITES) { const du = Math.abs(st.u - u) - w/2; if (du > 460) continue;
       if (st.kind === 'x' && du < 200 && o - w/2 < 350) return false;
+      if (st.kind === 'x' && du < 580 && o - w/2 < 275) return false;     // room for the link road to town
       if (st.kind === 'j' && du < 220 && o - w/2 < 700) return false;
       if (st.kind === 'r' && du < 280 && o - w/2 < 70) return false; }
     if (OVS.some(ov => Math.abs(ov.u - u) < 30 + w/2)) return false; if (PLAZAS.some(p => Math.abs(p.u - u) < 90) && o < 60) return false;
@@ -756,6 +764,121 @@ function updateVolcanoes(dt){
   }
 }
 
+// ---------- landmarks: monuments, temples, mosques, towers and bridges near the road, at their real place ----------
+// Each one is placed beside the route at the point of closest approach (on the correct side), at a distance that grows
+// with the real distance from the road, so you pass it the way you would on the real drive. Simple low-poly models, real heights.
+const LMK = [
+  ['Monas', -6.1754, 106.8272, 'monas'], ['Masjid Istiqlal', -6.1702, 106.8310, 'mosque', {dome: 45, color: 0xe9e6dc, min: 1, mh: 90}],
+  ['Bundaran HI', -6.1950, 106.8230, 'tugu', {h: 30}], ['Masjid Kubah Emas', -6.3833, 106.7690, 'mosque', {dome: 30, color: 0xd9b23a, min: 4, mh: 40}],
+  ['Tugu Kujang', -6.6010, 106.8050, 'tugu', {h: 25}], ['Istana Bogor', -6.5980, 106.7970, 'palace'],
+  ['Masjid Agung Banten', -6.0360, 106.1550, 'menara', {h: 24, color: 0xf2f2ee}],
+  ['Keraton Kasepuhan', -6.7260, 108.5700, 'bentar'], ['Masjid Raya Al Jabbar', -6.9530, 107.7030, 'mosque', {dome: 50, color: 0xdfe6ea, min: 4, mh: 99, glass: true}],
+  ['Gedung Sate', -6.9025, 107.6188, 'sate'], ['Lawang Sewu', -6.9840, 110.4100, 'sewu'], ['Tugu Muda', -6.9845, 110.4090, 'tugu', {h: 18}],
+  ['Masjid Agung Jawa Tengah', -6.9830, 110.4450, 'mosque', {dome: 30, color: 0xe7e2d2, min: 4, mh: 99}], ['Sam Poo Kong', -6.9960, 110.3980, 'pagoda', {tiers: 3, h: 22}],
+  ['Pagoda Avalokitesvara (Watugong)', -7.0790, 110.4110, 'pagoda', {tiers: 7, h: 45}], ['Menara Kudus', -6.8040, 110.8320, 'menara', {h: 18, color: 0xa4553a}],
+  ['Candi Borobudur', -7.6079, 110.2038, 'borobudur'], ['Candi Prambanan', -7.7520, 110.4915, 'prambanan'], ['Tugu Yogyakarta', -7.7829, 110.3671, 'tugu', {h: 15}],
+  ['Masjid Raya Sheikh Zayed', -7.5560, 110.8500, 'mosque', {dome: 32, color: 0xf4f4f0, min: 4, mh: 60}],
+  ['Candi Brahu', -7.5420, 112.3730, 'candi', {h: 25}], ['Candi Bajang Ratu', -7.5670, 112.4000, 'candi', {h: 16}],
+  ['Tugu Pahlawan', -7.2458, 112.7378, 'tugu', {h: 41}], ['Monumen Kapal Selam', -7.2650, 112.7500, 'kapal'], ['Jembatan Suramadu', -7.1800, 112.7800, 'suramadu'],
+  ['Masjid Al-Akbar Surabaya', -7.3370, 112.7150, 'mosque', {dome: 40, color: 0x3f8f6e, min: 1, mh: 99}]];
+const stoneMat = M(0x77736a, {flatShading: true}), brickMat = M(0xa4553a), whiteStone = M(0xf2f0ea), goldMat = M(0xd9b23a, {metalness: 0.7, roughness: 0.3, emissive: 0x6a4a00, emissiveIntensity: 0.4}),
+  redLac = M(0xb5261e), roofTile = M(0x4a3a2e), lmSteel = M(0xe8ecef, {metalness: 0.5, roughness: 0.4}), glassBlue = M(0x7fa8c8, {metalness: 0.6, roughness: 0.2});
+const cyl = (r0, r1, h, mat, x, y, z, g, seg = 16) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, h, seg), mat); m.position.set(x, y + h/2, z); m.castShadow = true; g.add(m); return m; };
+const dome = (r, mat, x, y, z, g) => { const m = new THREE.Mesh(new THREE.SphereGeometry(r, 20, 10, 0, Math.PI*2, 0, Math.PI/2), mat); m.position.set(x, y, z); g.add(m); return m; };
+const bell = (r, x, y, z, g) => { dome(r, stoneMat, x, y, z, g); cyl(r*0.25, 0.02, r*1.1, stoneMat, x, y + r*0.9, z, g, 6); };
+const pramMat = M(0x6e6a62, {flatShading: true});
+const LMK_BUILD = {
+  monas(g){ box(46, 3, 46, whiteStone, 0, 1.5, 0, g); cyl(22, 14, 14, whiteStone, 0, 3, 0, g, 4).rotation.y = Math.PI/4; box(48, 1.2, 48, whiteStone, 0, 17.6, 0, g);
+    cyl(5.2, 3.6, 98, whiteStone, 0, 18, 0, g, 4).rotation.y = Math.PI/4; box(7, 3, 7, whiteStone, 0, 117, 0, g); cyl(2.6, 0.5, 14, goldMat, 0, 118, 0, g, 8); },
+  mosque(g, o){ const r = o.dome; box(r*2.6, r*0.55, r*2.6, whiteStone, 0, r*0.275, 0, g); cyl(r*1.05, r*1.05, r*0.25, whiteStone, 0, r*0.55, 0, g, 24);
+    dome(r, o.glass ? glassBlue : M(o.color, {metalness: o.color === 0xd9b23a ? 0.6 : 0.1, roughness: 0.4}), 0, r*0.8, 0, g); cyl(0.6, 0.1, r*0.3, goldMat, 0, r*1.78, 0, g, 6);
+    const mins = o.min === 1 ? [[r*1.6, r*1.6]] : [[1, 1], [1, -1], [-1, 1], [-1, -1]].map(([a, b]) => [a*r*1.45, b*r*1.45]);
+    for (const [x, z] of mins) { cyl(r*0.09, r*0.07, o.mh, whiteStone, x, 0, z, g, 8); cyl(r*0.12, r*0.12, 1.5, whiteStone, x, o.mh*0.8, z, g, 8); cyl(r*0.08, 0.05, r*0.25, goldMat, x, o.mh, z, g, 8); } },
+  tugu(g, o){ box(o.h*0.35, o.h*0.06, o.h*0.35, whiteStone, 0, o.h*0.03, 0, g); cyl(o.h*0.07, o.h*0.035, o.h, whiteStone, 0, o.h*0.06, 0, g, 4).rotation.y = Math.PI/4; cyl(o.h*0.03, 0.05, o.h*0.12, goldMat, 0, o.h*1.06, 0, g, 6); },
+  menara(g, o){ const mat = M(o.color); box(6, o.h*0.75, 6, mat, 0, o.h*0.375, 0, g); box(7.5, 0.6, 7.5, mat, 0, o.h*0.75, 0, g); for (let k = 0; k < 2; k++) cyl(4.6 - k*1.6, 2 - k*1.2, 3, roofTile, 0, o.h*0.75 + 0.6 + k*2.6, 0, g, 4).rotation.y = Math.PI/4; },
+  palace(g){ box(70, 10, 18, whiteStone, 0, 5, 0, g); for (let k = -3; k <= 3; k++) cyl(0.7, 0.7, 10, whiteStone, k*5, 0, 9.8, g, 8); box(22, 6, 3, whiteStone, 0, 13, 9, g); box(78, 0.8, 22, roofTile, 0, 10.4, 0, g); },
+  bentar(g){ for (const s of [-1, 1]) for (let k = 0; k < 5; k++) box(7 - k*1.1, 2.4, 4 - k*0.4, brickMat, s*(6 + k*0.55), 1.2 + k*2.4, 0, g); box(40, 3, 1.2, brickMat, 0, 1.5, 0, g); },
+  sate(g){ box(90, 13, 18, whiteStone, 0, 6.5, 0, g); box(94, 1, 20, roofTile, 0, 13.5, 0, g); box(14, 10, 14, whiteStone, 0, 14, 0, g);
+    for (let k = 0; k < 3; k++) cyl(10 - k*3, 6 - k*2.4, 4, roofTile, 0, 24 + k*4, 0, g, 4).rotation.y = Math.PI/4; cyl(0.4, 0.1, 9, goldMat, 0, 36, 0, g, 6);
+    for (let k = 0; k < 6; k++) bell(0.5, -1.2 + k*0.5, 37 + k*0.9, 0, g); },
+  sewu(g){ box(110, 16, 16, whiteStone, 0, 8, 0, g); box(114, 2.5, 18, M(0xb04a32), 0, 17, 0, g); for (const s of [-1, 1]) { box(10, 26, 10, whiteStone, s*12, 13, 6, g); dome(5.5, M(0x5a4a42), s*12, 26, 6, g); }
+    for (let k = -10; k <= 10; k++) box(2.4, 6, 0.4, glassMat, k*5, 8, 8.05, g); },
+  pagoda(g, o){ const n = o.tiers, th = o.h/n; for (let k = 0; k < n; k++) { const w = 12 - k*(8/n); box(w*0.7, th*0.65, w*0.7, M(0xe9d7b4), 0, k*th + th*0.32, 0, g); cyl(w*0.75, w*0.35, th*0.35, redLac, 0, k*th + th*0.65, 0, g, 8).rotation.y = Math.PI/8; } cyl(0.5, 0.1, 4, goldMat, 0, o.h, 0, g, 6); },
+  candi(g, o){ const h = o.h; for (let k = 0; k < 6; k++) box(14 - k*2, h/7, 14 - k*2, brickMat, 0, k*h/7 + h/14, 0, g); cyl(2.2, 0.3, h/7*1.4, brickMat, 0, h*6/7, 0, g, 8); },
+  borobudur(g){ for (let k = 0; k < 6; k++) { const w = 123 - k*16; box(w, 4.2, w, stoneMat, 0, k*4.2 + 2.1, 0, g); }
+    for (const [r, n, y] of [[26, 32, 25.2], [20, 24, 28.2], [14, 16, 31.2]]) { cyl(r + 3, r + 3, 3, stoneMat, 0, y - 3, 0, g, 24); for (let k = 0; k < n; k++) { const a = k/n*Math.PI*2; bell(2, Math.cos(a)*r, y, Math.sin(a)*r, g); } }
+    cyl(9, 9, 3, stoneMat, 0, 31, 0, g, 20); bell(8, 0, 34, 0, g); },
+  prambanan(g){ box(110, 2, 110, stoneMat, 0, 1, 0, g);
+    const tower = (x, z, h) => { const w = h*0.42; for (let k = 0; k < 5; k++) box(w*(1 - k*0.13), h*0.12, w*(1 - k*0.13), pramMat, x, 2 + k*h*0.12 + h*0.06, z, g);
+      for (let k = 0; k < 6; k++) cyl(w*(0.34 - k*0.05), w*(0.28 - k*0.05), h*0.07, pramMat, x, 2 + h*0.6 + k*h*0.065, z, g, 8); cyl(w*0.06, 0.05, h*0.1, stoneMat, x, 2 + h*0.99, z, g, 6); };
+    tower(0, 0, 47); tower(-26, 0, 33); tower(26, 0, 33); for (const x of [-26, 0, 26]) tower(x, 26, 25); for (let k = 0; k < 16; k++) { const a = k/16*Math.PI*2; tower(Math.cos(a)*48, Math.sin(a)*48, 12); } },
+  kapal(g){ const hull = new THREE.Mesh(new THREE.CapsuleGeometry(3.2, 70, 6, 12), M(0x3d4a52, {metalness: 0.4})); hull.rotation.z = Math.PI/2; hull.position.y = 5; g.add(hull); box(5, 6, 9, M(0x3d4a52), 0, 10, 0, g).rotation.y = Math.PI/2; },
+  suramadu(g){ box(400, 2, 30, M(0x8a8a86), 0, 30, 0, g); for (const x of [-90, 90]) { for (const z of [-12, 12]) box(4, 146, 4, lmSteel, x, 73, z, g); box(4, 4, 28, lmSteel, x, 140, 0, g); box(4, 4, 28, lmSteel, x, 34, 0, g);
+    for (let k = 1; k <= 8; k++) for (const s of [-1, 1]) { const c = box(0.3, 0.3, 1, lmSteel, 0, 0, 0, g), x1 = x + s*k*11, y0 = 135 - k*2, dx = x1 - x, dy = 31 - y0, L = Math.hypot(dx, dy);
+      c.scale.set(1, 1, 1); c.geometry = new THREE.BoxGeometry(0.3, L, 0.3); c.position.set(x + dx/2, y0 + dy/2, 0); c.rotation.z = Math.atan2(-dx, dy); } }
+    for (let k = -12; k <= 12; k++) if (Math.abs(k) !== 8) box(5, 30, 5, M(0x8a8a86), k*16, 15, 0, g); }
+};
+let lmEV = null; const LMS = [];
+function layoutLandmarks(){
+  lmEV = EV; for (const l of LMS) { if (l.g) l.g.visible = false; l.u = null; }
+  for (const [name, lat, lon, kind, o] of LMK) {
+    let l = LMS.find(x => x.name === name); if (!l) { l = {name, lat, lon, kind, o: o || {}}; LMS.push(l); }
+    let best = Infinity, bu = 0, bs = 1;
+    for (let i = 0; i < EV.length - 1; i++) { const a = EV[i], b = EV[i + 1]; if (a.lat == null || b.lat == null || b.u - a.u < 1) continue;
+      const k = Math.cos(a.lat*Math.PI/180), ax = 0, ay = 0, bx = (b.lon - a.lon)*111*k, by = (b.lat - a.lat)*111, px = (lon - a.lon)*111*k, py = (lat - a.lat)*111;
+      const L2 = bx*bx + by*by; if (L2 < 1e-6) continue; const f = clamp((px*bx + py*by)/L2, 0, 1), d = Math.hypot(px - f*bx, py - f*by);
+      if (d < best) { best = d; bu = a.u + f*(b.u - a.u); bs = bx*py - by*px > 0 ? -1 : 1; } }
+    if (best < 9) { const rad = {monas: 26, borobudur: 64, prambanan: 56, suramadu: 30, sate: 48, sewu: 58, palace: 40, kapal: 40, mosque: (l.o.dome || 30)*1.7}[kind] || 15; l.u = bu; l.side = bs; l.off = clamp(70 + best*70, rad + 45, 640); l.km = best; l.told = false; } }
+}
+function updateLandmarks(){
+  if (!EV.length) return; if (lmEV !== EV) layoutLandmarks();
+  for (const l of LMS) { if (l.u == null) continue; const z = camU - l.u, vis = Math.abs(z) < 2600;
+    if (vis && !l.g) { l.g = new THREE.Group(); const inner = new THREE.Group(); LMK_BUILD[l.kind](inner, l.o); if (l.kind === 'suramadu') inner.rotation.y = Math.PI/2; l.g.add(inner); bendObj(l.g); scene.add(l.g); }
+    if (!l.g) continue; l.g.visible = vis; if (!vis) continue;
+    const x = l.side*(eAt(l.u) + l.off); l.g.position.set(x, 0, z);
+    if (!l.told && z < 900 && z > 0 && $('plan').hidden) { l.told = true; toast(`${l.name} · ${l.side > 0 ? 'kanan' : 'kiri'} jalan`); } }
+}
+
+// ---------- route signs: province borders and the start of each toll road (with its name) ----------
+function provinceAt(lat, lon){
+  if (lat > -6.37 && lat < -6.08 && lon > 106.69 && lon < 106.975) return 'DKI Jakarta';
+  if (lon < 106.35 || (lon < 106.69 && lat > -6.42)) return 'Banten';
+  if (lon < 108.8) return 'Jawa Barat';
+  if (lat < -7.55 && lon > 110.0 && lon < 110.84) return 'DI Yogyakarta';
+  if ((lat < -7.3 && lon > 111.15) || lon > 111.65) return 'Jawa Timur';
+  return 'Jawa Tengah';
+}
+function bigBoard(w, h, bg, lines, fg = '#fff'){ return canvasTex(w, h, (x, W2, H2) => { x.fillStyle = bg; x.fillRect(0, 0, W2, H2); x.strokeStyle = fg; x.lineWidth = 12; x.strokeRect(18, 18, W2 - 36, H2 - 36);
+  x.fillStyle = fg; x.textAlign = 'center'; x.textBaseline = 'middle'; const n = lines.length;
+  lines.forEach(([t, k], i) => { fit(x, t, W2 - 120, H2*(k || 0.2), k > 0.24 ? 800 : 600); x.fillText(t, W2/2, H2*(i + 0.5)/n + (i - (n - 1)/2)*4); }); }); }
+let rsEV = null; const RSIGNS = [];
+function layoutRoadSigns(){
+  rsEV = EV; for (const r of RSIGNS) if (r.g) { scene.remove(r.g); r.g.traverse(o => { if (o.material && o.material.userData.own) { o.material.map && o.material.map.dispose(); o.material.dispose(); } }); } RSIGNS.length = 0;
+  const prov = u => { const p = latLonAt(u); return p.lat == null ? null : provinceAt(p.lat, p.lon); };
+  for (let i = 0; i < EV.length - 1; i++) { const a = EV[i], b = EV[i + 1]; if (a.lat == null || b.lat == null) continue;
+    // province border: bisect the segment where the province changes
+    const pa = provinceAt(a.lat, a.lon), pb = provinceAt(b.lat, b.lon);
+    if (pa !== pb) { let lo = a.u, hi = b.u; for (let k = 0; k < 18; k++) { const m = (lo + hi)/2; if (prov(m) === pa) lo = m; else hi = m; }
+      RSIGNS.push({u: hi + 40, side: 1, lines: [['SELAMAT DATANG DI', 0.16], ['PROVINSI', 0.16], [pb.toUpperCase(), 0.3]], bg: SIGN_BLUE, w: 8, h: 3.6});
+      RSIGNS.push({u: hi - 40, side: -1, lines: [['SELAMAT DATANG DI', 0.16], ['PROVINSI', 0.16], [pa.toUpperCase(), 0.3]], bg: SIGN_BLUE, w: 8, h: 3.6});
+      RSIGNS.push({u: hi, side: 1, small: true, lines: [['BATAS PROVINSI', 0.3], [`${pa} | ${pb}`, 0.22]], bg: '#f4f4f0', fg: '#111', w: 4.2, h: 1.8}); }
+    // start of a toll road: after the gate, or after joining it at a junction
+    const cN = CORR[a.cNext], cP = CORR[a.c]; if (!cN || cN.cls !== 't') continue;
+    if (i === 0 || !cP || cP.cls !== 't' || a.c !== a.cNext) {
+      const mbz = a.cNext === 'mbz', lines = [['SELAMAT DATANG DI', 0.15], ['JALAN TOL', 0.17], [cN.name.replace(/^Tol\s+/i, '').toUpperCase(), 0.26]];
+      if (mbz) lines.push(['Khusus Gol I: sedan, SUV, pickup · Bus & truk dilarang', 0.12]);
+      RSIGNS.push({u: a.u + (a.kind === 'j' ? 430 : 260), side: 1, lines, bg: SIGN_GREEN, w: 8.4, h: mbz ? 4.4 : 3.6}); } }
+}
+function updateRoadSigns(){
+  if (!EV.length) return; if (rsEV !== EV) layoutRoadSigns();
+  for (const r of RSIGNS) { const z = camU - r.u, vis = Math.abs(z) < 700;
+    if (vis && !r.g) { r.g = new THREE.Group(); const top = r.small ? 2.6 : 5.6, b = panelMesh(r.w, r.h, bigBoard(r.w, r.h, r.bg, r.lines, r.fg)); b.position.y = top; r.g.add(b);
+      for (const dx of r.small ? [0] : [-r.w*0.32, r.w*0.32]) r.g.add(solid(0.2, top - r.h/2 + 0.1, 0.2, signBackMat, dx, (top - r.h/2)/2, -0.15));
+      applySign([r.g]); bendObj(r.g); scene.add(r.g); }
+    if (!r.g) continue; r.g.visible = vis; if (!vis) continue;
+    const e = eAt(r.u), off = elevAt(r.u) > 1 ? 2.2 : r.small ? 3.4 : 6.5, x = r.side > 0 ? -(e + off) : e + off; r.g.position.set(x, 0, z); r.g.rotation.y = r.side > 0 ? 0 : Math.PI; }
+}
+
 function viaduct(g, u0, u1, Z){
   const hm = Math.max(elevAt(u0), elevAt(u1), elevAt(u0 + CH/2)); if (hm < 0.4) return;
   const e = eAt(u0 + CH/2);
@@ -768,7 +891,11 @@ function viaduct(g, u0, u1, Z){
 // ---------- Tol Layang MBZ stacked over Jakarta–Cikampek (KM 10 Cikunir – KM 46 Karawang Barat) ----------
 // on Japek you see the elevated deck above the median; on MBZ you see Japek and its traffic below. Both carry moving traffic.
 const MBZ_K = [10, 46], MBZ_H = 15.5, MBZ_HW = MED + 2*LW + 1.2;
-const mbzRise = km => MBZ_H*sstep(MBZ_K[0] + 0.4, MBZ_K[0] + 3, km)*(1 - sstep(MBZ_K[1] - 3, MBZ_K[1] - 0.4, km));
+// MBZ ends: each direction leaves the elevated deck as a ramp that curves out to the side (still high above Japek),
+// then comes down to the ground beside the toll road. t: 0 = on the ground beside Japek, 1 = full height over the median.
+const mbzT = km => Math.min(clamp((km - MBZ_K[0] - 0.4)/2.6, 0, 1), clamp((MBZ_K[1] - 0.4 - km)/2.6, 0, 1));
+const mbzRise = km => { const t = mbzT(km); return t <= 0 ? 0 : t < 0.5 ? 7.6*sstep(0, 0.5, t) : 7.6 + (MBZ_H - 7.6)*sstep(0.5, 1, t); };
+const mbzSplit = u => (1 - sstep(0.5, 0.95, mbzT(kmAt(u))))*(eAt(u) + 6);
 const ghosts = new Set();   // chunk groups carrying "ghost" traffic lanes (other levels of a stacked road)
 const canalMat = M(0x4f7f86, {roughness: 0.25, metalness: 0.1}), bankMat = M(0x8f8f86); canalMat.userData.terrain = bankMat.userData.terrain = true;
 // Becakayu stands on piers in the Kalimalang canal, with Jalan Kalimalang (Jl. KH Noer Ali) one-way on each bank
@@ -793,34 +920,41 @@ function mbzStack(g, u0, u1, Z){
   const km = u => kmAt(u), hAt = u => mbzRise(km(u)); if (Math.max(hAt(u0), hAt(u1)) < 0.3) return;
   const lanes = [];
   if (c === 'japek') {
-    // the deck overhead, in 10 m pieces following the rise, on single columns in the median
-    for (let u = u0; u < u1; u += 10) { const h = hAt(u + 5); if (h < 0.3) continue;
-      g.add(solid(2*MBZ_HW, 1.5, 10.05, concrete, 0, h - 0.75, Z(u + 5)), solid(2*MBZ_HW - 0.9, 0.06, 10.05, asphalt, 0, h + 0.03, Z(u + 5)), solid(0.5, 0.9, 10.05, barMat, 0, h + 0.45, Z(u + 5)));
-      for (const sx of [-1, 1]) { g.add(solid(0.15, 0.03, 10.05, white, sx*(MED + 2*LW - 0.1), h + 0.075, Z(u + 5)));
-        if (Math.floor(u/10) % 2 === 0) g.add(solid(0.14, 0.03, 4, white, sx*(MED + LW), h + 0.075, Z(u + 5))); }
-      for (const sx of [-1, 1]) g.add(solid(0.4, 1.1, 10.05, barMat, sx*(MBZ_HW - 0.2), h + 0.55, Z(u + 5))); }
-    for (let u = Math.ceil(u0/40)*40; u < u1; u += 40) { const h = hAt(u); if (h < 3) continue;
-      const m = new THREE.Mesh(viaPierGeo, concrete); m.position.set(0, (h - 1.5)/2, Z(u)); m.scale.set(0.75, h - 1.5, 0.75); m.castShadow = true; g.add(m);
-      g.add(solid(2*MBZ_HW - 4, 1.4, 2.4, concrete, 0, h - 2.1, Z(u))); }
-    for (let l = 0; l < 2; l++) for (const d of [1, -1]) lanes.push({x: -d*(MED + (l + 0.5)*LW), y: u => hAt(u) + 0.02, dir: d, vel: 22 + l*3, gap: (85 + l*30)*(MOBILE ? 1.6 : 1), ph: l*31 + (d > 0 ? 0 : 17)});
+    // the deck overhead, in 10 m pieces following the rise. Each direction ramps up beside the toll road (outside the guard rail)
+    // and only swings in over the median once it clears the traffic below (> 6.5 m); then both halves run together on median columns
+    for (let u = u0; u < u1; u += 5) { const h = hAt(u + 2.5); if (h < 0.3) continue; const xi = mbzSplit(u + 2.5), dxi = mbzSplit(u + 5) - mbzSplit(u), dh = hAt(u + 5) - hAt(u);
+      for (const sx of [-1, 1]) { const piece = new THREE.Group(), L = Math.hypot(5, dxi) + 0.15;
+        piece.position.set(sx*(xi + MBZ_HW/2), h, Z(u + 2.5)); piece.rotation.order = 'YXZ'; piece.rotation.y = -sx*Math.atan2(dxi, 5)*Math.sign(Z(u) - Z(u + 5)); piece.rotation.x = Math.atan2(dh, 5)*Math.sign(Z(u) - Z(u + 5));
+        const o = -sx*MBZ_HW/2;   // local x of the inner edge
+        piece.add(solid(MBZ_HW, 1.5, L, concrete, 0, -0.75, 0), solid(MBZ_HW - 0.45, 0.06, L, asphalt, 0, 0.03, 0), solid(0.25, 0.9, L, barMat, o + sx*0.125, 0.45, 0),
+          solid(0.15, 0.03, L, white, o + sx*(MED + 2*LW - 0.1), 0.075, 0), solid(0.4, 1.1, L, barMat, o + sx*(MBZ_HW - 0.2), 0.55, 0));
+        if (Math.floor(u/5) % 4 < 2) piece.add(solid(0.14, 0.03, 4.9, white, o + sx*(MED + LW), 0.075, 0));
+        g.add(piece); } }
+    for (let u = Math.ceil(u0/40)*40; u < u1; u += 40) { const h = hAt(u); if (h < 3) continue; const xi = mbzSplit(u);
+      for (const px of xi > 1 ? [-(xi + MBZ_HW/2), xi + MBZ_HW/2] : [0]) { const m = new THREE.Mesh(viaPierGeo, concrete); m.position.set(px, (h - 1.5)/2, Z(u)); m.scale.set(0.75, h - 1.5, 0.75); m.castShadow = true; g.add(m); }
+      if (xi > 1) for (const sx of [-1, 1]) g.add(solid(MBZ_HW - 2, 1.4, 2.4, concrete, sx*(xi + MBZ_HW/2), h - 2.1, Z(u)));
+      else g.add(solid(2*MBZ_HW - 4, 1.4, 2.4, concrete, 0, h - 2.1, Z(u))); }
+    for (let l = 0; l < 2; l++) for (const d of [1, -1]) lanes.push({x: u => -d*(mbzSplit(u) + MED + (l + 0.5)*LW), y: u => hAt(u) + 0.02, dir: d, vel: 22 + l*3, gap: (85 + l*30)*(MOBILE ? 1.6 : 1), ph: l*31 + (d > 0 ? 0 : 17)});
   } else {
     // Jakarta–Cikampek underneath: carriageways, markings, barrier and its traffic, on the land below the deck
     const us = []; for (let u = u0; u <= u1 + 0.01; u += 10) us.push(u);
-    const JM = 5;   // Japek's wide median under the MBZ piers
-    for (const sx of [-1, 1]) { g.add(strip(us, u => sx*(JM - 0.6), u => sx*(JM + 4*LW + 2.6), 0.01, prAsphalt, Z));
-      for (let l = 1; l < 4; l++) g.add(strip(us, u => sx*(JM + l*LW - 0.07), u => sx*(JM + l*LW + 0.07), 0.02, prWhite, Z));
-      g.add(strip(us, u => sx*(JM + 4*LW - 0.08), u => sx*(JM + 4*LW + 0.08), 0.02, prWhite, Z)); }
-    for (const l of [0, 2, 3]) for (const d of [1, -1]) lanes.push({x: -d*(JM + (l + 0.5)*LW), y: u => -elevAt(u) + 0.02, dir: d, vel: 18 + l*4, gap: (80 + l*15)*(MOBILE ? 1.6 : 1), ph: l*13 + (d > 0 ? 0 : 7)});
+    // Japek's wide median under the MBZ piers; near the ramps (MBZ still low) Japek runs beside the MBZ, never under a low deck
+    const JM = u => 5 + mbzSplit(u)*1.6;
+    for (const sx of [-1, 1]) { g.add(strip(us, u => sx*(JM(u) - 0.6), u => sx*(JM(u) + 4*LW + 2.6), 0.01, prAsphalt, Z));
+      for (let l = 1; l < 4; l++) g.add(strip(us, u => sx*(JM(u) + l*LW - 0.07), u => sx*(JM(u) + l*LW + 0.07), 0.02, prWhite, Z));
+      g.add(strip(us, u => sx*(JM(u) + 4*LW - 0.08), u => sx*(JM(u) + 4*LW + 0.08), 0.02, prWhite, Z)); }
+    for (const l of [0, 2, 3]) for (const d of [1, -1]) lanes.push({x: u => -d*(JM(u) + (l + 0.5)*LW), y: u => -elevAt(u) + 0.02, dir: d, vel: 18 + l*4, gap: (80 + l*15)*(MOBILE ? 1.6 : 1), ph: l*13 + (d > 0 ? 0 : 7)});
   }
   // moving traffic: car positions follow one global pattern (u = phase + n·gap + v·t), so they flow seamlessly from chunk to chunk
-  const pool = []; for (const L of lanes) for (let k = 0; k < Math.ceil(CH/L.gap) + 1; k++) { const t = Math.random(), v = makeVehicle(t < 0.15 ? 'truck' : t < 0.22 ? 'bus' : t < 0.4 ? 'suv' : 'car');
+  const onDeck = c === 'japek';
+  const pool = []; for (const L of lanes) for (let k = 0; k < Math.ceil(CH/L.gap) + 1; k++) { const t = Math.random(), v = makeVehicle(onDeck ? (t < 0.25 ? 'pickup' : t < 0.5 ? 'suv' : 'car') : t < 0.15 ? 'truck' : t < 0.22 ? 'bus' : t < 0.4 ? 'suv' : 'car');
     v.g.rotation.y = L.dir > 0 ? Math.PI : 0; bendObj(v.g); g.add(v.g); pool.push({L, v, k}); }
   g.userData.ghost = {u0, u1, Z, pool}; ghosts.add(g);
 }
 function animGhosts(){
   for (const g of ghosts) { if (!g.parent) { ghosts.delete(g); continue; } const {u0, u1, Z, pool} = g.userData.ghost;
     for (const {L, v, k} of pool) { const base = mod(L.ph + L.dir*L.vel*clock - u0, L.gap), u = u0 + base + k*L.gap;
-      if (u >= u1) { v.g.visible = false; continue; } v.g.visible = true; v.g.position.set(L.x, L.y(u), Z(u)); } }
+      if (u >= u1) { v.g.visible = false; continue; } v.g.visible = true; v.g.position.set(typeof L.x === 'function' ? L.x(u) : L.x, L.y(u), Z(u)); } }
 }
 const viaPierGeo = (() => { const g = new THREE.CylinderGeometry(0.9, 1.0, 1, 12); g.userData.keep = true; return g; })();
 
@@ -952,6 +1086,10 @@ function prof(p, keys){ const c = [0]; for (let i=1; i<p.length; i++) c.push(c[i
     return [q[0], q[1], h]; }); }
 // trumpet interchange with a toll gate on the stem road (exit to Jalan Nasional)
 const TR_H = 6.8, GATE_O = 200, PR_IN = PRC - 7.2 + 3;
+// the player's exit when the trip carries on into town: through the gate on the stem, then a link road that curves forward
+// and joins the main axis, which beyond this exit is already the road to town (no teleport, no reload)
+const xLink = () => [[1.8,50],[2.6,58],[4.5,66],[8,75],[40,108],[62,130],[74,146],[82,162],[90,174],[100,178.25],[232,178.25],[246,186],[252,200],[250,230],[236,280],[200,340],[150,400],[100,450],[55,495],[25,530],[9,562],[3.5,592],[1.8,630],[1.8,700]];
+const xLinkHere = s => s.kind === 'x' && EV[s.i] && EV[s.i + 1] && CORR[EV[s.i].cNext] && CORR[EV[s.i].cNext].cls !== 't' && s.i !== trip.destIdx;
 const trOut = () => [[1.8,50],[2.6,58],[4.5,66],[8,75],[40,108],[62,130],[74,146],[82,162],[90,174],[100,178.25],[PR_IN,178.25]];
 function trIn(){ const head = [[PR_IN,181.75],[40,181.75]], p = [...head, ...arcP(35,156.75,25,Math.PI/2,Math.PI*2)], i0 = head.length;
   p.push([60,181.75]); const i1 = p.length-1; p.push([60,215], ...onPts(60)); const i2 = p.findIndex(q => q[1] >= 285); p.push([1.8,352]);
@@ -1188,7 +1326,7 @@ function buildSite(s){
     siteEdge(g, s.kind, e);
     if (s.kind === 'r') { road(g, [[1.8,12], ...offPts(RE)], e); road(g, onPts(RE), e); restArea(g, e); s.bays[sd] = STATIC.map(x => x ? 'static' : null); }
     else if (s.kind === 'j') { for (const kd of ['outC','outA','inC','inB']) ramp3(g, ssPath(kd, e), e); ramp3(g, jLink(), e); }
-    else { const keep = q => q[0] < PRC - 12; ramp3(g, [[1.8,12], ...trOut()], e, keep); ramp3(g, trIn(), e, keep); stemPlaza(g, e, s.name); }
+    else { const keep = q => q[0] < PRC - 12; ramp3(g, [[1.8,12], ...trOut()], e, keep); ramp3(g, trIn(), e, keep); stemPlaza(g, e, s.name); if (sd === 1 && xLinkHere(s)) ramp3(g, xLink(), e, q => q[1] < 176 || q[1] > 186); }
     siteSigns(g, s, sd, e);
   } else if (s.kind === 'k') { for (const sd of [1, -1]) { const g = frameGroup(sd, s.u); groups.push(g); townSigns(g, s, sd, e); } groups.push(intersection(s, e)); }
   else for (const sd of [1, -1]) { const g = frameGroup(sd, s.u); groups.push(g); siteSigns(g, s, sd, e); }
@@ -1397,13 +1535,18 @@ function buildObj(o){
   return gs;
 }
 function freeObj(gs){ dropSolids(gs); for (const g of gs) { g.traverse(m => { if (m.material) arrowMats.delete(m.material); }); dispose(g); } }
-function updateWorld(){
-  const lo = Math.floor((camU - BACK - 140)/CH), hi = Math.floor((camU + FWD + 340 + VIEWX)/CH);
+// budget: while driving, build at most a couple of chunks and one interchange per frame, nearest first, so the
+// frame rate stays smooth; everything far ahead is built a little later, long before it comes into view
+function updateWorld(budget = false){
+  const lo = Math.floor((camU - BACK - 140)/CH), hi = Math.floor((camU + FWD + 340 + VIEWX)/CH), c0 = Math.floor(camU/CH);
   for (const [i, g] of chunks) if (i < lo || i > hi) { dropSolids([g]); dispose(g); chunks.delete(i); }
-  for (let i = lo; i <= hi; i++) if (!chunks.has(i)) { chunks.set(i, buildChunk(i)); applySign([chunks.get(i)]); }
+  let nC = budget ? 2 : Infinity;
+  for (let d = 0; d <= Math.max(c0 - lo, hi - c0) && nC > 0; d++) for (const i of d ? [c0 + d, c0 - d] : [c0]) {
+    if (i < lo || i > hi || chunks.has(i) || nC <= 0) continue; chunks.set(i, buildChunk(i)); applySign([chunks.get(i)]); nC--; }
   const a = camU - BACK - 200, b = camU + FWD + 500 + VIEWX;
   for (const [o, gs] of built) if (o.u + o.r < a || o.u - o.r > b) { freeObj(gs); built.delete(o); if (o.type === 'site') o.s.bays = {'1': null, '-1': null}; }
-  for (const o of OBJ) { if (o.u - o.r > b) break; if (o.u + o.r < a || built.has(o)) continue; built.set(o, buildObj(o)); }
+  let nO = budget ? 1 : Infinity;
+  for (const o of OBJ) { if (o.u - o.r > b || nO <= 0) break; if (o.u + o.r < a || built.has(o)) continue; built.set(o, buildObj(o)); nO--; }
 }
 function rebuildObjects(types){ for (const [o, gs] of [...built]) if (!types || types.includes(o.type)) { freeObj(gs); built.delete(o); } updateWorld(); }
 function clearWorld(){ SOLIDS = []; for (const [, g] of chunks) dispose(g); chunks.clear(); for (const [, gs] of built) freeObj(gs); built.clear(); }
@@ -1485,6 +1628,8 @@ function discretionary(v, lead, nearEntry){
   if (left && idm(v, left.lead, left.ld, v.v0e) > v.acc - 0.15 && left.ld > 40) v.lane++;
 }
 function pickType(lane, n, p, sd){
+  if (p != null && corrAt(sd*p) === 'mbz') { const t = Math.random(); return t < 0.01 ? 'police' : t < 0.55 ? 'car' : t < 0.85 ? 'suv' : 'pickup'; }
+  if (Math.random() < 0.06) return 'pickup';
   { const e = Math.random(); if (e < 0.012) return e < 0.005 ? 'ambulance' : e < 0.009 ? 'police' : 'damkar'; }
   if (p != null && !isToll(sd*p)) { const t = Math.random(), outer = lane === n - 1;
     if (Math.random() < (outer ? 0.2 : 0.08)) return 'angkot';
@@ -1546,7 +1691,12 @@ function toRamp(v, site, kind){
     raw = ssPath(side, e); end = 'kill';
     // the player's junction ramp: a short link that leaves and rejoins the carriageway, which from here on is the chosen road (no dead end, no reload)
     if (v.player && v.jSwap) { raw = jLink(); end = 'merge'; mergeAt = 346; } }
-  else { raw = trOut(); end = 'pr'; if (v.player) v.xSwap = seamlessExit(site); }
+  else { raw = trOut(); end = 'pr';
+    if (v.player) { v.xSwap = seamlessExit(site);
+      if (v.xSwap) { raw = xLink(); end = 'merge'; mergeAt = 628; v.xSwap = false;
+        // draw the link road now if the site was built before this exit was chosen
+        for (const [o, gs] of [...built]) if (o.type === 'site' && Math.abs(o.u - site.u) < 1) { freeObj(gs); built.delete(o); }
+        updateWorld(); } } }
   v.rp = {P: mkPath([...head, ...raw]), d: 0, i: 0, pc: v.sd*site.u, sd: v.sd, e, shift: SC, end, park, kind, site, mergeAt}; v.rpOff = 0;
   v.exitWant = false; v.q = pathAt(v.rp.P, 0, 0);
   rm(vehicles, v); rampers.push(v);
@@ -1677,6 +1827,110 @@ function emergencyPlan(dt){
 }
 function sirenUI(){ const b = $('sirb'); if (!b) return; const ok = !!PLR && EMERG.has(PLR.type); b.hidden = !ok; b.setAttribute('aria-pressed', ok && cfg.siren ? 'true' : 'false'); }
 
+// ================================================================
+// ON FOOT: get out of the car (E or the "Keluar mobil" button) and walk around; traffic stops for you
+// ================================================================
+let foot = null;
+const skinMat = M(0xc68e62), hairMat = M(0x1d1712), pantsMat = M(0x2b3442), shoeMat = M(0x161616);
+function makePerson(){
+  const g = new THREE.Group(), shirt = M(pick([0xe23b2e, 0x2a6fd1, 0xf2f2ee, 0x2f9a4a, 0xf0b429]));
+  const part = (w, h, d, mat, x, y, z, parent = g) => { const m = new THREE.Mesh(bgeo(w, h, d), mat); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m; };
+  const legs = [-1, 1].map(s2 => { const p = new THREE.Group(); p.position.set(s2*0.1, 0.9, 0); part(0.15, 0.82, 0.17, pantsMat, 0, -0.41, 0, p); part(0.16, 0.08, 0.27, shoeMat, 0, -0.86, 0.05, p); g.add(p); return p; });
+  part(0.42, 0.62, 0.24, shirt, 0, 1.22, 0);
+  const arms = [-1, 1].map(s2 => { const p = new THREE.Group(); p.position.set(s2*0.27, 1.5, 0); part(0.11, 0.6, 0.12, shirt, 0, -0.27, 0, p); part(0.1, 0.12, 0.1, skinMat, 0, -0.62, 0, p); g.add(p); return p; });
+  part(0.22, 0.25, 0.23, skinMat, 0, 1.68, 0); part(0.24, 0.09, 0.25, hairMat, 0, 1.83, -0.01);
+  bendObj(g); return {g, legs, arms};
+}
+function footToggle(){
+  if (!PLR || !trip) return;
+  if (!foot) {
+    if (PLR.rp || Math.abs(PLR.vel) > 1) { toast('Berhenti dulu sebelum keluar dari mobil', 'warn'); return; }
+    cfg.auto = false; hudAuto && hudAuto(); input.gas = input.brake = input.left = input.right = false; PLR.vel = 0;
+    const u = uOfV(PLR), m = makePerson(), sd = PLR.sd;
+    foot = {u: u - sd*0.3, x: PLR.x + sd*1.4, hd: 0, ph: 0, vel: 0, down: 0, ...m};
+    scene.add(m.g); camMode0 = camMode; if (camMode === 'cockpit') camMode = 'chase';
+    document.body.classList.add('onfoot'); $('walkb').textContent = 'Masuk mobil';
+    toast('Jalan kaki: ↑/↓ jalan, ←/→ belok, Shift lari, E masuk mobil. Hati-hati lalu lintas!');
+  } else {
+    const du = foot.u - uOfV(PLR), dx = foot.x - PLR.x;
+    if (Math.hypot(du, dx) > 5) { toast('Dekati mobilmu dulu (≤ 5 m) untuk masuk', 'warn'); return; }
+    scene.remove(foot.g); foot = null; camMode = camMode0 || camMode; document.body.classList.remove('onfoot'); $('walkb').textContent = 'Keluar mobil'; toast('Kembali di dalam mobil');
+  }
+}
+let camMode0 = null;
+function stepFoot(dt){
+  const f = foot; if (!f) return; cfg.auto = false;
+  if (f.down > 0) { f.down -= dt; f.g.rotation.x = -Math.PI/2*Math.min(1, (2.6 - f.down)*4); if (f.down <= 0) { f.g.rotation.x = 0; toast('Bangun lagi… hati-hati!'); } return; }
+  const run = input.run, want = (input.gas ? 1 : 0) - (input.brake ? 0.6 : 0);
+  f.hd = wrapA(f.hd + ((input.right ? 1 : 0) - (input.left ? 1 : 0))*2.4*dt);
+  f.vel += clamp(want*(run ? 5.5 : 1.5) - f.vel, -6*dt, 4*dt);
+  f.u += Math.cos(f.hd)*f.vel*dt*(PLR.sd || 1); f.x += Math.sin(f.hd)*f.vel*dt*(PLR.sd || 1);
+  // stay within the built world (about 400 m from the car) and on the land
+  const u0 = uOfV(PLR); f.u = clamp(f.u, u0 - 380, u0 + 380); f.x = clamp(f.x, -(eAt(f.u) + 60), eAt(f.u) + 60);
+  f.ph += f.vel*dt*3.2; const sw = Math.sin(f.ph)*Math.min(0.7, Math.abs(f.vel)*0.35);
+  f.legs[0].rotation.x = sw; f.legs[1].rotation.x = -sw; f.arms[0].rotation.x = -sw*0.8; f.arms[1].rotation.x = sw*0.8;
+  // hit by a vehicle?
+  for (const v of vehicles) { if (v.player) continue; const du = v.sd*v.p - f.u, dx = v.x - f.x;
+    if (Math.abs(du) < v.len/2 + 0.3 && Math.abs(dx) < (HW[v.type] || 1) + 0.25 && v.vel > 1.5) { f.down = 2.6; f.vel = 0; stats.crashes++; crash('Tertabrak kendaraan!'); crashSound(v.vel*0.6); shake = 0.8; v.vel *= 0.4; v.crashT = clock + 6; break; } }
+}
+// AI drivers brake for a pedestrian in their lane
+function footBlocks(v, front){
+  const f = foot; if (!f) return Infinity; const side = -v.sd, lxF = (f.x*side - (MED + LW/2))/LW;
+  if (Math.abs(lxF - v.lx) > 0.75) return Infinity; const d = v.sd*f.u - front; return d > -1 && d < 70 ? d : Infinity;
+}
+function placeFoot(){ if (!foot) return; const f = foot, sd = PLR.sd || 1; f.g.position.set(f.x, 0, camU - f.u); f.g.rotation.y = (sd > 0 ? Math.PI : 0) - f.hd; }
+
+// ---------- crash effects: debris and glass, sparks, smoke and fire, dents, skid marks ----------
+// Particles live in road coordinates (u, x, y) so they stay put as the world scrolls; drawn with instanced meshes.
+const FXN = 420, fxDummy = new THREE.Object3D(), fxCol = new THREE.Color();
+const mkFx = (geo, mat, n) => { const m = new THREE.InstancedMesh(geo, mat, n); m.count = 0; m.frustumCulled = false; m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); patchMat(mat); scene.add(m); return m; };
+const debrisM = mkFx(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 0.6, metalness: 0.3}), FXN);
+const sparkM = mkFx(new THREE.BoxGeometry(0.06, 0.06, 0.4), new THREE.MeshStandardMaterial({color: 0xffc060, emissive: 0xff8a20, emissiveIntensity: 4}), 200);
+const smokeM = mkFx(new THREE.IcosahedronGeometry(1, 1), new THREE.MeshStandardMaterial({color: 0x9a9a9a, transparent: true, opacity: 0.42, depthWrite: false, roughness: 1}), 220);
+const fireM = mkFx(new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({color: 0xff7a1a, emissive: 0xff5a00, emissiveIntensity: 3, transparent: true, opacity: 0.85, depthWrite: false}), 80);
+const skidM = mkFx(new THREE.PlaneGeometry(0.24, 1).rotateX(-Math.PI/2), new THREE.MeshStandardMaterial({color: 0x111111, transparent: true, opacity: 0.55, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2}), 600);
+const FX = {debris: [], spark: [], smoke: [], fire: [], skid: []};
+function fxAdd(list, max, p){ if (list.length >= max) list.shift(); list.push(p); }
+// an impact at road position (u, x, y): debris in the paint colour and glass, sparks, a puff of dust; more and faster with the speed change
+function crashFx(u, x, y, dv, paint, dir = 0){
+  const n = Math.min(40, Math.round(dv*2.2)), rnd2 = () => Math.random()*2 - 1;
+  for (let k = 0; k < n; k++) { const glass = Math.random() < 0.35, sp = 1.5 + Math.random()*dv*0.45;
+    fxAdd(FX.debris, FXN, {u, x, y: y + 0.6, vu: rnd2()*sp + dir*dv*0.3, vx: rnd2()*sp, vy: 1 + Math.random()*sp*0.8, s: glass ? 0.05 + Math.random()*0.08 : 0.08 + Math.random()*0.22, rot: Math.random()*6, w: rnd2()*12,
+      c: glass ? 0x9fc6d8 : Math.random() < 0.25 ? 0x222222 : (paint ?? 0xb0b0b0), t: 6 + Math.random()*6}); }
+  for (let k = 0; k < Math.min(30, dv*2); k++) fxAdd(FX.spark, 200, {u, x, y: y + 0.4, vu: rnd2()*6 + dir*4, vx: rnd2()*6, vy: Math.random()*4, t: 0.35 + Math.random()*0.4});
+  for (let k = 0; k < Math.min(8, 2 + dv*0.4); k++) fxAdd(FX.smoke, 220, {u: u + rnd2(), x: x + rnd2(), y: y + 0.5, vu: rnd2()*0.6, vx: rnd2()*0.6, vy: 0.6 + Math.random(), s: 0.6, g: 1.4, t: 2 + Math.random()*1.5, T: 3.5});
+}
+function scrapeFx(u, x, y, side){ for (let k = 0; k < 3; k++) fxAdd(FX.spark, 200, {u, x, y: y + 0.35, vu: -(1 + Math.random()*4), vx: side*Math.random()*2, vy: Math.random()*2.5, t: 0.25 + Math.random()*0.3}); }
+// damage: dents the body (shorter at the front or back, narrower at the side), smoke from the engine, fire when wrecked
+function damage(v, dv, where){ if (!v || !v.g) return; v.dmg = Math.min(100, (v.dmg || 0) + dv*(v.player ? 3.2 : 2.6));
+  v.dentZ = Math.min(0.14, (v.dentZ || 0) + (where === 'side' ? 0.004 : 0.011)*dv); v.dentX = Math.min(0.1, (v.dentX || 0) + (where === 'side' ? 0.012 : 0.002)*dv);
+  v.g.scale.set(1 - v.dentX, 1 - v.dentZ*0.25, 1 - v.dentZ); if (dv > 6) v.g.rotation.z += (Math.random() - 0.5)*0.04; }
+let skidT = 0;
+function updateFx(dt){
+  const G = 9.81, ground = 0.03;
+  for (const p of FX.debris) { if (p.y > ground + 0.01 || p.vy > 0) { p.vy -= G*dt; p.u += p.vu*dt; p.x += p.vx*dt; p.y += p.vy*dt; p.rot += p.w*dt;
+      if (p.y < ground) { p.y = ground; p.vy = -p.vy*0.3; p.vu *= 0.6; p.vx *= 0.6; p.w *= 0.5; if (Math.abs(p.vy) < 0.4) p.vy = 0; } } p.t -= dt; }
+  for (const p of FX.spark) { p.vy -= G*dt; p.u += p.vu*dt; p.x += p.vx*dt; p.y = Math.max(ground, p.y + p.vy*dt); p.t -= dt; }
+  for (const p of FX.smoke) { p.u += p.vu*dt; p.x += p.vx*dt; p.y += p.vy*dt; p.s += p.g*dt; p.t -= dt; }
+  for (const p of FX.fire) { p.y += p.vy*dt; p.s *= 1 - dt*1.5; p.t -= dt; }
+  for (const p of FX.skid) p.t -= dt;
+  for (const k in FX) FX[k] = FX[k].filter(p => p.t > 0 && Math.abs(p.u - camU) < 700);
+  // damaged vehicles smoke from the engine; wrecks burn
+  for (const v of vehicles.concat(rampers)) { if (!(v.dmg > 35) || !v.g.visible) continue; const u = v.rp ? v.rp.sd*v.p : uOfV(v), sd = v.rp ? v.rp.sd : v.sd, fu = u + sd*v.len*0.38;
+    if (Math.random() < dt*(v.dmg - 25)*0.12) fxAdd(FX.smoke, 220, {u: fu, x: v.x, y: 1.1, vu: sd*v.vel*0.2 + (Math.random() - 0.5)*0.4, vx: (Math.random() - 0.5)*0.4, vy: 1 + Math.random()*0.8, s: 0.35, g: 1.1, t: 2.5, T: 2.5, dark: v.dmg > 70});
+    if (v.dmg > 85 && Math.random() < dt*14) fxAdd(FX.fire, 80, {u: fu, x: v.x + (Math.random() - 0.5)*1.2, y: 0.9, vy: 1.5 + Math.random(), s: 0.45 + Math.random()*0.3, t: 0.5}); }
+  // skid marks: hard braking (ABS still leaves marks) or sliding sideways
+  const P = PLR; if (P && !P.rp && !cfg.auto && Math.abs(P.vel) > 4 && (P.brk > 0.85 || P.slide > 0.4) && (skidT -= dt) < 0) { skidT = 0.03;
+    const u = uOfV(P), hw = (HW[P.type] || 0.92)*0.82; for (const s2 of [-1, 1]) fxAdd(FX.skid, 600, {u: u - P.sd*P.len*0.3, x: P.x + s2*hw, ang: P.hd || 0, l: Math.abs(P.vel)*0.035 + 0.3, t: 40}); }
+  // draw
+  const put = (m, list, f) => { let i = 0; for (const p of list) { if (!f(p)) continue; fxDummy.updateMatrix(); m.setMatrixAt(i, fxDummy.matrix); if (m === debrisM) m.setColorAt(i, fxCol.setHex(p.c)); i++; } m.count = i; m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; };
+  put(debrisM, FX.debris, p => { fxDummy.position.set(p.x, p.y, camU - p.u); fxDummy.rotation.set(p.rot, p.rot*0.7, 0); fxDummy.scale.set(p.s, p.s*0.4, p.s*1.3); return true; });
+  put(sparkM, FX.spark, p => { fxDummy.position.set(p.x, p.y, camU - p.u); fxDummy.rotation.set(0, Math.atan2(p.vx, -p.vu), 0); fxDummy.scale.set(1, 1, 1); return true; });
+  put(smokeM, FX.smoke, p => { fxDummy.position.set(p.x, p.y, camU - p.u); fxDummy.rotation.set(0, 0, 0); const k = Math.min(1, p.t/(p.T || 2)); fxDummy.scale.setScalar(p.s*(0.4 + 0.6*k)); return true; });
+  put(fireM, FX.fire, p => { fxDummy.position.set(p.x, p.y, camU - p.u); fxDummy.rotation.set(clock*3, clock*2, 0); fxDummy.scale.setScalar(p.s); return true; });
+  put(skidM, FX.skid, p => { fxDummy.position.set(p.x, 0.02, camU - p.u); fxDummy.rotation.set(0, (PLR ? PLR.sd : 1) > 0 ? p.ang : -p.ang, 0); fxDummy.scale.set(1, 1, p.l); return true; });
+}
+
 // ---------- main sim step ----------
 const EXIT_P = {x: 0.13, j: 0.15, r: 0.07};
 let mergeReq = [];
@@ -1713,7 +1967,8 @@ function sim(dt){
     const pz = plazaAhead(v.sd, front);
     if (pz && v.paid !== pz.s.id) { v0 = Math.min(v0, Math.sqrt(25 + 1.2*Math.max(0, pz.d))); }
     v.v0e = v0;
-    if (manual) { v.acc = playerAcc(v, dt); steerPlayer(v, dt); }
+    if (manual && foot) v.acc = -v.vel/dt;
+    else if (manual) { v.acc = playerAcc(v, dt); steerPlayer(v, dt); }
     else {
       v.acc = idm(v, lead, ld, v0);
       if (pz && v.paid !== pz.s.id) v.acc = Math.min(v.acc, idm(v, STOP, pz.d + 2.0, v0));
@@ -1721,6 +1976,7 @@ function sim(dt){
       const la = lightAhead(v.sd, front);
       if (la && !v.em) { const st = sigMain(la.s); if (st === 'R' || (st === 'Y' && la.d > Math.max(6, v.vel*v.vel/6))) v.acc = Math.min(v.acc, idm(v, STOP, la.d + 2.2, v0)); }
     }
+    if (foot && !manual) { const fd = footBlocks(v, front); if (fd < Infinity) { v.acc = Math.min(v.acc, idm(v, STOP, fd - 2.5, v0)); if (fd < 25 && v.vel < 1 && Math.random() < dt*0.25) horn(v.type, Math.abs(uOfV(v) - foot.u), panOf(v)); } }
     const bd = blockAhead(v.sd, v.lane, front);
     if (!manual && bd < Infinity && !(v.esc && Math.abs(v.lx - v.lane) > 0.45)) v.acc = Math.min(v.acc, idm(v, STOP, bd - 1.5, v0));
     if (v.ngStop) v.acc = Math.min(v.acc, v.vel > 0.2 ? -2.5 : -v.vel/dt);
@@ -1771,7 +2027,9 @@ function sim(dt){
     bodyMotion(v, wrapA(v.yaw - y0)/dt, dt);
     for (const w of v.wh) w.rotation.x += v.vel*dt / v.r;
   }
-  if (PLR && !cfg.auto && vehicles.includes(PLR)) playerCollide(PLR);
+  if (PLR && !cfg.auto && !foot && vehicles.includes(PLR)) { const P = PLR, [lo, hi] = lxBounds(P), hd0 = P.hd || 0; playerCollide(P);
+    // a hit never throws the car through the median barrier or the guard rail, and does not spin it right round
+    P.lx = clamp(P.lx, lo, hi); P.lane = Math.round(P.lx); P.x = posX(-P.sd, P.lx); P.hd = clamp(P.hd || 0, hd0 - 0.6, hd0 + 0.6); }
   for (let i = vehicles.length-1; i >= 0; i--) { const v = vehicles[i];
     if (v.player && !(cfg.auto && (v.exitWant || v.detour))) continue;
     if (v.detour && !v.player && v.p - v.detour.bStart > -420 && Math.abs(v.sd*v.p - camU) > 330) { rm(vehicles, v); killVehicle(v); continue; }
@@ -1827,30 +2085,40 @@ function place(){
 // ================================================================
 const VEH = {car:{label:'Sedan', vmax:52, acc:3.2, gol:'Gol I', rate:1000}, suv:{label:'SUV', vmax:48, acc:2.8, gol:'Gol I', rate:1000},
   bus:{label:'Bus', vmax:33, acc:1.3, gol:'Gol I', rate:1000}, truck:{label:'Truk', vmax:28, acc:0.9, gol:'Gol III', rate:1650},
-  angkot:{label:'Angkot', vmax:31, acc:2.3, gol:'Gol I', rate:1000}, ambulance:{label:'Ambulans', vmax:44, acc:2.6, gol:'Gol I', rate:1000},
+  pickup:{label:'Pickup', vmax:42, acc:2.4, gol:'Gol I', rate:1000}, angkot:{label:'Angkot', vmax:31, acc:2.3, gol:'Gol I', rate:1000}, ambulance:{label:'Ambulans', vmax:44, acc:2.6, gol:'Gol I', rate:1000},
   damkar:{label:'Damkar', vmax:31, acc:1.3, gol:'Gol II', rate:1500}, police:{label:'Polisi', vmax:52, acc:3.4, gol:'Gol I', rate:1000}};
 const input = {gas:false, brake:false, left:false, right:false};
 const stats = {t0: 0, toll: 0, viol: 0, crashes: 0, lastPay: 0, missed: false, done: false, log: []};
 let offT = 0, shoulderT = 0, speedT = 0, heavyT = 0, violCd = 0, crashCd = 0, shake = 0;
 function spawnPlayer(){
   if (PLR) { const i = vehicles.indexOf(PLR); if (i >= 0) vehicles.splice(i, 1); const j = rampers.indexOf(PLR); if (j >= 0) rampers.splice(j, 1); killVehicle(PLR); }
-  const v = makeVehicle(VEH[cfg.veh] ? cfg.veh : 'car', ['car', 'suv', 'bus', 'truck'].includes(cfg.veh) ? 0xec3013 : null); v.player = true; sirenUI();
+  const v = makeVehicle(VEH[cfg.veh] ? cfg.veh : 'car', ['car', 'suv', 'bus', 'truck'].includes(cfg.veh) ? 0xec3013 : null); v.player = true; v.paint = 0xec3013; v.dmg = 0; sirenUI();
   const o = EV[0], n = nAvail(1, 0), startP = o.kind === 't' || o.kind === 'g' ? 160 : o.kind === 'k' || o.kind === 'n0' ? 30 : 320;
   Object.assign(v, {sd: 1, lane: Math.max(0, n - 1), p: startP, vel: o.kind === 'k' || o.kind === 'n0' ? 8 : 16, cd: 0, yaw: 0, cfWant: false, v0: limitAt(startP)});
   v.lx = v.lane; v.x = posX(-1, v.lane); v.paid = o.kind === 't' || o.kind === 'g' ? o.id : null;
   scene.add(v.g); vehicles.push(v); PLR = v; camU = startP;
 }
-const slopeG = v => 9.81*(v.sd || 1)*gYD(uOfV(v))*Math.cos(v.hd || 0);    // g · grade along the direction of travel
+const slopeG = v => v.rp ? 0 : 9.81*(v.sd || 1)*gYD(uOfV(v))*Math.cos(v.hd || 0);    // g · grade along the direction of travel
 const GEAR_UP = [5.5, 11, 17.5, 25, 33], GEAR_K = [1, 0.8, 0.64, 0.52, 0.43, 0.36];
 const gearOf = vel => 1 + GEAR_UP.filter(x => vel >= x).length;
 function playerAcc(v, dt){
-  const spec = VEH[v.type] || VEH.car, hv = heavy(v) ? 0.6 : 1;
+  const a = playerAcc0(v, dt);
+  if (v.vel >= 0 && v.vel + a*dt < 0 && !(input.brake && input.brakeT > 0.6)) return -v.vel/dt;
+  if (v.vel < 0 && v.vel + a*dt > 0 && !input.gas) return -v.vel/dt;
+  return a;
+}
+const muOf = v => (heavy(v) || v.type === 'damkar' ? 0.62 : 0.92)*((WEATHER[cfg.weather] || {}).rain ? 0.68 : 1)*(1 - Math.min(0.25, (v.dmg || 0)*0.0025));
+function playerAcc0(v, dt){
+  const sp0 = VEH[v.type] || VEH.car, dk = 1 - Math.min(0.6, (v.dmg || 0)*0.006), spec = {...sp0, vmax: sp0.vmax*dk, acc: sp0.acc*dk}, hv = heavy(v) ? 0.6 : 1;
+  if ((v.dmg || 0) >= 100) { if (!v.deadT) { v.deadT = clock; toast('Mesin mati: kendaraan rusak berat. Menunggu derek…', 'bad'); }
+    if (clock - v.deadT > 6) { v.dmg = 55; v.deadT = 0; v.dentZ = v.dentX = 0; v.g.scale.set(1, 1, 1); v.g.rotation.z = 0; toast('Kendaraan diperbaiki darurat, lanjutkan pelan-pelan'); }
+    return v.vel > 0.05 ? -4 : v.vel < -0.05 ? 4 : -v.vel/dt; }
   v.thr = (v.thr || 0) + clamp((input.gas ? 1 : 0) - (v.thr || 0), -4*dt, 2.5*dt);
   v.brk = input.brake ? Math.min(1, (v.brk || 0) + 3*dt) : 0;
   const g = gearOf(Math.max(0, v.vel)/hv); if (g > (v.gear || 1) && v.thr > 0.2) v.shiftT = 0.28; v.gear = g; v.shiftT = Math.max(0, (v.shiftT || 0) - dt);
   const drag = 0.00042*v.vel*Math.abs(v.vel) + 0.12*Math.sign(v.vel);
   if (input.brake) {
-    if (v.vel > 0.3) { input.brakeT = 0; return -(1.2 + 7.3*v.brk) - drag; }
+    if (v.vel > 0.3) { input.brakeT = 0; return Math.max(-(1.2 + 7.3*v.brk), -muOf(v)*9.81) - drag; }
     input.brakeT = (input.brakeT || 0) + dt;                        // hold the brake at a standstill to reverse
     return input.brakeT > 0.6 ? (v.vel > -5 ? -1.6 : 0) : -v.vel/dt;
   }
@@ -1875,7 +2143,8 @@ function lxBounds(v){
   let hi = toll ? (e + 1.7 - c)/LW : (e + (inTown ? 4.4 : 7.5) - c)/LW, lo = -nn - 0.35;
   const sa = siteAhead(v.sd, v.p);
   if (toll && sa && sa.t > -280 && sa.t < -100) hi += 1.6;          // gap in the guard rail at the exit
-  if (toll) { const atOpen = OPENS.some(o => Math.abs(o.u - u) < OPEN_HW - 4);
+  // the median opening is only for a deliberate U-turn (or a contraflow on this side): driving straight you cannot drift across into oncoming traffic
+  if (toll) { const z = cfAt(v.sd, v.p), cf = z && z.A === v.sd, atOpen = OPENS.some(o => Math.abs(o.u - u) < OPEN_HW - 4) && (cf || Math.abs(v.hd || 0) > 0.9 || v.lx < -0.5);
     if (!atOpen) { if (v.lx < -0.5) hi = Math.min(hi, -0.71); else lo = -0.29; } }
   return [lo, hi];
 }
@@ -1891,14 +2160,19 @@ function steerPlayer(v, dt){
   const maxS = clamp(4.2*wheelbase(v)/Math.max(spd*spd, 1), 0.01, 0.55);
   v.steer = v.steer || 0; v.hd = v.hd || 0;
   const tgt = st*maxS, rate = (st ? 1.6 : 3)*Math.max(maxS, 0.05); v.steer += clamp(tgt - v.steer, -rate*dt, rate*dt);   // ~0.6 s to full lock
-  const grip = (heavy(v) ? 4.5 : 7.5)*((WEATHER[cfg.weather] || {}).rain ? 0.7 : 1)/Math.max(spd, 1); let yr = clamp(v.vel/wheelbase(v)*Math.tan(v.steer), -grip, grip);
-  if (spd > 3 && Math.abs(v.vel/wheelbase(v)*Math.tan(v.steer)) > grip*1.15 && clock - (v.skidT || 0) > 3) { v.skidT = clock; toast('Ban selip! Kurangi setir', 'warn'); }
+  // friction circle: the grip left for cornering is what braking or accelerating does not use
+  const aMax = muOf(v)*9.81, aLong = Math.min(Math.abs(v.acc || 0), aMax*0.95), aLat = Math.sqrt(aMax*aMax - aLong*aLong)*(heavy(v) ? 0.75 : 0.85);
+  const grip = aLat/Math.max(spd, 1), want = v.vel/wheelbase(v)*Math.tan(v.steer); let yr = clamp(want, -grip, grip);
+  v.slide = Math.abs(want) > grip ? Math.min(1, (Math.abs(want) - grip)/grip) : 0;
+  // damage pulls the car to one side
+  if ((v.dmg || 0) > 20) yr += (v.pull || (v.pull = Math.random() < 0.5 ? -1 : 1))*(v.dmg - 20)*0.00004*spd;
+  if (spd > 3 && Math.abs(want) > grip*1.15 && clock - (v.skidT || 0) > 3) { v.skidT = clock; toast('Ban selip! Kurangi setir', 'warn'); }
   v.hd = wrapA(v.hd + yr*dt);
   if (!st && cfg.steerAssist && Math.abs(v.hd) < 0.6) v.hd -= v.hd*Math.min(1, dt*1.1);   // the driver straightens up after a lane change (Asisten setir); a U-turn is left alone
   v.vel -= Math.sign(v.vel)*Math.abs(v.steer)*spd*0.05*dt;                 // tyre scrub in turns
   let lx = v.lx + v.vel*Math.sin(v.hd)/LW*dt;
   const [lo, hi] = lxBounds(v), side = Math.abs(v.vel*Math.sin(v.hd)), fast = Math.abs(v.vel) > 6 && side > 1.2;
-  const wallHit = msg => { const a = Math.abs(Math.sin(v.hd)); hitFx(side*1.4, msg); v.vel *= 1 - Math.min(0.75, a*1.6); v.hd = -v.hd*0.3; v.steer *= 0.4; };
+  const wallHit = msg => { const a = Math.abs(Math.sin(v.hd)); hitFx(side*1.4, msg, 'side'); v.vel *= 1 - Math.min(0.75, a*1.6); v.hd = -v.hd*0.3; v.steer *= 0.4; };
   if (lx > hi) { lx = hi; if (v.hd*Math.sign(v.vel) > 0) wallHit(isToll(uOfV(v)) ? 'Menyerempet pagar pengaman' : townNear(uOfV(v)) ? 'Menabrak bangunan di tepi jalan' : 'Masuk parit di tepi jalan'); }
   if (lx < lo) { lx = lo; if (v.hd*Math.sign(v.vel) < 0) wallHit(isToll(uOfV(v)) ? 'Menyerempet median beton' : 'Keluar badan jalan'); }
   v.lx = lx; v.lane = Math.round(lx);
@@ -1918,13 +2192,19 @@ function steerPlayer(v, dt){
       if (ks.i === trip.destIdx) { stats.done = true; v.vel = 0; arrive(ks, le); } else if (!seamlessLeft(v, ks, le)) continueFrom(ks, le); }
   }
 }
-const HW = {moto:0.4, car:0.92, suv:0.98, van:1.0, police:0.92, truck:1.25, bus:1.25, angkot:0.85, ambulance:1.0, damkar:1.25};
+const HW = {pickup:0.95, moto:0.4, car:0.92, suv:0.98, van:1.0, police:0.92, truck:1.25, bus:1.25, angkot:0.85, ambulance:1.0, damkar:1.25};
 // masses (kg) for collisions: momentum is shared, a small restitution bounces the cars apart
-const MASS = {moto: 220, car: 1300, suv: 1850, van: 2100, police: 1500, bus: 11000, truck: 15000, angkot: 1150, ambulance: 2700, damkar: 13000};
+const MASS = {pickup: 1750, moto: 220, car: 1300, suv: 1850, van: 2100, police: 1500, bus: 11000, truck: 15000, angkot: 1150, ambulance: 2700, damkar: 13000};
 const RESTI = 0.18;
 function impact1D(v1, m1, v2, m2){ const P = m1*v1 + m2*v2, Mt = m1 + m2; return [(P + m2*RESTI*(v2 - v1))/Mt, (P + m1*RESTI*(v1 - v2))/Mt]; }
 function hitAI(o, dv, side){ o.crashT = clock + Math.min(25, 5 + dv*1.2); if (dv > 4) o.spinY = (side || (Math.random() < 0.5 ? 1 : -1))*Math.min(0.9, dv*0.05); }
-function hitFx(dv, msg){ if (dv > 1.5) crash(dv > 14 ? msg + ' (parah)' : msg); if (dv > 0.8 && clock - (hitFx.t || -9) > 0.3) { hitFx.t = clock; crashSound(dv); } shake = Math.max(shake, Math.min(1.4, dv*0.07)); }
+function hitFx(dv, msg, where = 'front', o = null){
+  if (dv > 1.5) crash(dv > 14 ? msg + ' (parah)' : msg);
+  const v = PLR, u = v.rp ? v.rp.sd*v.p : uOfV(v), sd = v.rp ? v.rp.sd : v.sd, fw = Math.sign(v.vel || 1)*sd;
+  const pu = where === 'side' ? u : u + (where === 'back' ? -fw : fw)*v.len*0.5, px = where === 'side' && o ? (v.x + o.x)/2 : v.x, py = v.rp ? (v.q.h || 0) : 0;
+  if (dv > 0.8 && clock - (hitFx.t || -9) > 0.25) { hitFx.t = clock; crashSound(dv); crashFx(pu, px, py, dv, v.paint, where === 'back' ? -fw*0.3 : fw*0.3); damage(v, dv, where); if (o) damage(o, dv*(MASS[v.type] || 1300)/(MASS[o.type] || 1300), where); }
+  else if (dv > 0.2) scrapeFx(u, v.x, py, 1);
+  shake = Math.max(shake, Math.min(1.6, dv*0.08)); }
 // collisions from real positions, so side swipes, rear-ends and head-ons all count
 function playerCollide(v){
   const onRamp = !!v.rp, uP = onRamp ? v.rp.sd*v.p : uOfV(v), hP = onRamp ? (v.q.h || 0) : 0, hwP = HW[v.type] || 1;
@@ -1943,29 +2223,32 @@ function playerCollide(v){
       const latV = Math.abs(v.vel*Math.sin(v.hd || 0)) + Math.abs(v.vel - (osd === vsd ? o.vel : -o.vel))*0.15, share = mO/(mP + mO);
       v.hd = (v.hd || 0)*(1 - share) - side*0.12*share*Math.min(1, latV/4); v.vel *= 1 - 0.08*share - 0.02;
       if (!o.player && !o.rp) { o.lx = clamp(o.lx - side*(mP/(mP + mO))*0.35, -1, 6); o.vel *= 0.92; if (latV > 2) hitAI(o, latV*2, -side); }
-      hitFx(latV*1.5, 'Tabrakan samping');
+      hitFx(latV*1.5, 'Tabrakan samping', 'side', o);
     } else {
       // frontal / rear-end / head-on: 1D impact along the road with both masses
       const vo = osd === vsd ? o.vel : -o.vel, ahead = du*vsd > 0, closing = ahead ? v.vel - vo : vo - v.vel;
-      if (ahead) pushBack(pu + 0.05); else v.p += v.sd*(pu + 0.05);
-      if (closing > 0) { const [a, b] = impact1D(v.vel, mP, vo, mO), dv = Math.abs(a - v.vel);
-        v.vel = a; const off = clamp(dx/(hwP + (HW[o.type] || 1)), -1, 1); v.hd = (v.hd || 0) - off*Math.min(0.5, dv*0.03);
+      if (ahead) pushBack(pu + 0.05); else if (!onRamp) v.p += pu + 0.05;
+      if (closing > 0) { const [a0, b] = impact1D(v.vel, mP, vo, mO), a = closing < 3 ? Math.min(v.vel, vo + 0.0) : a0, dv = Math.abs(a - v.vel);
+        v.vel = ahead ? a : Math.max(v.vel, a); const off = clamp(dx/(hwP + (HW[o.type] || 1)), -1, 1); if (dv > 4) v.hd = (v.hd || 0) - off*Math.min(0.4, dv*0.025);
         if (!o.player && !o.rp) { o.vel = Math.max(0, osd === vsd ? b : -b); hitAI(o, Math.abs(b - vo)*1.2 + dv*0.3, off > 0 ? 1 : -1); }
-        hitFx(dv, osd !== vsd ? 'Tabrakan adu banteng!' : ahead ? 'Tabrakan dari belakang' : 'Ditabrak dari belakang'); } } }
+        hitFx(dv, osd !== vsd ? 'Tabrakan adu banteng!' : ahead ? 'Tabrakan dari belakang' : 'Ditabrak dari belakang', ahead ? 'front' : 'back', o); } } }
   if (onRamp) return;
   // cross-street traffic at intersections
   for (const [o, gs] of built) { if (o.type !== 'site' || o.s.kind !== 'k') continue; const s2 = o.s; if (Math.abs(s2.u - uP) > 40) continue;
     for (const g of gs) if (g.userData.cross) for (const c of g.userData.cross) {
       const cu = s2.u - c.g.position.z, cx = c.g.position.x, px = hwP + c.len/2 - Math.abs(cx - v.x), pu = v.len/2 + (HW[c.type] || 1) - Math.abs(cu - uP);
-      if (px > 0 && pu > 0) { const [a] = impact1D(v.vel, MASS[v.type] || 1300, 0, MASS[c.type] || 1300), dv = Math.abs(a - v.vel); hitFx(dv + c.vel*0.5, 'Tabrakan di persimpangan');
+      if (px > 0 && pu > 0) { const [a] = impact1D(v.vel, MASS[v.type] || 1300, 0, MASS[c.type] || 1300), dv = Math.abs(a - v.vel); hitFx(dv + c.vel*0.5, 'Tabrakan di persimpangan', 'front', c.g ? c : null);
         pushBack(pu + 0.05); v.vel = a*0.5; v.hd = (v.hd || 0) + (Math.random() - 0.5)*Math.min(0.6, dv*0.04); c.vel = 0; c.hold = 4; } } }
   // solid objects: plaza islands, works vehicles and barriers, poles
   for (const so of SOLIDS) { if (so.u1 < uP - 30 || so.u0 > uP + 30) continue;
     const pu = Math.min(uP + v.len/2, so.u1) - Math.max(uP - v.len/2, so.u0), px = Math.min(v.x + hwP, so.x1) - Math.max(v.x - hwP, so.x0);
     if (pu <= 0 || px <= 0) continue;
     if (px < pu*0.5) { const dirx = v.x > (so.x0 + so.x1)/2 ? 1 : -1, latV = Math.abs(v.vel*Math.sin(v.hd || 0));
-      v.lx += dirx*(px + 0.05)/(-v.sd*LW); v.lane = Math.round(v.lx); v.x = posX(-v.sd, v.lx); v.vel *= 0.85; v.hd = -(v.hd || 0)*0.3; hitFx(latV + 1.6, so.name); }
-    else { const dv = Math.abs(v.vel)*(1 + RESTI); pushBack(pu + 0.05); v.vel = -v.vel*RESTI; v.hd = (v.hd || 0) + (Math.random() - 0.5)*Math.min(0.5, dv*0.02); hitFx(dv, so.name); } }
+      // scraping along it: pushed clear, a little friction, the nose turned away; only a real hit counts as a crash
+      v.lx += dirx*(px + 0.05)/(-v.sd*LW); v.lane = Math.round(v.lx); v.x = posX(-v.sd, v.lx);
+      if (latV > 0.3) { v.vel *= 1 - Math.min(0.3, latV*0.06); v.hd = -(v.hd || 0)*0.3; } hitFx(latV*1.3, so.name, 'side'); }
+    else { const sp = Math.abs(v.vel), e = sp > 3 ? RESTI : 0, dv = sp*(1 + e); pushBack(pu + 0.05); v.vel = -v.vel*e;
+      if (dv > 5) v.hd = (v.hd || 0) + (Math.random() - 0.5)*Math.min(0.4, dv*0.015); hitFx(dv, so.name); } }
 }
 function crash(msg){ if (crashCd > 0) return; crashCd = 3; stats.crashes++; shake = 0.6; toast(msg, 'bad'); stats.log.push(msg); }
 const violAt = new Map();
@@ -1979,7 +2262,7 @@ function payToll(s){
   if ((s.kind === 't' || s.kind === 'te') && s.i === trip.destIdx) { stats.done = true; setTimeout(() => arrive(s), 1200); }
 }
 function playerRules(dt){
-  const v = PLR; if (!v || v.rp) return;
+  const v = PLR; if (!v || v.rp || foot) return;
   violCd -= dt; crashCd -= dt;
   const lim = Math.min(limitAt(uOfV(v)), postedCap(v.sd, v.p + v.len/2), v.lane < 0 ? 16.7 : 99);
   speedT = Math.abs(v.vel) > lim + 1.4 && !sirenOn(v) ? speedT + dt : 0;
@@ -2191,8 +2474,22 @@ function updateSound(){
     sv.o.frequency.setTargetAtTime(fr, t, 0.02); sv.g.gain.setTargetAtTime(e.player ? 0.045 : 0.15*attOf(dist*0.8), t, 0.1);
     if (sv.p.pan) sv.p.pan.setTargetAtTime(e.player ? 0 : panOf(e), t, 0.1); });
 }
-// the player's own horn (K or the HORN button)
-function playerHorn(){ audioStart(); if (PLR) horn(PLR.type, 0, 0, 0.3); }
+// the player's own horn: sounds as long as K or the Klakson button is held; drivers ahead in the lane move over if they can
+let myHorn = null;
+function playerHorn(on = true){
+  audioStart(); if (!snd || !PLR) return;
+  if (!on) { if (myHorn) { const t = AC.currentTime; myHorn.g.gain.setTargetAtTime(0, t, 0.02); myHorn.os.forEach(o => o.stop(t + 0.15)); myHorn = null; } return; }
+  if (myHorn) return;
+  const ty = PLR.type, fs = ty === 'truck' || ty === 'bus' || ty === 'damkar' ? [233, 294, 349] : ty === 'angkot' ? [470, 560] : [415, 523];
+  const g = AC.createGain(), f = AC.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 2600; g.gain.value = 0; g.gain.setTargetAtTime(0.13, AC.currentTime, 0.01); f.connect(g); g.connect(snd.master);
+  myHorn = {g, os: fs.map(fr => { const o = AC.createOscillator(); o.type = 'square'; o.frequency.value = fr; o.connect(f); o.start(); return o; })};
+  for (const o of vehicles) if (!o.player && o.sd === PLR.sd && Math.abs(o.lx - PLR.lx) < 0.6 && o.p - PLR.p > 0 && o.p - PLR.p < 60) o.cd = Math.min(o.cd, 0.1);
+}
+let fsOK = !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+function toggleFull(){ const d = document, el = d.documentElement;
+  if (d.fullscreenElement || d.webkitFullscreenElement) (d.exitFullscreen || d.webkitExitFullscreen).call(d);
+  else { const r = (el.requestFullscreen || el.webkitRequestFullscreen).call(el, {navigationUI: 'hide'}); if (r && r.catch) r.catch(() => toast('Layar penuh tidak didukung browser ini', 'warn'));
+    try { screen.orientation && screen.orientation.lock && MOBILE && screen.orientation.lock('landscape').catch(() => {}); } catch (e) {} } }
 addEventListener('pointerdown', audioStart);
 // touching the screen brings the on-screen steering and pedals back
 addEventListener('pointerdown', e => { if (e.pointerType === 'touch' || e.pointerType === 'pen') document.body.classList.remove('kbd'); }); addEventListener('keydown', audioStart);
@@ -2220,8 +2517,12 @@ function setCam(m){ camMode = m; controls.enabled = m === 'orbit'; controls.auto
   if (m === 'orbit') { camera.position.set(pPos.x - 30, 18, pPos.z + 30); controls.target.copy(pPos); } }
 function fovFor(base){ const a = camera.aspect; return a < 1.3 ? Math.min(75, 2*Math.atan(Math.tan(base*Math.PI/360)*1.3/a)*180/Math.PI) : base; }
 function updateCam(dt){
-  const v = PLR; if (!v) return;
-  pPos.copy(v.g.position);
+  const v0 = PLR; if (!v0) return; const v = foot ? {g: foot.g, q: null, sd: v0.sd, len: 0.5, type: 'car'} : v0;
+  pPos.copy(v.g.position); if (foot) pPos.y = 0;
+  if (foot && camMode === 'chase') { const hy = foot.g.rotation.y, hdv = tmpV.set(Math.sin(hy), 0, Math.cos(hy)); headV.lerp(hdv, Math.min(1, dt*4)).normalize();
+    const want = new THREE.Vector3().copy(pPos).addScaledVector(headV, -4.2); want.y = 2.3; camera.position.lerp(want, Math.min(1, dt*6));
+    camera.lookAt(pPos.x + headV.x*6, 1.4, pPos.z + headV.z*6); camera.fov = fovFor(62); camera.updateProjectionMatrix();
+    camera.getWorldDirection(tmpV); focus.copy(camera.position).addScaledVector(tmpV, 50); focus.y = 0; sun.target.position.copy(focus); sun.position.copy(focus).add(sunOff); return; }
   const hy = v.g.rotation.y, hd = tmpV.set(Math.sin(hy), 0, Math.cos(hy));
   headV.lerp(hd, Math.min(1, dt*3)).normalize();
   const shk = shake > 0 ? (shake -= dt, (Math.random() - 0.5)*shake) : 0;
@@ -2293,7 +2594,7 @@ function updateHud(dt){
   $('left').textContent = !dest ? 'Bebas' : stats.done ? 'Tiba' : fmtKm(Math.max(0, dest.rk - rk));
   updateChoice(u);
   $('toll').textContent = 'Rp ' + stats.toll.toLocaleString('id-ID');
-  $('viol').textContent = stats.viol; $('crash').textContent = stats.crashes;
+  $('viol').textContent = stats.viol; $('crash').textContent = stats.crashes + (PLR && PLR.dmg >= 1 ? ` · ${Math.round(PLR.dmg)}%` : '');
   const ne = nextEvents(), list = $('next'), nk = ne.map(x => x.e.i + (x.e.i === trip.destIdx ? 'd' : '')).join();
   // rebuild only when the list changes, so new rows slide in and distances just tick
   if (list.dataset.k === nk) ne.forEach(({d}, j) => { const em = list.children[j] && list.children[j].lastChild; if (em && em.textContent !== fmtKm(d)) em.textContent = fmtKm(d); });
@@ -2746,6 +3047,10 @@ $('auto').onclick = () => { cfg.auto = !cfg.auto; saveCfg(); hudAuto();
   if (cfg.auto && PLR && !PLR.rp) { const n = nAvail(PLR.sd, PLR.p); PLR.lane = clamp(Math.round(PLR.lx), 0, n - 1); if (PLR.vel < 0) PLR.vel = 0; }
   toast(cfg.auto ? 'Autopilot aktif: mengikuti rute dan aturan sampai tujuan' : 'Kemudi manual: bebas, pelanggaran tetap dicatat'); };
 $('mapb').onclick = () => openAtlas();
+{ const hb = $('hornb'); hb.addEventListener('pointerdown', e => { e.preventDefault(); playerHorn(true); hb.setPointerCapture && hb.setPointerCapture(e.pointerId); });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) hb.addEventListener(ev, () => playerHorn(false)); }
+$('fsb').hidden = !fsOK; $('fsb').onclick = toggleFull; $('walkb').onclick = footToggle;
+for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => { const on = !!(document.fullscreenElement || document.webkitFullscreenElement); $('fsb').setAttribute('aria-pressed', on ? 'true' : 'false'); $('fsb').textContent = on ? 'Keluar layar penuh' : 'Layar penuh'; setTimeout(() => dispatchEvent(new Event('resize')), 120); });
 $('sirb').onclick = () => { cfg.siren = !cfg.siren; saveCfg(); sirenUI(); toast(cfg.siren ? 'Sirene & rotator menyala — kendaraan lain memberi jalan' : 'Sirene dimatikan'); };
 $('hudb').onclick = () => { cfg.clean = !cfg.clean; saveCfg(); setClean(); renderUI(); toast(cfg.clean ? 'HUD ringkas' : 'HUD normal'); };
 $('camb').onclick = () => { const order = ['chase', 'cockpit', 'drone', 'ic', 'orbit'], m = order[(order.indexOf(cfg.cam) + 1) % order.length]; apply('cam', m); };
@@ -2760,12 +3065,15 @@ addEventListener('keydown', e => { if (e.key === 'Escape' && !$('atlas').hidden)
   else if (k === 'p' && !e.repeat) $('auto').click();
   else if (k === 'h' && !e.repeat) $('hudb').click();
   else if (k === 'c' && !e.repeat) $('camb').click();
-  else if (k === 'k' && !e.repeat) playerHorn();
+  else if (k === 'k' && !e.repeat) playerHorn(true);
+  else if (k === 'e' && !e.repeat) footToggle();
+  else if (k === 'shift') input.run = true;
+  else if (k === 'f' && !e.repeat && fsOK) toggleFull();
   else if (k === 'n' && !e.repeat && PLR && EMERG.has(PLR.type)) $('sirb').click();
   else if (k === 'm' && !e.repeat) { if ($('atlas').hidden) openAtlas(); else closeAtlas(); } });
-addEventListener('keyup', e => { const k = e.key.toLowerCase(); if (k === 'arrowup' || k === 'w') input.gas = false; if (k === 'arrowdown' || k === 's') input.brake = false;
+addEventListener('keyup', e => { const k = e.key.toLowerCase(); if (k === 'k') playerHorn(false); if (k === 'shift') input.run = false; if (k === 'arrowup' || k === 'w') input.gas = false; if (k === 'arrowdown' || k === 's') input.brake = false;
   if (k === 'arrowleft' || k === 'a') input.left = false; if (k === 'arrowright' || k === 'd') input.right = false; });
-addEventListener('blur', () => { input.gas = input.brake = input.left = input.right = false; });
+addEventListener('blur', () => { input.gas = input.brake = input.left = input.right = false; playerHorn(false); });
 renderer.domElement.addEventListener('pointerdown', () => { if (MOBILE && camMode !== 'orbit') hud.classList.remove('open'); });
 
 // ================================================================
@@ -2781,7 +3089,9 @@ function legsFor(from, first, dest, prev = null){
   const ban = first ? from : prev, r = findRoute(s0, dest, cfg.mode, ban) || findRoute(s0, dest, cfg.mode) || findRoute(s0, dest, 'mix', ban) || findRoute(s0, dest, 'mix');
   return r ? head.concat(r) : null;
 }
+const MBZ_OK = new Set(['car', 'suv', 'pickup', 'police']);
 function startDrive({from, first = null, dest = null, legs = null, keepPos = false, cont = false, prev = null, home}){
+  RULES.noMbz = !MBZ_OK.has(cfg.veh || 'car');
   legs = legs || legsFor(from, first, dest, prev);
   const t = legs && legs.length ? tripFromLegs(from, legs, dest, cfg.mode) : null; if (!t) { toast('Rute tidak ditemukan', 'bad'); return false; }
   t.home = home !== undefined ? home : (cont || keepPos) && trip ? trip.home : (dest ? from : null);
@@ -2992,18 +3302,18 @@ try { await Promise.race([document.fonts.load('700 64px Archivo'), new Promise(r
 setRoadStyle(); setView(); setClean(); setTod(null);
 if (cfg.trip === 'free' || cfg.trip === 'santai') startDrive({from: NODES.has(cfg.from) ? cfg.from : DEF.from}); else startTrip(NODES.has(cfg.from) ? cfg.from : DEF.from, NODES.has(cfg.to) ? cfg.to : DEF.to);
 if (!localStorage.getItem('tj_seen')) { try { localStorage.setItem('tj_seen', '1'); } catch(e) {} openPlanner(); }
-window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam, startDrive, setNav, clearNav, chooseAt, replanIdx, openAtlas, closeAtlas, atTap, AT, get chunks(){ return chunks; }, get OBJ(){ return OBJ; }, sutetTower, setHour: h => { gameH = h; todT = 0; lastSign = -1; tickClock(0); }, get gameH(){ return gameH; }, volcanoes, updateVolcanoes, regionAt, latLonAt, get ELV(){ return ELV; }, elU, elevAt};
+window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam, startDrive, setNav, clearNav, chooseAt, replanIdx, openAtlas, closeAtlas, atTap, AT, get chunks(){ return chunks; }, get OBJ(){ return OBJ; }, sutetTower, setHour: h => { gameH = h; todT = 0; lastSign = -1; tickClock(0); }, get gameH(){ return gameH; }, volcanoes, updateVolcanoes, regionAt, latLonAt, get ELV(){ return ELV; }, elU, elevAt, get LMS(){ return LMS; }, updateLandmarks, updateRoadSigns, RSIGNS, FX, footToggle, get foot(){ return foot; }};
 
 let last = performance.now(), mapT = 0, frames = 0;
 function tick(dt){
   clock += dt;
   if (PLR && PLR.wantU) { PLR.wantU = false; uTurn(PLR); }
-  sim(dt); rampStep(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt); tickClock(dt);
-  if (PLR) camU = uOfV(PLR);
+  stepFoot(dt); sim(dt); rampStep(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt); tickClock(dt);
+  if (PLR) camU = foot ? foot.u : uOfV(PLR);
   ensureAhead();
-  setupBlocks(false); updateWorld(); updateSignals(); animGhosts();
+  setupBlocks(false); updateWorld(true); updateSignals(); animGhosts();
 }
-window.__tj.NODES = NODES; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
+window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering
 window.__tj.step = (n, dt = 1/20) => { for (let i = 0; i < n; i++) tick(dt); updateSegs(); placeGroups(); place(); for (let k = 0; k < 40; k++) updateCam(dt); updateBend(); hudT = 0; updateHud(dt); drawMap(); };
@@ -3011,7 +3321,7 @@ renderer.setAnimationLoop(now => {
   const dt = Math.min(0.05, (now - last)/1000); last = now; frames++;
   if ((!$('plan').hidden && trip && !stats.done) || !$('atlas').hidden) { composer.render(); return; }
   tick(dt);
-  placeGroups(); place(); updateCam(dt); updateVolcanoes(dt); updateSky(dt); updateSound(); flash(); updateBend(); updateHud(dt);
+  placeGroups(); place(); placeFoot(); updateCam(dt); updateVolcanoes(dt); updateLandmarks(); updateRoadSigns(); updateFx(dt); updateSky(dt); updateSound(); flash(); updateBend(); updateHud(dt);
   mapT -= dt; if (mapT <= 0) { mapT = 0.5; drawMap(); }
   composer.render();
 });

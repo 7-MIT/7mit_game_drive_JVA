@@ -359,7 +359,9 @@ export function placeList(){
 }
 
 // mode: 'mix' (fastest), 'toll' (toll roads only), 'nr' (national roads only)
-const edgeOK = (e, mode) => !(mode === 'toll' && e.cls === 'n') && !(mode === 'nr' && e.cls === 't');
+// Tol Layang MBZ is for Gol I passenger cars only (sedan, SUV, pickup): other vehicles are never routed onto it
+export const RULES = {noMbz: false};
+const edgeOK = (e, mode) => !(mode === 'toll' && e.cls === 'n') && !(mode === 'nr' && e.cls === 't') && !(RULES.noMbz && e.c === 'mbz');
 // Dijkstra on travel time; ban = a neighbour of `from` that must not be the first hop (no U-turn on the spot)
 export function findRoute(from, to, mode = 'mix', ban = null){
   const dist = new Map([[from, 0]]), prev = new Map(), done = new Set();

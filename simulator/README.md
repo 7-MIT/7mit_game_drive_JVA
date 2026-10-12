@@ -37,7 +37,11 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
   - Guard rails and the median barrier deflect the car: the steeper the angle, the more speed it loses, and the car bounces back off the wall. Hitting a solid object bounces the car back slightly.
   - Gravity acts along the road: the car slows on climbs and speeds up downhill, even when coasting.
   - Crash severity (from the change in speed) sets the camera shake and the message ("parah" for hard crashes).
-- **Drive it.** ↑/W gas, ↓/S brake (hold it at a standstill to reverse), hold ←/→ to steer, K horn, N siren (emergency vehicles), P autopilot, C camera, M map. On phones, tablets and desktops the on-screen controls sit like a phone's: ◀ ▶ bottom-left, REM and GAS bottom-right. As soon as you drive with the keyboard they hide; touching the screen brings them back.
+  - Tyres have a friction circle: grip used for braking or accelerating is not available for steering, so braking hard in a bend makes the car run wide. Grip is lower in the rain (longer braking distance) and for heavy vehicles. Hard braking and sliding leave skid marks.
+  - A hit never throws the car through the median barrier or the guard rail into the other carriageway, and does not spin it right round. Slopes never roll a stopped car backwards; it only reverses when you hold the brake.
+  - Crash effects: debris in the car's colour, glass shards, sparks (also when scraping a barrier), dust, a dented body (shorter at the front or back, narrower at the side), crash and glass sounds.
+  - Damage (shown as % next to the crash count): it cuts engine power and top speed, reduces grip and pulls the car to one side. Above 35 % the engine smokes, above 85 % it burns, and at 100 % the engine dies; after a short wait for the tow truck the car is patched up so you can carry on slowly.
+- **Drive it.** ↑/W gas, ↓/S brake (hold it at a standstill to reverse), hold ←/→ to steer, K horn (hold), N siren (emergency vehicles), E get out of / back into the car, F full screen, P autopilot, C camera, M map. On phones, tablets and desktops the on-screen controls sit like a phone's: ◀ ▶ bottom-left, REM and GAS bottom-right. As soon as you drive with the keyboard they hide; touching the screen brings them back.
   - **Manual driving is free.** Steering is continuous, so you can drive anywhere the road physically allows: the shoulder, off the road, closed lanes, or the oncoming lane on national roads (to overtake, or head-on into traffic). The toll road's median barrier and guard rail stop you except at openings. Collisions come from real vehicle positions (rear-end, side swipe, head-on). Running red lights or toll gates is possible; it's recorded as a violation, not prevented.
   - **Autopilot always follows the route and the rules.** Turning it on hands the car back into a legal lane.
   - To leave the toll road, steer left onto the ramp when the EXIT sign appears, then stop at the toll gate to tap e-Toll. Junction ramps work too, with no reload. The left-hand ramp takes the road to the left; when the plan turns right there, you get the loop ramp instead. The ramp carries you over the crossing road and back onto the main road, which from that junction on is the toll road you chose; with navigation on, the route is recalculated. Leaving at an exit takes you straight onto the road into town, and a left turn at an intersection carries on along the new road, both without reloading the world.
@@ -59,13 +63,22 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
   - entering a closed lane or a staff-only U-turn opening.
 
   Rear-end crashes and hitting cones are counted separately. Toll is charged at each mainline toll plaza and at the exit (Rp per km, an estimate).
-- **AI traffic.** Cars, SUVs, vans, angkot (national roads only, they stop at the kerb now and then to pick up passengers), trucks and buses follow the vehicle ahead (IDM model) and obey limits and the heavy-vehicles-left rule. They change lanes, zipper-merge at closures, take exits and rest areas, and enter from on-ramps. Roads alongside the toll road and overpasses have their own traffic.
+- **AI traffic.** Cars, SUVs, pickups, vans, angkot (national roads only, they stop at the kerb now and then to pick up passengers), trucks and buses follow the vehicle ahead (IDM model) and obey limits and the heavy-vehicles-left rule. They change lanes, zipper-merge at closures, take exits and rest areas, and enter from on-ramps. Roads alongside the toll road and overpasses have their own traffic.
 - **Emergency vehicles.** Ambulances, fire engines (damkar) and police cars drive in traffic. Sometimes they are on a call (siren and flashing lights on), sometimes driving normally. On a call:
   - traffic ahead moves aside and slows, opening a corridor between lanes (lane 0 toward the median, the others outward);
   - in a jam on a toll road the vehicle takes the shoulder; on a national road it runs against the flow on the centre line while oncoming traffic pulls over and stops;
   - it ignores red lights, and a message tells you when one comes up behind you.
-  You can also drive an Angkot, Ambulans, Damkar or Polisi yourself (vehicle choice in the planner). Turn the siren on with N or the Sirene button and the traffic gives way to you; with the siren on, speeding, the shoulder and driving against the flow are not counted as violations.
+  You can also drive a Pickup, Angkot, Ambulans, Damkar or Polisi yourself (vehicle choice in the planner). Turn the siren on with N or the Sirene button and the traffic gives way to you; with the siren on, speeding, the shoulder and driving against the flow are not counted as violations.
 - **Sound (adaptive).** Engine by rpm and gear, tyres (with a hiss on a wet road), wind, and the roar of passing traffic. Rain sound when it rains, with thunder and lightning flashes. Birds by day and crickets at night outside towns, and a city hum in towns. Drivers stuck in a jam honk now and then (more on national roads, motorbikes and angkot most), and honk at you when you block them. Sirens are per vehicle: hi-lo for ambulances, wail for fire engines, yelp for police, panned left/right and Doppler-shifted. There are also crash sounds and the e-toll beep. Sound starts on the first tap or key press.
+- **On foot.** Stop and press E (or "Keluar mobil") to get out. Walk with ↑/↓ (or GAS/REM), turn with ←/→, hold Shift to run. Traffic brakes for you and honks; if a vehicle hits you, you fall and get up again. Walk back to your car (within 5 m) and press E to get in.
+- **Full screen.** The "Layar penuh" button (or F) switches to full screen and, on phones, tries to lock landscape. It is hidden where the browser does not support it.
+- **Horn.** Hold K or the Klakson button. Drivers ahead in your lane move over when they can.
+- **Landmarks.** Monuments, temples, mosques, towers and bridges stand beside the road at their real place when the route passes within 9 km, on the correct side, and a message names them as you approach:
+  - Jakarta and around: Monas, Masjid Istiqlal, Bundaran HI, Masjid Kubah Emas, Tugu Kujang, Istana Bogor;
+  - Banten and West Java: Masjid Agung Banten, Keraton Kasepuhan, Masjid Raya Al Jabbar, Gedung Sate;
+  - Central Java and Yogyakarta: Lawang Sewu, Tugu Muda, Masjid Agung Jawa Tengah, Sam Poo Kong, Pagoda Watugong, Menara Kudus, Borobudur, Prambanan, Tugu Yogyakarta, Masjid Raya Sheikh Zayed;
+  - East Java: Candi Brahu, Candi Bajang Ratu, Tugu Pahlawan, Monumen Kapal Selam, Jembatan Suramadu, Masjid Al-Akbar.
+- **Route signs.** At every province border there is a "Selamat Datang di Provinsi …" board for each direction and a small "Batas Provinsi" sign. Where a toll road starts (after the gate, or after joining it at a junction) a green board reads "Selamat Datang di Jalan Tol <name>".
 - **Road construction.**
   - Ramps follow real-world rules: an 8 m junction bridge (5.1 m clearance) and grades of at most about 8 % with parabolic vertical curves.
   - In each cloverleaf quadrant the outer connector wraps around its loop, so no ramps cross at grade.
@@ -84,6 +97,7 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
   - The plains (Pantura, Cipali, Trans-Jawa) have rice fields (young, ripening, flooded) with villages.
   - Cipularang, Bawen–Salatiga, Bocimi, Cisumdawu, Pandaan–Malang and the mountain roads run between green hills.
   - About thirty volcanoes (Salak, Gede-Pangrango, Ciremai, Slamet, Merbabu, Merapi, Lawu, Arjuno, Semeru …) stand on the horizon at their real bearing.
+- **Tol Layang MBZ is for passenger cars only.** Only sedans, SUVs and pickups (and police) may use it, as the entry board says: routes for buses, trucks, angkot, ambulances and fire engines never use MBZ, and the traffic on the deck is passenger cars only. At its ends each direction leaves the deck as a ramp that curves out to the side, still high above Japek, and comes down beside the toll road; the deck never hangs low over Japek's lanes.
 - **Stacked and elevated roads.**
   - Waru–Juanda, Layang MBZ, Becakayu and Cawang–Priok run on viaducts, with piers and the land, buildings and trees below.
   - From Jakarta–Cikampek you see the MBZ deck above the median, rising after JCT Cikunir and coming down before Karawang Barat, with its own traffic; from MBZ you see Japek and its traffic below.
@@ -135,3 +149,9 @@ When the plan changes (a choice in free driving, navigation, or the road ahead r
 - National-road distances, town positions and lane counts are approximate. Intersections are generic four-way crossings, and the AI on the main road does not turn.
 - Short urban links and toll roads that are still under construction are mostly not included. Probolinggo–Banyuwangi past Besuki is marked as planned (dashed on the map).
 - Smaller regional roads (jalan provinsi/kabupaten) are not in the network, so free driving and navigation only use toll, national and access roads.
+
+### Smooth driving
+
+- The world ahead is built a little at a time (at most two road pieces and one interchange per frame, nearest first), so there are no stutters while driving.
+- Leaving the toll road for a town is seamless: after the gate on the exit road, a link road curves forward and joins the road to town. There is no teleport, fade or reload.
+- A median opening on a toll road only lets you through for a deliberate U-turn (or in a contraflow on your side), so you cannot drift into oncoming traffic by accident.
