@@ -164,10 +164,14 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
   - The plains (Pantura, Cipali, Trans-Jawa) have rice fields (young, ripening, flooded) with villages.
   - Cipularang, Bawen–Salatiga, Bocimi, Cisumdawu, Pandaan–Malang and the mountain roads run between green hills.
   - About thirty volcanoes (Salak, Gede-Pangrango, Ciremai, Slamet, Merbabu, Merapi, Lawu, Arjuno, Semeru …) stand on the horizon at their real bearing.
-- **Tol Layang MBZ is for passenger cars only.** Only sedans, SUVs and pickups (and police) may use it, as the entry board says: routes for buses, trucks, angkot, ambulances and fire engines never use MBZ, and the traffic on the deck is passenger cars only. At its ends each direction leaves the deck as a ramp that curves out to the side, still high above Japek, and comes down beside the toll road; the deck never hangs low over Japek's lanes.
+- **Tol Layang MBZ is for passenger cars only.** Only sedans, SUVs and pickups (and police) may use it, as the entry board says: routes for buses, trucks, angkot, ambulances and fire engines never use MBZ, and the traffic on the deck is passenger cars only. How you get on and off it:
+  - **Getting on.** About 450 m after JCT Cikunir a two-lane ramp leaves Jakarta–Cikampek on the left, like an exit. Signs and the instruction bar say "lajur paling kiri"; steer left at the gap in the guard rail. The ramp climbs beside the toll road, outside the guard rail, and only once it clears the traffic does it swing over Japek to the deck above the median. Stay on Japek and you simply drive on underneath.
+  - **Getting off.** At the far end each direction swings out to the side again and comes down onto Japek's left lane before Karawang Barat. On an MBZ route that you leave at the fork, the route carries on along Japek.
+  - **Supports.** The deck stands on one column per pier in Japek's median. Beside Japek the ramps have a single column each; where they cross over it, a bent with columns in the median and outside the road carries them, so no column ever stands in a lane.
+  - **The same world from both roads.** Driving Japek or the MBZ you see the same ramps, deck, columns and traffic.
 - **Stacked and elevated roads.**
   - Waru–Juanda, Layang MBZ, Becakayu and Cawang–Priok run on viaducts, with piers and the land, buildings and trees below.
-  - From Jakarta–Cikampek you see the MBZ deck above the median, rising after JCT Cikunir and coming down before Karawang Barat, with its own traffic; from MBZ you see Japek and its traffic below.
+  - From Jakarta–Cikampek you see the MBZ ramps beside you and its deck above the median, with its own traffic; from MBZ you see Japek and its traffic below.
   - Becakayu stands over the Kalimalang canal with Jalan Kalimalang on both banks, and Jalan Kalimalang (Jl. KH Noer Ali) is also in the network.
   - Lanes per direction: JORR 1 and all of JORR 2 have 3, Padaleunyi 4, Semarang ABC 3, Waru–Juanda 2, and the Trans-Jawa toll roads 3.
 - **U-turns.** Steer all the way round where the road allows it (anywhere on a national road, through a median opening on a toll road) and the trip carries on the other way.
@@ -223,3 +227,7 @@ When the plan changes (a choice in free driving, navigation, or the road ahead r
 - Leaving the toll road for a town is seamless: after the gate on the exit road, a link road curves forward and joins the road to town. There is no teleport, fade or reload.
 - Where nothing stops the car you can leave the road: through gaps in the guard rail (around exits, junctions and rest areas) and beside national roads outside towns. On the grass the car slows down, has less grip and bumps along; it counts once as "keluar badan jalan". Once you are outside the rail it stops you from the outside too. Buildings near the road are solid.
 - A median opening on a toll road only lets you through for a deliberate U-turn (or in a contraflow on your side), so you cannot drift into oncoming traffic by accident.
+
+### Exit ramps and interchanges
+- **Two lanes.** Exit and entry ramps are two lanes wide. The stem to the toll gate has two lanes each way, with five toll booths, and the link road from the gate into town is two lanes.
+- **Clear ramp areas.** Nothing is built on the footprint of an interchange: no houses, shophouses or trees on the ramps, the stem or the link road to town. This holds both on the toll road and on the road you join after leaving it.
