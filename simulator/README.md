@@ -71,6 +71,24 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
   You can also drive a Pickup, Angkot, Ambulans, Damkar or Polisi yourself (vehicle choice in the planner). Turn the siren on with N or the Sirene button and the traffic gives way to you; with the siren on, speeding, the shoulder and driving against the flow are not counted as violations.
 - **Sound (adaptive).** Engine by rpm and gear, tyres (with a hiss on a wet road), wind, and the roar of passing traffic. Rain sound when it rains, with thunder and lightning flashes. Birds by day and crickets at night outside towns, and a city hum in towns. Drivers stuck in a jam honk now and then (more on national roads, motorbikes and angkot most), and honk at you when you block them. Sirens are per vehicle: hi-lo for ambulances, wail for fire engines, yelp for police, panned left/right and Doppler-shifted. There are also crash sounds and the e-toll beep. Sound starts on the first tap or key press.
 - **On foot.** Stop and press E (or "Keluar mobil") to get out. Walk with ↑/↓ (or GAS/REM), turn with ←/→, hold Shift to run. Traffic brakes for you and honks; if a vehicle hits you, you fall and get up again. Walk back to your car (within 5 m) and press E to get in.
+- **Realistic vehicles.** Every vehicle is built from a real side profile extruded across its width: sloping hood and windscreen, glasshouse with pillars, roof and boot for sedans (also the Bluebird-style taxi and police car); a taller body with roof rails for SUVs; cab and load bed for pickups; one-box minibuses (van, ambulance, angkot) with a window band; cab-over trucks, fire engines and tow trucks with rounded cab fronts; buses with a deep window band and destination board. All have rims, bumpers, grille, head and tail lights, door mirrors and number plates.
+- **Taxis and motorbikes.** Blue taxis with a lit TAXI sign drive in the cities. You can also choose Taksi or Motor. A motorbike leans into bends and, as in reality, is never routed onto a toll road.
+- **Tow truck (derek).** After a bad crash, an engine failure (100 % damage, called automatically) or an empty tank, press "Panggil derek" (or T). A yellow tow truck with amber lights comes along the shoulder and stops in front of you. For an empty tank it brings 10 L of emergency fuel. Otherwise it winches the car onto its bed and takes it to the nearest workshop, where the car is repaired; the clock moves on and the tow and repair are paid from your cash.
+- **Trip needs.** The dashboard shows fuel (BBM), cash (Tunai), e-Toll balance and drowsiness (Kantuk).
+  - Fuel is used by real distance and vehicle (a car does about 13 km/L). An empty tank stops the engine.
+  - Tolls are paid from the e-Toll balance.
+  - Drowsiness builds while driving, faster at night. It brings warnings, and microsleeps at 100 %.
+- **Rest areas full of services.** Food court, minimarket, coffee kiosk, musala, toilets, ATM, SPBU, workshop (bengkel) and EV chargers (SPKLU), each with its sign. When you park in a bay (or walk around the rest area, or stop in a town on a national road) the "Layanan" menu (or L) opens:
+  - full tank;
+  - tyre pressure;
+  - meals, coffee and snacks (less drowsiness);
+  - e-Toll top-up;
+  - cash from the ATM;
+  - repairs;
+  - toilet and musala;
+  - a 30-minute nap.
+  Each shows its price.
+- **Siren button.** When you drive an ambulance, fire engine or police car, the Sirene button (or N) switches the siren and lights on and traffic gives way.
 - **Mirrors (spion).** Working mirrors: rear-facing cameras shown mirror-reversed. In the chase view there is the interior mirror at the top (looking out through the rear window); in the cockpit view also the left and right door mirrors. Toggle with V or the Spion button.
 - **Full screen.** The "Layar penuh" button (or F) switches to full screen and, on phones, tries to lock landscape. It is hidden where the browser does not support it.
 - **Horn.** Hold K or the Klakson button. Drivers ahead in your lane move over when they can.

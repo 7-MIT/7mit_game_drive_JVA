@@ -255,86 +255,125 @@ const SHARED = new Set([headMat, tailMat, brakeMat, glassMat, tyreMat, polRed, p
 // light bar: a dark housing that is always there, and red/blue lamps shown only while the siren runs (they flash in place())
 function lightBar(g, w, y, z){ box(w, 0.12, 0.3, lbOff, 0, y, z, g); const a = box(w*0.45, 0.15, 0.32, polRed, -w*0.26, y + 0.01, z, g), b = box(w*0.45, 0.15, 0.32, polBlue, w*0.26, y + 0.01, z, g); a.visible = b.visible = false; return [a, b]; }
 const EMERG = new Set(['ambulance', 'damkar', 'police']);
+const towAmber = new THREE.MeshStandardMaterial({color: 0x553300, emissive: 0xffa000, emissiveIntensity: 3}); SHARED.add(towAmber);
+const taxiSignTex = canvasTex(1, 0.36, (x, w, h) => { x.fillStyle = '#fff9e0'; x.fillRect(0, 0, w, h); x.fillStyle = '#1e4f9a'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '900 230px Archivo, sans-serif'; x.fillText('TAXI', w/2, h/2 + 10); });
+const taxiSignMat = new THREE.MeshStandardMaterial({map: taxiSignTex, emissive: 0xffffff, emissiveMap: taxiSignTex, emissiveIntensity: 0.6}); SHARED.add(taxiSignMat);
 const wheelGeo = new THREE.CylinderGeometry(1,1,1,14); wheelGeo.rotateZ(Math.PI/2); wheelGeo.userData.keep = true;
 const PAINT = [0xf4f4f2,0xf4f4f2,0x1b1c1f,0x1b1c1f,0x8d939a,0x8d939a,0x5d6670,0xb22a26,0x1f3f73,0x2f5a4a,0xcfc4ae,0x6a1d2b,0xd77b2b];
 const geoCache = new Map();
 const bgeo = (w,h,d) => { const k = `${w}|${h}|${d}`; if (!geoCache.has(k)) { const g = new THREE.BoxGeometry(w,h,d); g.userData.keep = true; geoCache.set(k, g); } return geoCache.get(k); };
 function box(w,h,d,mat,x,y,z,g){ const m = new THREE.Mesh(bgeo(w,h,d),mat); m.position.set(x,y,z); m.castShadow = true; g.add(m); return m; }
-function wheels(g, pts, r, w){ return pts.map(([x,z]) => { const m = new THREE.Mesh(wheelGeo,tyreMat); m.scale.set(w,r,r); m.position.set(x,r,z); g.add(m); return m; }); }
+
+// ---------- realistic low-poly vehicles: side profiles extruded across the width (shared, cached geometry) ----------
+const extCache = new Map(), rimMat = M(0xc9ccd0, {metalness: 0.85, roughness: 0.25}), trimMat = M(0x1c1d1f, {roughness: 0.7}), plateMat = M(0xf4f4f0, {roughness: 0.5}),
+  grilleMat = M(0x121314, {roughness: 0.5, metalness: 0.4}), chromeMat = M(0xd9dcdf, {metalness: 0.9, roughness: 0.2});
+[rimMat, trimMat, plateMat, grilleMat, chromeMat].forEach(m => SHARED.add(m));
+const rimGeo = new THREE.CylinderGeometry(1, 1, 1, 14); rimGeo.rotateZ(Math.PI/2); rimGeo.userData.keep = true;
+function ext(key, pts, width, bevel = 0.05){
+  const k = key + '|' + width; let geo = extCache.get(k);
+  if (!geo) { const sh = new THREE.Shape(pts.map(([z, y]) => new THREE.Vector2(z, y))), d = Math.max(0.01, width - 2*bevel);
+    geo = new THREE.ExtrudeGeometry(sh, {depth: d, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 2, curveSegments: 4});
+    geo.translate(0, 0, -d/2); geo.rotateY(-Math.PI/2); geo.computeVertexNormals(); geo.userData.keep = true; extCache.set(k, geo); }
+  return geo; }
+function part(g, geo, mat, shadow = true){ const m = new THREE.Mesh(geo, mat); m.castShadow = shadow; g.add(m); return m; }
+function wheels(g, pts, r, w){ return pts.map(([x,z]) => { const m = new THREE.Mesh(wheelGeo, tyreMat); m.scale.set(w, r, r); m.position.set(x, r, z);
+  const rim = new THREE.Mesh(rimGeo, rimMat); rim.scale.set(1.06, 0.6, 0.6); m.add(rim); g.add(m); return m; }); }
+// lamps, bumpers, grille, plates and mirrors common to cars
+function carDetails(g, {w, len, yL, yT, yB, zF = len/2, zR = -len/2, mirY, mirZ, tail, grille = 0.5}){
+  for (const s2 of [-1, 1]) { box(0.44, 0.13, 0.08, headMat, s2*w*0.33, yL, zF - 0.02, g); box(0.36, 0.15, 0.06, tail, s2*w*0.38, yT, zR + 0.02, g);
+    box(0.08, 0.1, 0.2, trimMat, s2*(w/2 + 0.07), mirY, mirZ, g); }
+  box(w*grille, 0.2, 0.06, grilleMat, 0, yL - 0.12, zF - 0.01, g);
+  box(w + 0.04, 0.2, 0.22, trimMat, 0, yB, zF - 0.08, g); box(w + 0.04, 0.2, 0.22, trimMat, 0, yB, zR + 0.08, g);
+  box(0.52, 0.12, 0.03, plateMat, 0, yB + 0.02, zF + 0.04, g); box(0.52, 0.12, 0.03, plateMat, 0, yB + 0.16, zR - 0.04, g); }
 
 function makeVehicle(type, color){
   const g = new THREE.Group(); let len, wh, r, v0;
   const own = c => { const m = M(c, {roughness:0.4, metalness:0.3}); m.userData.own = true; return m; };
-  const paint = own(color ?? (type==='police' || type==='ambulance' ? 0xf6f6f4 : type==='damkar' ? 0xc8160f : type==='angkot' ? pick([0x2a6fd1,0x2f9a4a,0x2f9a4a,0xd23a2a,0xe8c22a,0x3a9fd8,0x8a2bb0]) : pick(PAINT))); paint.roughness = 0.35; paint.metalness = 0.4;
+  const paint = own(color ?? (type==='taxi' ? 0x1e5aa8 : type==='derek' ? 0xf2b705 : type==='police' || type==='ambulance' ? 0xf6f6f4 : type==='damkar' ? 0xc8160f : type==='angkot' ? pick([0x2a6fd1,0x2f9a4a,0x2f9a4a,0xd23a2a,0xe8c22a,0x3a9fd8,0x8a2bb0]) : pick(PAINT))); paint.roughness = 0.3; paint.metalness = 0.45;
   const tail = color != null ? brakeMat : tailMat; let lights = null;
-  if (type==='angkot'){
-    // Suzuki Carry style microbus: tall box body, side door opening, white stripe, route board on the roof
-    len = 4.3; r = 0.3; const w = 1.66;
-    box(w, 1.55, len - 0.2, paint, 0, r + 0.95, -0.1, g); box(w*0.97, 0.45, len*0.86, glassMat, 0, r + 1.35, -0.15, g);
-    box(w + 0.02, 0.1, len - 0.25, angkotStripe, 0, r + 0.95, -0.1, g); box(0.05, 1.05, 1.0, glassMat, w/2 + 0.005, r + 0.85, -0.4, g);
-    box(w*0.9, 0.22, 0.5, angkotStripe, 0, r + 1.84, len/2 - 0.6, g);
-    for (const s2 of [-1,1]){ box(0.32,0.13,0.06,headMat, s2*w*0.33, r+0.55, len/2, g); box(0.18,0.32,0.06,tail, s2*w*0.4, r+0.7, -len/2 + 0.1, g); }
-    wh = wheels(g, [[-w/2+0.12,1.25],[w/2-0.12,1.25],[-w/2+0.12,-1.25],[w/2-0.12,-1.25]], r, 0.2); v0 = rnd(13, 17);
-  } else if (type==='ambulance'){
-    len = 5.4; r = 0.36; const w = 1.95;
-    box(w, 1.9, len - 1.1, paint, 0, r + 1.15, -0.55, g); box(w, 1.05, 1.3, paint, 0, r + 0.7, len/2 - 0.65, g);
-    box(w*0.96, 0.6, 0.9, glassMat, 0, r + 1.45, len/2 - 1.15, g);
-    box(w + 0.02, 0.22, len - 1.1, ambStripe, 0, r + 0.95, -0.55, g); box(w + 0.02, 0.1, len - 1.1, ambOrange, 0, r + 1.2, -0.55, g);
-    lights = lightBar(g, 1.3, r + 2.16, len/2 - 1.3);
-    for (const s2 of [-1,1]){ box(0.35,0.14,0.06,headMat, s2*0.7, r+0.75, len/2, g); box(0.2,0.4,0.06,tail, s2*0.85, r+1, -len/2 + 0.05, g); }
-    wh = wheels(g, [[-0.86,1.7],[0.86,1.7],[-0.86,-1.6],[0.86,-1.6]], r, 0.25); v0 = rnd(25, 28);
-  } else if (type==='damkar'){
-    // fire engine: red cab and body, silver ladder on top
-    len = 9; r = 0.48; const w = 2.45;
-    box(w, 2.3, 2.3, paint, 0, r + 1.35, len/2 - 1.15, g); box(w*0.96, 0.85, 0.08, glassMat, 0, r + 1.95, len/2 + 0.01, g);
-    box(w, 2.1, len - 2.5, paint, 0, r + 1.35, -1.25, g); box(w + 0.02, 0.18, len - 2.5, angkotStripe, 0, r + 1.0, -1.25, g);
-    box(0.9, 0.16, len - 1.2, ladderMat, 0, r + 2.55, -0.7, g); for (const s2 of [-1,1]) box(0.08, 0.3, len - 1.2, ladderMat, s2*0.45, r + 2.6, -0.7, g);
-    lights = lightBar(g, 1.8, r + 2.56, len/2 - 0.4);
-    for (const s2 of [-1,1]){ box(0.35,0.18,0.06,headMat, s2*0.9, r+0.6, len/2, g); box(0.25,0.25,0.06,tail, s2*1.05, r+0.8, -len/2, g); }
-    wh = wheels(g, [[-1.1,2.9],[1.1,2.9],[-1.1,-2.2],[1.1,-2.2],[-1.1,-3.3],[1.1,-3.3]], r, 0.36); v0 = rnd(21, 24);
+  if (type==='car' || type==='police' || type==='taxi'){
+    // sedan: sloping hood and windscreen, glasshouse, roof, short boot
+    len = 4.5; r = 0.32; const w = 1.78;
+    part(g, ext('sedL', [[-2.25,0.3],[2.18,0.3],[2.27,0.5],[2.24,0.74],[1.1,0.93],[-1.55,0.98],[-2.18,0.94],[-2.27,0.66]], w), paint);
+    part(g, ext('sedG', [[1.08,0.9],[0.28,1.37],[-0.98,1.39],[-1.62,0.96]], w*0.86, 0.03), glassMat, false);
+    part(g, ext('sedR', [[0.32,1.34],[-1.0,1.36],[-0.98,1.43],[0.26,1.41]], w*0.88, 0.03), paint);
+    box(w*0.87, 0.42, 0.09, paint, 0, 1.15, -0.32, g);                                   // B-pillar
+    carDetails(g, {w, len, yL: 0.7, yT: 0.86, yB: 0.42, mirY: 1.0, mirZ: 0.95, tail});
+    if (type==='police') { box(w+0.03, 0.14, len*0.86, polStripe, 0, 0.72, 0, g); lights = lightBar(g, 1.2, 1.5, -0.35); }
+    if (type==='taxi') { box(0.62, 0.22, 0.24, taxiSignMat, 0, 1.54, -0.3, g); box(w+0.03, 0.08, len*0.86, angkotStripe, 0, 0.8, 0, g); }
+    wh = wheels(g, [[-w/2+0.14,1.38],[w/2-0.14,1.38],[-w/2+0.14,-1.33],[w/2-0.14,-1.33]], r, 0.24); v0 = rnd(24, 27.5);
+  } else if (type==='suv'){
+    len = 4.75; r = 0.38; const w = 1.92;
+    part(g, ext('suvL', [[-2.35,0.42],[2.3,0.42],[2.38,0.68],[2.33,0.98],[1.25,1.1],[-2.33,1.14],[-2.38,0.72]], w), paint);
+    part(g, ext('suvG', [[1.22,1.06],[0.42,1.6],[-2.2,1.64],[-2.3,1.1]], w*0.9, 0.03), glassMat, false);
+    part(g, ext('suvR', [[0.45,1.57],[-2.22,1.61],[-2.2,1.7],[0.38,1.66]], w*0.92, 0.03), paint);
+    for (const z of [-0.45, -1.5]) box(w*0.91, 0.5, 0.1, paint, 0, 1.36, z, g);
+    for (const s2 of [-1, 1]) box(0.05, 0.05, 2.3, chromeMat, s2*w*0.38, 1.75, -0.9, g);   // roof rails
+    carDetails(g, {w, len, yL: 0.88, yT: 1.0, yB: 0.55, mirY: 1.18, mirZ: 1.1, tail, grille: 0.6});
+    wh = wheels(g, [[-w/2+0.15,1.45],[w/2-0.15,1.45],[-w/2+0.15,-1.45],[w/2-0.15,-1.45]], r, 0.27); v0 = rnd(24, 27.5);
   } else if (type==='pickup'){
-    // pickup (Gran Max / L300 / Hilux style): cab in front, open load bed behind
-    len = 4.9; r = 0.36; const w = 1.75;
-    box(w, 0.7, len, paint, 0, r + 0.55, 0, g); box(w*0.96, 0.75, 1.7, paint, 0, r + 1.27, len/2 - 1.15, g); box(w*0.97, 0.5, 1.6, glassMat, 0, r + 1.3, len/2 - 1.12, g);
-    for (const s2 of [-1, 1]) box(0.08, 0.45, 2.6, paint, s2*(w/2 - 0.04), r + 1.12, -0.95, g); box(w, 0.45, 0.08, paint, 0, r + 1.12, -len/2 + 0.04, g);
-    for (const s2 of [-1,1]){ box(0.38,0.14,0.06,headMat, s2*w*0.33, r+0.7, len/2, g); box(0.16,0.3,0.06,tail, s2*w*0.42, r+0.95, -len/2, g); }
-    wh = wheels(g, [[-w/2+0.12,1.55],[w/2-0.12,1.55],[-w/2+0.12,-1.4],[w/2-0.12,-1.4]], r, 0.24); v0 = rnd(21, 25);
-  } else if (type==='car' || type==='suv' || type==='police'){
-    const suv = type==='suv'; len = suv?4.8:4.5; const w = suv?1.95:1.8, h = suv?0.95:0.75; r = suv?0.38:0.33;
-    box(w, h, len, paint, 0, r+h/2, 0, g);
-    const ch = suv?0.75:0.55, cl = suv?2.9:2.3, cz = suv?-0.3:-0.2;
-    box(w*0.9, ch, cl, paint, 0, r+h+ch/2, cz, g);
-    box(w*0.92, ch*0.75, cl*0.98, glassMat, 0, r+h+ch*0.48, cz, g);
-    for (const s of [-1,1]){ box(0.42,0.14,0.06,headMat, s*w*0.33, r+h*0.7, len/2, g); box(0.4,0.14,0.06,tail, s*w*0.35, r+h*0.75, -len/2, g); }
-    if (type==='police') { box(w+0.02, 0.16, len*0.9, polStripe, 0, r+h*0.55, 0, g); lights = lightBar(g, 1.2, r+h+ch+0.07, cz); }
-    wh = wheels(g, [[-w/2+0.12,len*0.32],[w/2-0.12,len*0.32],[-w/2+0.12,-len*0.32],[w/2-0.12,-len*0.32]], r, 0.24);
-    v0 = rnd(24, 27.5);
+    len = 4.9; r = 0.36; const w = 1.76;
+    part(g, ext('pkL', [[-2.45,0.4],[2.38,0.4],[2.46,0.64],[2.4,0.92],[1.35,1.04],[-2.45,1.04],[-2.5,0.62]], w), paint);
+    part(g, ext('pkG', [[1.32,1.0],[0.66,1.55],[-0.42,1.57],[-0.46,1.02]], w*0.9, 0.03), glassMat, false);
+    part(g, ext('pkR', [[0.68,1.53],[-0.46,1.55],[-0.46,1.62],[0.62,1.6]], w*0.92, 0.03), paint);
+    for (const s2 of [-1, 1]) box(0.07, 0.38, 1.95, paint, s2*(w/2 - 0.04), 1.23, -1.45, g);
+    box(w, 0.38, 0.07, paint, 0, 1.23, -2.42, g); box(w*0.9, 0.04, 1.9, trimMat, 0, 1.05, -1.45, g);
+    carDetails(g, {w, len, yL: 0.8, yT: 1.05, yB: 0.52, mirY: 1.12, mirZ: 1.2, tail});
+    wh = wheels(g, [[-w/2+0.14,1.55],[w/2-0.14,1.55],[-w/2+0.14,-1.45],[w/2-0.14,-1.45]], r, 0.25); v0 = rnd(21, 25);
+  } else if (type==='van' || type==='ambulance' || type==='angkot'){
+    // one-box minibus (Hiace / Elf / Carry): short sloping nose, tall body, window band
+    const A = type === 'angkot'; len = A ? 4.3 : 5.4; r = A ? 0.3 : 0.36; const w = A ? 1.66 : 1.95, hl = len/2, top = A ? 1.92 : 2.22;
+    part(g, ext(type + 'B', [[-hl,r + 0.05],[hl - 0.08,r + 0.05],[hl,r + 0.35],[hl - 0.06,1.05],[hl - 0.55,1.2],[hl - 0.95,top],[-hl + 0.05,top + 0.02],[-hl,top - 0.1]], w, 0.07), paint);
+    for (const s2 of [-1, 1]) box(0.02, 0.5, len - 1.5, glassMat, s2*(w/2 + 0.075), top - 0.62, -0.35, g);       // side window band
+    box(w*0.9, 0.62, 0.05, glassMat, 0, top - 0.55, hl - 0.74, g).rotation.x = -0.55;                                 // windscreen
+    box(w*0.8, 0.45, 0.04, glassMat, 0, top - 0.55, -hl - 0.05, g);
+    carDetails(g, {w, len, yL: 0.72, yT: 0.95, yB: r + 0.15, mirY: 1.25, mirZ: hl - 0.5, tail, grille: 0.45});
+    if (type === 'ambulance') { box(w + 0.03, 0.22, len - 1.1, ambStripe, 0, 1.0, -0.4, g); box(w + 0.03, 0.08, len - 1.1, ambOrange, 0, 1.18, -0.4, g); lights = lightBar(g, 1.3, top + 0.12, hl - 1.2); }
+    if (A) { box(w + 0.03, 0.08, len - 0.4, angkotStripe, 0, 1.0, 0, g); box(0.05, 1.0, 0.9, trimMat, w/2 + 0.03, 0.95, -0.2, g); box(w*0.85, 0.2, 0.45, angkotStripe, 0, top + 0.12, hl - 1.1, g); }
+    wh = wheels(g, [[-w/2+0.14,hl - 0.85],[w/2-0.14,hl - 0.85],[-w/2+0.14,-hl + 0.9],[w/2-0.14,-hl + 0.9]], r, A ? 0.2 : 0.25);
+    v0 = A ? rnd(13, 17) : type === 'ambulance' ? rnd(25, 28) : rnd(22, 25.5);
   } else if (type==='moto'){
     len = 2; r = 0.3;
-    box(0.32, 0.45, 1.8, paint, 0, r+0.3, 0, g);
-    box(0.48, 0.6, 0.42, own(pick([0x1f3f73,0x2a2a2a,0x6a1d2b,0x3e5a3a,0x8a6a3a])), 0, r+0.95, -0.15, g);
-    box(0.3, 0.3, 0.32, own(pick([0x111111,0xf2f2f2,0xc81e1e,0x1f3f73])), 0, r+1.4, -0.1, g);
-    box(0.14,0.1,0.06,headMat, 0, r+0.55, 0.92, g); box(0.14,0.08,0.06,tail, 0, r+0.5, -0.92, g);
-    wh = wheels(g, [[0,0.62],[0,-0.62]], r, 0.12); v0 = rnd(11,15);
-  } else if (type==='van'){
-    len = 5.6; r = 0.36; const w = 2;
-    box(w, 1.9, len-1, paint, 0, r+1.1, -0.5, g); box(w, 1.1, 1.2, paint, 0, r+0.7, len/2-0.6, g);
-    box(w*0.96, 0.6, 0.9, glassMat, 0, r+1.5, len/2-1.1, g);
-    for (const s of [-1,1]){ box(0.35,0.14,0.06,headMat, s*0.7, r+0.75, len/2, g); box(0.2,0.4,0.06,tail, s*0.85, r+1, -len/2, g); }
-    wh = wheels(g, [[-0.88,1.8],[0.88,1.8],[-0.88,-1.8],[0.88,-1.8]], r, 0.25); v0 = rnd(22, 25.5);
-  } else if (type==='truck'){
-    len = 16; r = 0.5; const w = 2.5;
-    const cab = color != null ? paint : own(pick([0xf4f4f2,0x1f3f73,0xb22a26,0x2f5a4a,0x1b1c1f,0xe0a020]));
-    box(w, 2.6, 2.4, cab, 0, r+1.6, len/2-1.2, g); box(w*0.96, 0.9, 0.08, glassMat, 0, r+2.3, len/2+0.01, g);
-    const trailer = own(pick([0xe8e8e4,0xdcdcd6,0x9aa1a6,0x3a5f8f,0xc4462a])); trailer.roughness = 0.7;
-    box(w, 3, 13, trailer, 0, r+2.2, -1.2, g); box(w*0.9, 0.4, len, tyreMat, 0, r+0.4, 0, g);
-    for (const s of [-1,1]){ box(0.35,0.18,0.06,headMat, s*0.9, r+0.6, len/2, g); box(0.25,0.2,0.06,tail, s*1.05, r+0.8, -7.7, g); }
-    wh = wheels(g, [[-1.1,6.6],[1.1,6.6],[-1.1,4.6],[1.1,4.6],[-1.1,-4.6],[1.1,-4.6],[-1.1,-6],[1.1,-6]], r, 0.38); v0 = rnd(18, 21.5);
+    box(0.12, 0.12, 1.2, trimMat, 0, r + 0.25, 0, g); box(0.28, 0.32, 0.6, paint, 0, r + 0.55, 0.15, g); box(0.26, 0.1, 0.62, trimMat, 0, r + 0.72, -0.3, g);
+    box(0.5, 0.06, 0.06, chromeMat, 0, r + 0.95, 0.6, g); box(0.1, 0.5, 0.08, chromeMat, 0, r + 0.55, 0.62, g);
+    box(0.44, 0.58, 0.4, own(pick([0x1f3f73,0x2a2a2a,0x6a1d2b,0x3e5a3a,0x8a6a3a])), 0, r + 1.05, -0.2, g);
+    box(0.3, 0.32, 0.32, own(pick([0x111111,0xf2f2f2,0xc81e1e,0x1f3f73])), 0, r + 1.5, -0.12, g); box(0.24, 0.1, 0.04, glassMat, 0, r + 1.5, 0.05, g);
+    for (const s2 of [-1, 1]) box(0.1, 0.45, 0.12, trimMat, s2*0.18, r + 0.5, 0.0, g);
+    box(0.14, 0.1, 0.06, headMat, 0, r + 0.7, 0.68, g); box(0.14, 0.08, 0.06, tail, 0, r + 0.58, -0.68, g);
+    wh = wheels(g, [[0,0.66],[0,-0.62]], r, 0.11); v0 = rnd(11, 15);
+  } else if (type==='truck' || type==='damkar' || type==='derek'){
+    // cab-over truck cab with rounded front edges, then a box trailer (truck), a body with ladder (fire engine) or a flat bed (tow truck)
+    const T = type === 'truck'; len = T ? 16 : type === 'damkar' ? 9 : 8.6; r = T ? 0.5 : 0.46; const w = T ? 2.5 : 2.4, hl = len/2;
+    const cab = T ? (color != null ? paint : own(pick([0xf4f4f2,0x1f3f73,0xb22a26,0x2f5a4a,0x1b1c1f,0xe0a020]))) : paint;
+    const cg = new THREE.Group(); cg.position.z = hl - 2.4; g.add(cg);
+    part(cg, ext('cab' + w, [[0,r + 0.3],[2.35,r + 0.3],[2.42,r + 0.75],[2.42,2.5],[2.25,3.05],[0.05,3.15],[0,2.9]], w, 0.12), cab);
+    box(w*0.9, 0.85, 0.06, glassMat, 0, 2.55, 2.5, cg).rotation.x = -0.1; for (const s2 of [-1, 1]) box(0.05, 0.6, 0.9, glassMat, s2*(w/2 + 0.1), 2.5, 1.6, cg);
+    box(w*0.6, 0.5, 0.06, grilleMat, 0, 1.35, 2.54, cg); box(w + 0.06, 0.3, 0.25, trimMat, 0, r + 0.35, 2.45, cg);
+    for (const s2 of [-1, 1]) { box(0.35, 0.18, 0.06, headMat, s2*0.85, r + 0.75, 2.55, cg); box(0.08, 0.55, 0.16, trimMat, s2*(w/2 + 0.2), 2.4, 2.35, cg); }
+    box(0.5, 0.12, 0.03, plateMat, 0, r + 0.4, 2.6, cg);
+    box(w*0.86, 0.35, len - 2.6, trimMat, 0, r + 0.55, -1.2, g);                                   // chassis
+    if (T) { const tr = own(pick([0xe8e8e4,0xdcdcd6,0x9aa1a6,0x3a5f8f,0xc4462a])); tr.roughness = 0.7;
+      part(g, ext('trl', [[-hl,r + 0.75],[hl - 2.7,r + 0.75],[hl - 2.7,4.0],[-hl,4.0]], w, 0.05), tr);
+      for (const s2 of [-1, 1]) box(0.05, 0.3, 6, chromeMat, s2*(w/2 - 0.05), r + 0.45, -1.5, g); }
+    else if (type === 'damkar') { box(w, 2.1, len - 2.6, paint, 0, r + 1.5, -1.2, g); box(w + 0.03, 0.18, len - 2.6, angkotStripe, 0, r + 1.2, -1.2, g);
+      for (let k = 0; k < 4; k++) box(0.04, 1.4, 1.1, chromeMat, w/2 + 0.02, r + 1.6, -hl + 1 + k*1.2, g);
+      box(0.9, 0.16, len - 1.2, ladderMat, 0, r + 2.7, -0.7, g); for (const s2 of [-1,1]) box(0.08, 0.3, len - 1.2, ladderMat, s2*0.45, r + 2.75, -0.7, g);
+      lights = lightBar(cg, 1.8, 3.25, 1.2); }
+    else { box(w, 0.25, len - 2.6, M(0x8a8f93, {metalness: 0.6}), 0, r + 0.95, -1.2, g); box(0.5, 0.7, 0.5, trimMat, 0, r + 1.4, hl - 2.9, g);
+      lights = [box(0.5, 0.15, 0.3, towAmber, -0.4, 3.25, 1.2, cg), box(0.5, 0.15, 0.3, towAmber, 0.4, 3.25, 1.2, cg)]; lights.forEach(l => l.visible = false); }
+    for (const s2 of [-1, 1]) box(0.25, 0.25, 0.06, tail, s2*1.05, r + 0.9, -hl, g);
+    wh = wheels(g, T ? [[-1.1,6.6],[1.1,6.6],[-1.1,4.6],[1.1,4.6],[-1.1,-4.6],[1.1,-4.6],[-1.1,-6],[1.1,-6]] : [[-1.05,hl - 1.3],[1.05,hl - 1.3],[-1.05,-hl + 2.3],[1.05,-hl + 2.3],[-1.05,-hl + 1.1],[1.05,-hl + 1.1]], r, 0.36);
+    v0 = T ? rnd(18, 21.5) : type === 'damkar' ? rnd(21, 24) : rnd(20, 23);
   } else {
-    len = 12.5; r = 0.5; const w = 2.5;
+    // city / intercity bus: rounded front, deep window band, livery stripe, destination board
+    len = 12.5; r = 0.5; const w = 2.5, hl = len/2;
     const body = color != null ? paint : own(pick([0xf4f4f2,0x1f3f73,0x2f5a4a,0x5d6670,0xb22a26]));
-    box(w, 3, len, body, 0, r+1.6, 0, g); box(w*1.01, 0.9, len*0.92, glassMat, 0, r+2.3, 0.2, g);
-    for (const s of [-1,1]){ box(0.4,0.18,0.06,headMat, s*0.9, r+0.6, len/2, g); box(0.25,0.3,0.06,tail, s*1.05, r+1, -len/2, g); }
+    part(g, ext('bus', [[-hl,0.5],[hl - 0.05,0.5],[hl,0.95],[hl,2.9],[hl - 0.25,3.45],[-hl + 0.1,3.5],[-hl,3.3]], w, 0.12), body);
+    for (const s2 of [-1, 1]) box(0.03, 1.05, len - 1.6, glassMat, s2*(w/2 + 0.115), 2.35, -0.4, g);
+    box(w*0.92, 1.4, 0.05, glassMat, 0, 2.35, hl + 0.11, g); box(w*0.7, 0.28, 0.05, M(0x111111, {emissive: 0xffa000, emissiveIntensity: 0.6}), 0, 3.2, hl + 0.12, g);
+    box(w + 0.25, 0.25, len - 0.6, angkotStripe, 0, 1.3, 0, g); box(0.04, 2.1, 1.0, trimMat, w/2 + 0.12, 1.55, hl - 1.6, g);
+    for (const s2 of [-1, 1]) { box(0.4, 0.18, 0.06, headMat, s2*0.9, 0.95, hl + 0.1, g); box(0.25, 0.4, 0.06, tail, s2*1.05, 1.2, -hl - 0.1, g); box(0.08, 0.5, 0.16, trimMat, s2*(w/2 + 0.25), 2.6, hl - 0.1, g); }
+    box(0.52, 0.12, 0.03, plateMat, 0, 0.65, hl + 0.12, g);
     wh = wheels(g, [[-1.1,4.2],[1.1,4.2],[-1.1,-3.4],[1.1,-3.4],[-1.1,-4.8],[1.1,-4.8]], r, 0.38); v0 = rnd(21, 23.5);
   }
   bendObj(g);
@@ -342,7 +381,7 @@ function makeVehicle(type, color){
   const front = wh.filter(w => w.position.z > 0); for (const w of front) w.rotation.order = 'YXZ';
   return {g, len, wh, front, r, v0, type, lights};
 }
-const LEN = t => t === 'truck' ? 16 : t === 'bus' ? 12.5 : t === 'damkar' ? 9 : 6;
+const LEN = t => t === 'truck' ? 16 : t === 'bus' ? 12.5 : t === 'damkar' ? 9 : t === 'derek' ? 8.6 : 6;
 function killVehicle(v){ if (v.g.parent) v.g.parent.remove(v.g); v.g.traverse(o => { if (o.isMesh && !SHARED.has(o.material) && o.material.userData.own) o.material.dispose(); }); v.dead = true; }
 const rm = (arr, v) => { const i = arr.indexOf(v); if (i >= 0) arr.splice(i, 1); };
 const heavy = v => v.type==='truck' || v.type==='bus';
@@ -1208,7 +1247,18 @@ function restArea(g, e){ const ex = o => e + o, th = Math.atan2(6, 7), z = u => 
   g.add(solid(10, 0.8, 16, M(0xf4f4f4), ex(66), 5.6, z(222)), solid(10.2, 0.45, 16.2, M(0xd0202a), ex(66), 5.05, z(222)));
   for (const dx of [-3.5, 3.5]) for (const dz of [-5, 5]) g.add(solid(0.35, 5.2, 0.35, M(0xf4f4f4), ex(66)+dx, 2.6, z(222+dz)));
   for (const dz of [-4, 4]) g.add(solid(0.8, 1.6, 1.4, M(0xd0202a), ex(66), 0.8, z(222+dz)));
-  const p = panelMesh(6, 3.2, textPanel(6, 3.2, SIGN_BLUE, 'REST AREA', 'SPBU · Musala · Kuliner')); p.position.set(ex(18), 6.5, z(128)); p.rotation.y = Math.PI;
+  // more services: minimarket, coffee kiosk, toilets, ATM, workshop, EV chargers, each with its own sign
+  const lbl = (txt, bg, x, y, zz, w2 = 5) => { const q = panelMesh(w2, 0.9, textPanel(w2, 0.9, bg, txt)); q.position.set(x, y, zz); q.rotation.y = -Math.PI/2; g.add(q); };
+  g.add(solid(12, 3.8, 13, M(0xf4f4f2), ex(66), 1.9, z(194)), solid(12.4, 0.5, 13.4, M(0x1f5fbf), ex(66), 4.0, z(194)), solid(0.1, 2.2, 10, glassMat, ex(59.95), 1.4, z(194)));
+  lbl('MINIMARKET', '#1f5fbf', ex(59.8), 3.2, z(194)); lbl('FOOD COURT', '#9a3b2a', ex(59.8), 3.6, z(168), 6); lbl('MUSALA', '#2f7a55', ex(62.4), 3.4, z(140), 4);
+  g.add(solid(5, 3, 4, M(0x6b4a2e), ex(58), 1.5, z(150)), solid(5.6, 0.3, 4.6, M(0x3a2a1c), ex(58), 3.1, z(150))); lbl('KOPI', '#3a2a1c', ex(55.4), 2.4, z(150), 3);
+  g.add(solid(6, 3, 9, M(0xd9d4c8), ex(66), 1.5, z(124))); lbl('TOILET', SIGN_BLUE, ex(62.9), 2.6, z(124), 3.4);
+  g.add(solid(1.6, 2.4, 1.6, M(0xc8d2dc), ex(58), 1.2, z(132))); lbl('ATM', '#0d5a8a', ex(57.1), 2.2, z(132), 1.6);
+  g.add(flat(16, 22, lotMat, ex(66), -0.002, z(252)), solid(10, 4.5, 16, M(0xb9bec4), ex(68), 2.25, z(252)), solid(0.1, 3.6, 12, M(0x2a2c2e), ex(62.95), 1.8, z(252)));
+  lbl('BENGKEL', '#c8341f', ex(62.8), 4.0, z(252), 4.4);
+  for (const dz of [-3, 0, 3]) g.add(solid(0.6, 1.6, 0.4, M(0x1e8a4a), ex(52), 0.8, z(236 + dz)), solid(0.62, 0.3, 0.42, M(0xf2f2f2), ex(52), 1.75, z(236 + dz)));
+  lbl('SPKLU', '#1e8a4a', ex(51.6), 2.6, z(236), 2.6);
+  const p = panelMesh(6.4, 3.6, textPanel(6.4, 3.6, SIGN_BLUE, 'REST AREA', 'SPBU · Musala · Kuliner · Minimarket · Bengkel · ATM · SPKLU · Toilet')); p.position.set(ex(18), 6.5, z(128)); p.rotation.y = Math.PI;
   g.add(p, solid(0.4, 5, 0.4, signBackMat, ex(18), 2.5, z(128.4))); }
 
 // events seen ahead from event i, travelling on side sd
@@ -1669,6 +1719,7 @@ function discretionary(v, lead, nearEntry){
 function pickType(lane, n, p, sd){
   if (p != null && corrAt(sd*p) === 'mbz') { const t = Math.random(); return t < 0.01 ? 'police' : t < 0.55 ? 'car' : t < 0.85 ? 'suv' : 'pickup'; }
   if (Math.random() < 0.06) return 'pickup';
+  if (p != null && Math.random() < (regionAt(sd*p) === 'urban' ? 0.12 : 0.03)) return 'taxi';
   { const e = Math.random(); if (e < 0.012) return e < 0.005 ? 'ambulance' : e < 0.009 ? 'police' : 'damkar'; }
   if (p != null && !isToll(sd*p)) { const t = Math.random(), outer = lane === n - 1;
     if (Math.random() < (outer ? 0.2 : 0.08)) return 'angkot';
@@ -1921,6 +1972,110 @@ function footBlocks(v, front){
 }
 function placeFoot(){ if (!foot) return; const f = foot, sd = PLR.sd || 1; f.g.position.set(f.x, 0, camU - f.u); f.g.rotation.y = (sd > 0 ? Math.PI : 0) - f.hd; }
 
+// ================================================================
+// TRIP NEEDS: fuel, cash and e-Toll balance, drowsiness; services at rest areas and in towns
+// ================================================================
+const TANK = {moto: 4, car: 42, taxi: 42, police: 50, suv: 55, pickup: 45, van: 55, ambulance: 60, angkot: 40, bus: 200, truck: 300, damkar: 150, derek: 120};
+const KM_L = {moto: 40, car: 13, taxi: 13, police: 11, suv: 9, pickup: 10, van: 9, ambulance: 8, angkot: 11, bus: 4, truck: 3.5, damkar: 3, derek: 5};
+const WAL = Object.assign({cash: 750000, etoll: 300000, fuel: null, sleep: 0}, cfg.wal || {});
+const rp$ = n => 'Rp ' + Math.round(n).toLocaleString('id-ID');
+const rpS = n => { const a = Math.abs(n), sg = n < 0 ? '−' : ''; return sg + (a >= 1e6 ? (a/1e6).toFixed(a >= 1e7 ? 0 : 1).replace('.', ',') + 'jt' : Math.round(a/1000) + 'rb'); };
+let walT = 0, lowFuelSaid = false, sleepSaid = 0, msT = 0;
+function tankOf(){ return TANK[PLR ? PLR.type : cfg.veh] || 42; }
+function tickNeeds(dt){
+  if (!PLR || !trip) return; if (WAL.fuel == null || WAL.fuel > tankOf()) WAL.fuel = tankOf();
+  if (!foot && !tow) { const km = Math.abs(PLR.vel)*dt*cfg.scale/1000; WAL.fuel = Math.max(0, WAL.fuel - km/(KM_L[PLR.type] || 12)*(input.gas || cfg.auto ? 1 : 0.6));
+    if (Math.abs(PLR.vel) > 1) WAL.sleep = Math.min(100, WAL.sleep + dt*(100/9000)*(gameH < 5 || gameH > 22 ? 1.6 : 1)); }
+  const f = WAL.fuel/tankOf();
+  if (f < 0.15 && !lowFuelSaid) { lowFuelSaid = true; toast('BBM menipis: isi di SPBU rest area atau kota berikutnya', 'warn'); } if (f > 0.3) lowFuelSaid = false;
+  if (WAL.fuel <= 0 && !PLR.noFuel) { PLR.noFuel = true; toast('BBM habis! Panggil derek untuk mengantar BBM', 'bad'); }
+  if (WAL.fuel > 0) PLR.noFuel = false;
+  for (const lv of [70, 90]) if (WAL.sleep >= lv && sleepSaid < lv) { sleepSaid = lv; toast(lv >= 90 ? 'Sangat mengantuk! Segera istirahat di rest area' : 'Mulai mengantuk: istirahat sejenak di rest area', 'warn'); }
+  if (WAL.sleep < 60) sleepSaid = 0;
+  // microsleep at 100 %: the hands drift off the wheel for a moment
+  if (WAL.sleep >= 100 && !cfg.auto && !foot && (msT -= dt) < 0) { msT = rnd(15, 30); PLR.steer = (PLR.steer || 0) + (Math.random() - 0.5)*0.12; toast('Microsleep! Anda tertidur sesaat', 'bad'); shake = 0.3; }
+  if ((walT -= dt) < 0) { walT = 0.5; cfg.wal = {...WAL}; saveCfgSoon(); uiNeeds(); }
+}
+function uiNeeds(){
+  const f = Math.round(WAL.fuel/tankOf()*100), fb = $('fuelb'), sb = $('sleepb');
+  fb.style.width = clamp(f, 0, 100) + '%'; fb.classList.toggle('low', f < 15); sb.style.width = Math.round(WAL.sleep) + '%'; sb.classList.toggle('low', WAL.sleep > 70);
+  $('cash').textContent = rpS(WAL.cash); $('etoll').textContent = rpS(WAL.etoll); $('cash').title = rp$(WAL.cash); $('etoll').title = rp$(WAL.etoll);
+  $('fuelb').parentElement.title = `BBM ${f}% (${WAL.fuel.toFixed(1)} L)`; $('sleepb').parentElement.title = `Kantuk ${Math.round(WAL.sleep)}%`;
+  const ctx = svcContext(); $('svcb').hidden = !ctx; if (!ctx && !$('svc').hidden) $('svc').hidden = true;
+  $('towb').hidden = !PLR || tow || !((PLR.dmg || 0) >= 40 || PLR.noFuel || PLR.deadT);
+}
+// where services are available: parked or walking in a rest area, or stopped / walking in a town on a national road
+function svcContext(){
+  if (!PLR || !trip) return null;
+  if (rest) return 'rest';
+  const u = foot ? foot.u : uOfV(PLR);
+  if (foot) { const s = RSITES.find(s2 => s2.kind === 'r' && Math.abs(s2.u - u) < 140); if (s && Math.abs(foot.x) > eAt(u) + 18) return 'rest'; }
+  if (!isToll(u) && townNear(u) && (foot || (!PLR.rp && Math.abs(PLR.vel) < 0.5))) return 'town';
+  return null;
+}
+const SVC = [
+  {id: 'bbm', t: 'SPBU · isi BBM penuh', d: () => `${Math.max(0, tankOf() - WAL.fuel).toFixed(1)} L × Rp 10.000`, price: () => Math.ceil(Math.max(0, tankOf() - WAL.fuel))*10000, ok: () => WAL.fuel < tankOf() - 0.5,
+    act: () => { WAL.fuel = tankOf(); PLR.noFuel = false; return 'Tangki penuh. Terima kasih, sudah diisi dari nol!'; }},
+  {id: 'angin', t: 'Isi angin ban', d: () => 'Tekanan ban dicek & ditambah', price: () => 5000, act: () => 'Tekanan ban sudah pas'},
+  {id: 'makan', t: 'Makan di food court', d: () => 'Nasi goreng / soto / sate, kantuk −40', price: () => 45000, act: () => { WAL.sleep = Math.max(0, WAL.sleep - 40); return 'Kenyang! Siap lanjut'; }},
+  {id: 'kopi', t: 'Ngopi', d: () => 'Kopi susu / teh manis, kantuk −30', price: () => 25000, act: () => { WAL.sleep = Math.max(0, WAL.sleep - 30); return 'Segar kembali'; }},
+  {id: 'mini', t: 'Minimarket · camilan & minum', d: () => 'Air mineral, roti, permen, kantuk −10', price: () => 30000, act: () => { WAL.sleep = Math.max(0, WAL.sleep - 10); return 'Belanja selesai'; }},
+  {id: 'topup', t: 'Isi saldo e-Toll Rp 100.000', d: () => 'Di kasir minimarket (+ biaya Rp 1.500)', price: () => 101500, act: () => { WAL.etoll += 100000; return 'Saldo e-Toll bertambah Rp 100.000'; }},
+  {id: 'atm', t: 'ATM · tarik tunai Rp 300.000', d: () => 'Dari rekening bank', price: () => 0, act: () => { WAL.cash += 300000; return 'Uang tunai bertambah Rp 300.000'; }},
+  {id: 'bengkel', t: 'Bengkel · perbaiki kendaraan', d: () => `Kerusakan ${Math.round(PLR.dmg || 0)}%`, price: () => 50000 + Math.round((PLR.dmg || 0)*9000/1000)*1000, ok: () => (PLR.dmg || 0) >= 1,
+    act: () => { repairPlayer(); return 'Kendaraan sudah diperbaiki seperti baru'; }},
+  {id: 'toilet', t: 'Toilet', d: () => 'Bersih & gratis air', price: () => 2000, act: () => 'Lega!'},
+  {id: 'musala', t: 'Musala · sholat', d: () => 'Kantuk −10', price: () => 0, act: () => { WAL.sleep = Math.max(0, WAL.sleep - 10); return 'Sudah sholat, hati tenang'; }},
+  {id: 'tidur', t: 'Tidur 30 menit', d: () => 'Kantuk hilang, jam maju 30 menit', price: () => 0, only: 'rest', act: () => { WAL.sleep = 0; gameH = mod(gameH + 0.5, 24); todT = 0; tickClock(0); return 'Bangun segar setelah tidur 30 menit'; }},
+  {id: 'spklu', t: 'SPKLU · cas mobil listrik', d: () => 'Hanya untuk mobil listrik', price: () => 0, only: 'rest', ok: () => false, act: () => ''},
+];
+function repairPlayer(){ const v = PLR; v.dmg = 0; v.deadT = 0; v.dentZ = v.dentX = 0; v.g.scale.set(1, 1, 1); v.g.rotation.z = 0; v.pull = 0; }
+function openSvc(){
+  const ctx = svcContext(); if (!ctx) return; const list = $('svc-list'); list.innerHTML = '';
+  $('svc-title').textContent = ctx === 'rest' ? 'Layanan rest area' : 'Layanan di kota';
+  $('svc-stat').textContent = `Tunai ${rp$(WAL.cash)} · e-Toll ${rp$(WAL.etoll)} · BBM ${Math.round(WAL.fuel/tankOf()*100)}% · Kantuk ${Math.round(WAL.sleep)}% · Kerusakan ${Math.round(PLR.dmg || 0)}%`;
+  for (const sv of SVC) { if (sv.only && sv.only !== ctx) continue; const b = document.createElement('button'), pr = sv.price();
+    b.innerHTML = `<b>${sv.t}</b><span>${sv.d()}</span><span>${pr ? rp$(pr) : 'Gratis'}</span>`; b.disabled = sv.ok ? !sv.ok() : false;
+    b.onclick = () => { const pr2 = sv.price(); if (pr2 > WAL.cash) { toast('Uang tunai tidak cukup: tarik tunai di ATM', 'warn'); return; } WAL.cash -= pr2; const msg = sv.act(); if (msg) toast(msg); uiNeeds(); openSvc(); };
+    list.append(b); }
+  $('svc').hidden = false;
+}
+
+// ================================================================
+// TOW TRUCK (derek): called after a crash, an engine failure or an empty tank. It comes along the shoulder, stops in
+// front of the car, loads it onto the bed and takes it to the nearest workshop (or just brings emergency fuel).
+// ================================================================
+let tow = null;
+function callTow(auto = false){
+  const P = PLR; if (!P || tow) return; if (foot) { toast('Masuk ke kendaraan dulu', 'warn'); return; }
+  if (P.rp) { toast('Derek datang setelah kendaraan berada di jalur utama', 'warn'); return; }
+  const v = makeVehicle('derek'), n = nAvail(P.sd, P.p);
+  Object.assign(v, {sd: P.sd, p: P.p - 260, lx: n - 0.15, vel: 24, lane: n - 1}); v.x = posX(-P.sd, v.lx); scene.add(v.g);
+  tow = {v, phase: 'come', t: 0, fuelOnly: !!P.noFuel && (P.dmg || 0) < 40 && !P.deadT};
+  cfg.auto = false; hudAuto(); input.gas = input.brake = input.left = input.right = false;
+  toast(`${auto ? 'Mesin mati. ' : ''}Derek ${tow.fuelOnly ? 'membawa BBM darurat' : 'dalam perjalanan'}: tiba ± 15 detik`, 'warn'); uiNeeds();
+}
+function stepTow(dt){
+  if (!tow || !PLR) return; const T = tow, d = T.v, P = PLR, n = nAvail(P.sd, P.p), sh = n - 0.15; T.t += dt;
+  if (T.phase === 'come') {
+    const target = P.p + (P.len + d.len)/2 + 3, gap = target - d.p;
+    d.vel = Math.min(24, Math.sqrt(2*2.5*Math.max(0, gap))); d.p = Math.min(target, d.p + d.vel*dt); d.lx = sh;
+    P.lx += clamp(sh - P.lx, -0.7*dt, 0.7*dt); P.lane = Math.round(P.lx); P.vel = Math.max(0, P.vel - 5*dt); P.hd = 0; P.steer = 0;
+    if (gap < 0.4 && Math.abs(P.lx - sh) < 0.05 && P.vel < 0.2) { T.phase = T.fuelOnly ? 'fuel' : 'load'; T.t = 0; T.p0 = P.p; P.vel = 0;
+      toast(T.fuelOnly ? 'Petugas derek mengisi BBM darurat 10 L…' : 'Kendaraan dinaikkan ke truk derek…'); } }
+  else if (T.phase === 'fuel') { P.vel = 0; if (T.t > 4) { WAL.fuel = Math.max(WAL.fuel, 10); P.noFuel = false; WAL.cash -= 150000; toast(`BBM darurat 10 L diisi · biaya ${rp$(150000)}`); T.phase = 'leave'; T.t = 0; } }
+  else if (T.phase === 'load') { const k = sstep(0, 1, Math.min(1, T.t/4)); P.vel = 0; P.lift = 1.2*k; P.p = T.p0 + (d.p - 1.2 - T.p0)*k;
+    if (T.t > 4.2) { T.phase = 'tow'; T.t = 0; T.dur = plazaAhead(P.sd, d.p + d.len/2) ? 8 : 22; toast('Diderek ke bengkel terdekat…'); } }
+  else if (T.phase === 'tow') { d.vel = Math.min(20, d.vel + 2*dt); d.p += d.vel*dt; d.lx = sh; P.p = d.p - 1.2; P.lx = sh; P.vel = d.vel; P.lift = 1.2;
+    if (T.t > T.dur) { const cost = 250000 + Math.round((P.dmg || 0)*6000/1000)*1000; WAL.cash -= cost; repairPlayer(); P.lift = 0; P.vel = 0; P.lx = n - 1; P.lane = n - 1; P.p = d.p - d.len/2 - P.len/2 - 6;
+      gameH = mod(gameH + 0.75, 24); todT = 0; tickClock(0); blink(); toast(`Kendaraan sudah diperbaiki di bengkel · biaya derek & bengkel ${rp$(cost)}`); T.phase = 'leave'; T.t = 0; } }
+  else if (T.phase === 'leave') { d.vel = Math.min(25, d.vel + 2.5*dt); d.p += d.vel*dt; if (T.t > 3) d.lx += clamp(n - 1 - d.lx, -0.4*dt, 0.4*dt);
+    if (T.t > 14) { scene.remove(d.g); killVehicle(d); tow = null; uiNeeds(); } }
+  if (tow) P.x = posX(-P.sd, P.lx);
+}
+function placeTow(){ if (!tow) return; const d = tow.v; d.x = posX(-d.sd, d.lx); d.g.position.set(d.x, 0, camU - d.sd*d.p); d.g.rotation.y = d.sd > 0 ? Math.PI : 0;
+  const ph = (clock*2.6) % 1; if (d.lights) { d.lights[0].visible = ph < 0.5; d.lights[1].visible = ph >= 0.5; } for (const w of d.wh) w.rotation.x += d.vel*0.016/d.r; }
+
 // ---------- crash effects: debris and glass, sparks, smoke and fire, dents, skid marks ----------
 // Particles live in road coordinates (u, x, y) so they stay put as the world scrolls; drawn with instanced meshes.
 const FXN = 420, fxDummy = new THREE.Object3D(), fxCol = new THREE.Color();
@@ -1958,7 +2113,7 @@ function updateFx(dt){
   for (const k in FX) FX[k] = FX[k].filter(p => p.t > 0 && Math.abs(p.u - camU) < 700);
   // damaged vehicles smoke from the engine; wrecks burn
   for (const v of vehicles.concat(rampers)) { if (!(v.dmg > 35) || !v.g.visible) continue; const u = v.rp ? v.rp.sd*v.p : uOfV(v), sd = v.rp ? v.rp.sd : v.sd, fu = u + sd*v.len*0.38;
-    if (Math.random() < dt*(v.dmg - 25)*0.12) fxAdd(FX.smoke, 220, {u: fu, x: v.x, y: 1.1, vu: sd*v.vel*0.2 + (Math.random() - 0.5)*0.4, vx: (Math.random() - 0.5)*0.4, vy: 1 + Math.random()*0.8, s: 0.35, g: 1.1, t: 2.5, T: 2.5, dark: v.dmg > 70});
+    if (Math.random() < dt*(v.dmg - 25)*0.12) fxAdd(FX.smoke, 220, {u: fu, x: v.x, y: 1.1, vu: sd*v.vel*0.2 + (Math.random() - 0.5)*0.4, vx: (Math.random() - 0.5)*0.4, vy: 0.8 + Math.random()*0.6, s: 0.25, g: 0.55, t: 2.2, T: 2.2, dark: v.dmg > 70});
     if (v.dmg > 85 && Math.random() < dt*14) fxAdd(FX.fire, 80, {u: fu, x: v.x + (Math.random() - 0.5)*1.2, y: 0.9, vy: 1.5 + Math.random(), s: 0.45 + Math.random()*0.3, t: 0.5}); }
   // skid marks: hard braking (ABS still leaves marks) or sliding sideways
   const P = PLR; if (P && !P.rp && !cfg.auto && Math.abs(P.vel) > 4 && (P.brk > 0.85 || P.slide > 0.4) && (skidT -= dt) < 0) { skidT = 0.03;
@@ -1981,7 +2136,7 @@ function sim(dt){
   const reg = (k, v) => { let a = lanesOf.get(k); if (!a) lanesOf.set(k, a = []); a.push(v); };
   emergencyPlan(dt);
   for (const v of vehicles){ if (v.player && !cfg.auto) continue; if (v.esc && Math.abs(v.lx - v.lane) > 0.45) continue; reg(key(v.sd, v.lane), v); }
-  if (PLR && !PLR.rp && !cfg.auto && vehicles.includes(PLR)) { const v = PLR, z = cfAt(v.sd, v.p);
+  if (PLR && !PLR.rp && !cfg.auto && !tow && vehicles.includes(PLR)) { const v = PLR, z = cfAt(v.sd, v.p);
     for (const l of new Set([Math.floor(v.lx), Math.ceil(v.lx)])) {
       if (l >= 0 || (z && z.A === v.sd && -l <= z.k)) reg(key(v.sd, l), v);
       else { const j = -l - 1; reg(key(-v.sd, j), {p: -v.sd*uOfV(v), vel: 0, len: v.len, lane: j, lx: j, phantom: true}); } } }
@@ -2000,6 +2155,7 @@ function sim(dt){
     const limU = Math.min(limitAt(uOfV(v)), limitAt(uOfV(v) + v.sd*250));
     let v0 = Math.min(v.player ? limU - 0.6 : Math.min(v.v0, limU + 1), zoneCap(v.sd, front) - (v.player ? 0.6 : 0));
     if (v.em) v0 = Math.min(v.esc === 'sh' ? 22 : v.esc === 'cf' ? 17 : 36, limU + 9);
+    else if (v.player && (v.noFuel || tow)) v0 = 0;
     else if (v.lane < 0 || v.lx < 0 || (nearEntry && v.lane === 0)) v0 = Math.min(v0, 16.7);
     if (v.yieldT > clock && (!v.player || cfg.auto)) v0 = Math.min(v0, v.yieldV);
     // angkot stop for passengers at the kerb now and then (ngetem)
@@ -2008,7 +2164,7 @@ function sim(dt){
     const pz = plazaAhead(v.sd, front);
     if (pz && v.paid !== pz.s.id) { v0 = Math.min(v0, Math.sqrt(25 + 1.2*Math.max(0, pz.d))); }
     v.v0e = v0;
-    if (manual && foot) v.acc = -v.vel/dt;
+    if (manual && (foot || tow)) v.acc = tow ? 0 : -v.vel/dt;
     else if (manual) { v.acc = playerAcc(v, dt); steerPlayer(v, dt); }
     else {
       v.acc = idm(v, lead, ld, v0);
@@ -2068,7 +2224,7 @@ function sim(dt){
     bodyMotion(v, wrapA(v.yaw - y0)/dt, dt);
     for (const w of v.wh) w.rotation.x += v.vel*dt / v.r;
   }
-  if (PLR && !cfg.auto && !foot && vehicles.includes(PLR)) { const P = PLR, [lo, hi] = lxBounds(P), hd0 = P.hd || 0; playerCollide(P);
+  if (PLR && !cfg.auto && !foot && !tow && vehicles.includes(PLR)) { const P = PLR, [lo, hi] = lxBounds(P), hd0 = P.hd || 0; playerCollide(P);
     // a hit never throws the car through the median barrier or the guard rail, and does not spin it right round
     P.lx = clamp(P.lx, lo, hi); P.lane = Math.round(P.lx); P.x = posX(-P.sd, P.lx); P.hd = clamp(P.hd || 0, hd0 - 0.15, hd0 + 0.15); }
   for (let i = vehicles.length-1; i >= 0; i--) { const v = vehicles[i];
@@ -2112,7 +2268,7 @@ function place(){
   const ph = (clock*3.2) % 1;
   for (const v of vehicles.concat(rampers)) if (v.lights) { const on = sirenOn(v); v.lights[0].visible = on && ph < 0.5; v.lights[1].visible = on && ph >= 0.5; }
   for (const v of vehicles){ const u = v.sd*v.p, z = camU - u;
-    v.g.position.set(v.x, 0, z); v.g.rotation.y = (v.sd > 0 ? Math.PI : 0) - v.yaw*v.sd; v.g.visible = Math.abs(z) < 900;
+    v.g.position.set(v.x, v.lift || 0, z); v.g.rotation.y = (v.sd > 0 ? Math.PI : 0) - v.yaw*v.sd; v.g.visible = Math.abs(z) < 900;
     if (v.g.visible && Math.abs(z) < 300) { v.g.rotation.x = v.pit || 0; v.g.rotation.z = v.rol || 0; for (const w of v.front || []) w.rotation.y = v.stv || 0; } }
   for (const v of rampers){ const q = v.q; if (!q) continue; const rp = v.rp, u = rp.sd*v.p, z = camU - u;
     v.x = -rp.sd*(rp.e + q.o + (v.player ? (v.rpOff || 0)*q.hu : 0)); v.g.position.set(v.x, q.h || 0, z);
@@ -2126,14 +2282,15 @@ function place(){
 // ================================================================
 const VEH = {car:{label:'Sedan', vmax:52, acc:3.2, gol:'Gol I', rate:1000}, suv:{label:'SUV', vmax:48, acc:2.8, gol:'Gol I', rate:1000},
   bus:{label:'Bus', vmax:33, acc:1.3, gol:'Gol I', rate:1000}, truck:{label:'Truk', vmax:28, acc:0.9, gol:'Gol III', rate:1650},
-  pickup:{label:'Pickup', vmax:42, acc:2.4, gol:'Gol I', rate:1000}, angkot:{label:'Angkot', vmax:31, acc:2.3, gol:'Gol I', rate:1000}, ambulance:{label:'Ambulans', vmax:44, acc:2.6, gol:'Gol I', rate:1000},
+  pickup:{label:'Pickup', vmax:42, acc:2.4, gol:'Gol I', rate:1000}, taxi:{label:'Taksi', vmax:50, acc:3.1, gol:'Gol I', rate:1000},
+  moto:{label:'Motor', vmax:33, acc:3.8, gol:'non-tol', rate:0}, angkot:{label:'Angkot', vmax:31, acc:2.3, gol:'Gol I', rate:1000}, ambulance:{label:'Ambulans', vmax:44, acc:2.6, gol:'Gol I', rate:1000},
   damkar:{label:'Damkar', vmax:31, acc:1.3, gol:'Gol II', rate:1500}, police:{label:'Polisi', vmax:52, acc:3.4, gol:'Gol I', rate:1000}};
 const input = {gas:false, brake:false, left:false, right:false};
 const stats = {t0: 0, toll: 0, viol: 0, crashes: 0, lastPay: 0, missed: false, done: false, log: []};
 let offT = 0, shoulderT = 0, speedT = 0, heavyT = 0, violCd = 0, crashCd = 0, shake = 0;
 function spawnPlayer(){
   if (PLR) { const i = vehicles.indexOf(PLR); if (i >= 0) vehicles.splice(i, 1); const j = rampers.indexOf(PLR); if (j >= 0) rampers.splice(j, 1); killVehicle(PLR); }
-  const v = makeVehicle(VEH[cfg.veh] ? cfg.veh : 'car', ['car', 'suv', 'bus', 'truck'].includes(cfg.veh) ? 0xec3013 : null); v.player = true; v.paint = 0xec3013; v.dmg = 0; sirenUI();
+  const v = makeVehicle(VEH[cfg.veh] ? cfg.veh : 'car', ['car', 'suv', 'bus', 'truck', 'moto'].includes(cfg.veh) ? 0xec3013 : null); v.player = true; v.paint = 0xec3013; v.dmg = 0; sirenUI();
   const o = EV[0], n = nAvail(1, 0), startP = o.kind === 't' || o.kind === 'g' ? 160 : o.kind === 'k' || o.kind === 'n0' ? 30 : 320;
   Object.assign(v, {sd: 1, lane: Math.max(0, n - 1), p: startP, vel: o.kind === 'k' || o.kind === 'n0' ? 8 : 16, cd: 0, yaw: 0, cfWant: false, v0: limitAt(startP)});
   v.lx = v.lane; v.x = posX(-1, v.lane); v.paid = o.kind === 't' || o.kind === 'g' ? o.id : null;
@@ -2143,6 +2300,7 @@ const slopeG = v => v.rp ? 0 : 9.81*(v.sd || 1)*gYD(uOfV(v))*Math.cos(v.hd || 0)
 const GEAR_UP = [5.5, 11, 17.5, 25, 33], GEAR_K = [1, 0.8, 0.64, 0.52, 0.43, 0.36];
 const gearOf = vel => 1 + GEAR_UP.filter(x => vel >= x).length;
 function playerAcc(v, dt){
+  if (v.noFuel && !input.brake) { input.gas = false; v.thr = 0; }     // empty tank: the engine has stopped, the car only rolls
   let a = playerAcc0(v, dt);
   // on grass: much more rolling resistance, and the car bumps along
   if (v.offroad && Math.abs(v.vel) > 0.3) { a -= Math.sign(v.vel)*(1.3 + 0.0016*v.vel*v.vel); shake = Math.max(shake, Math.min(0.25, Math.abs(v.vel)*0.012)); }
@@ -2153,8 +2311,8 @@ function playerAcc(v, dt){
 const muOf = v => (v.offroad ? 0.6 : 1)*(heavy(v) || v.type === 'damkar' ? 0.62 : 0.92)*((WEATHER[cfg.weather] || {}).rain ? 0.68 : 1)*(1 - Math.min(0.25, (v.dmg || 0)*0.0025));
 function playerAcc0(v, dt){
   const sp0 = VEH[v.type] || VEH.car, dk = 1 - Math.min(0.6, (v.dmg || 0)*0.006), spec = {...sp0, vmax: sp0.vmax*dk, acc: sp0.acc*dk}, hv = heavy(v) ? 0.6 : 1;
-  if ((v.dmg || 0) >= 100) { if (!v.deadT) { v.deadT = clock; toast('Mesin mati: kendaraan rusak berat. Menunggu derek…', 'bad'); }
-    if (clock - v.deadT > 6) { v.dmg = 55; v.deadT = 0; v.dentZ = v.dentX = 0; v.g.scale.set(1, 1, 1); v.g.rotation.z = 0; toast('Kendaraan diperbaiki darurat, lanjutkan pelan-pelan'); }
+  if ((v.dmg || 0) >= 100) { if (!v.deadT) { v.deadT = clock; toast('Mesin mati: kendaraan rusak berat. Derek dipanggil…', 'bad'); }
+    if (clock - v.deadT > 2.5 && !tow) callTow(true);
     return v.vel > 0.05 ? -4 : v.vel < -0.05 ? 4 : -v.vel/dt; }
   v.thr = (v.thr || 0) + clamp((input.gas ? 1 : 0) - (v.thr || 0), -4*dt, 2.5*dt);
   v.brk = input.brake ? Math.min(1, (v.brk || 0) + 3*dt) : 0;
@@ -2176,7 +2334,8 @@ function playerAcc0(v, dt){
 function bodyMotion(v, yawRate, dt){
   const k = Math.min(1, dt*5);
   v.pit = (v.pit || 0) + (clamp(-(v.acc || 0)*0.0065, -0.03, 0.05) - (v.pit || 0))*k;
-  v.rol = (v.rol || 0) + (clamp(-yawRate*Math.abs(v.vel)*0.011*(heavy(v) ? 1.4 : 1), -0.07, 0.07) - (v.rol || 0))*k;
+  const rolT = v.type === 'moto' ? clamp(yawRate*Math.abs(v.vel)*0.1, -0.7, 0.7) : clamp(-yawRate*Math.abs(v.vel)*0.011*(heavy(v) ? 1.4 : 1), -0.07, 0.07);   // a motorbike leans into the bend
+  v.rol = (v.rol || 0) + (rolT - (v.rol || 0))*k;
   v.stv = v.player && !cfg.auto ? (v.steer || 0) : clamp(-yawRate*wheelbase(v)/Math.max(Math.abs(v.vel), 2), -0.5, 0.5);
 }
 // is there a gap in the guard rail beside the player (around exits, junctions and rest areas, as drawn in siteEdge)?
@@ -2203,7 +2362,7 @@ function lxBounds(v){
 }
 // steering like a real car (bicycle model): the wheel turns gradually, less at speed; the car's heading follows
 // from speed, wheelbase and steering angle, limited by tyre grip; the sideways speed is speed × sin(heading)
-const wheelbase = v => heavy(v) ? 6.2 : v.type === 'damkar' ? 4.6 : v.type === 'angkot' ? 2.4 : v.type === 'suv' || v.type === 'van' ? 2.9 : 2.7;
+const wheelbase = v => v.type === 'moto' ? 1.35 : v.type === 'derek' ? 4.4 : heavy(v) ? 6.2 : v.type === 'damkar' ? 4.6 : v.type === 'angkot' ? 2.4 : v.type === 'suv' || v.type === 'van' ? 2.9 : 2.7;
 function steerPlayer(v, dt){
   let st = (input.left ? 1 : 0) - (input.right ? 1 : 0); const spd = Math.abs(v.vel);
   // Setir otomatis: keeps the car centred in its lane (pedals stay yours); steering by hand picks the new lane
@@ -2247,9 +2406,9 @@ function steerPlayer(v, dt){
       if (ks.i === trip.destIdx) { stats.done = true; v.vel = 0; arrive(ks, le); } else if (!seamlessLeft(v, ks, le)) continueFrom(ks, le); }
   }
 }
-const HW = {pickup:0.95, moto:0.4, car:0.92, suv:0.98, van:1.0, police:0.92, truck:1.25, bus:1.25, angkot:0.85, ambulance:1.0, damkar:1.25};
+const HW = {taxi:0.92, derek:1.15, pickup:0.95, moto:0.4, car:0.92, suv:0.98, van:1.0, police:0.92, truck:1.25, bus:1.25, angkot:0.85, ambulance:1.0, damkar:1.25};
 // masses (kg) for collisions: momentum is shared, a small restitution bounces the cars apart
-const MASS = {pickup: 1750, moto: 220, car: 1300, suv: 1850, van: 2100, police: 1500, bus: 11000, truck: 15000, angkot: 1150, ambulance: 2700, damkar: 13000};
+const MASS = {taxi: 1300, derek: 8000, pickup: 1750, moto: 220, car: 1300, suv: 1850, van: 2100, police: 1500, bus: 11000, truck: 15000, angkot: 1150, ambulance: 2700, damkar: 13000};
 const RESTI = 0.04;
 function impact1D(v1, m1, v2, m2){ const P = m1*v1 + m2*v2, Mt = m1 + m2; return [(P + m2*RESTI*(v2 - v1))/Mt, (P + m1*RESTI*(v1 - v2))/Mt]; }
 function hitAI(o, dv, side){ o.crashT = clock + Math.min(25, 5 + dv*1.2); if (dv > 8) o.spinY = (side || (Math.random() < 0.5 ? 1 : -1))*Math.min(0.3, dv*0.015); }
@@ -2326,12 +2485,13 @@ function payToll(s){
   tone({fs: [1850], type: 'sine', dur: 0.12, gain: 0.07}); tone({fs: [2350], type: 'sine', dur: 0.16, gain: 0.07, at: 0.14});
   if (s.kind === 'ti') { stats.lastPay = rkAt(PLR.sd*PLR.p); toast(`Tap masuk ${nodeLabel(s)}`); return; }
   const rk = rkAt(PLR.sd*PLR.p), km = Math.max(0, rk - stats.lastPay), rp = Math.max(500, Math.round(km*(VEH[cfg.veh] || VEH.car).rate/500)*500);
-  stats.lastPay = rk; stats.toll += rp;
-  toast(`Tap e-Toll ${nodeLabel(s)} · Rp ${rp.toLocaleString('id-ID')}`);
+  stats.lastPay = rk; stats.toll += rp; WAL.etoll -= rp;
+  toast(`Tap e-Toll ${nodeLabel(s)} · Rp ${rp.toLocaleString('id-ID')} · sisa saldo ${rp$(WAL.etoll)}`);
+  if (WAL.etoll < 0) setTimeout(() => toast('Saldo e-Toll minus! Isi ulang di minimarket rest area', 'bad'), 1600);
   if ((s.kind === 't' || s.kind === 'te') && s.i === trip.destIdx) { stats.done = true; setTimeout(() => arrive(s), 1200); }
 }
 function playerRules(dt){
-  const v = PLR; if (!v || v.rp || foot) return;
+  const v = PLR; if (!v || v.rp || foot || tow) return;
   violCd -= dt; crashCd -= dt;
   const lim = Math.min(limitAt(uOfV(v)), postedCap(v.sd, v.p + v.len/2), v.lane < 0 ? 16.7 : 99);
   speedT = Math.abs(v.vel) > lim + 1.4 && !sirenOn(v) ? speedT + dt : 0;
@@ -2635,13 +2795,13 @@ const $ = id => document.getElementById(id);
 const PLACES = placeList();
 let toastT = null;
 function toast(msg, kind=''){ const el = $('toast'); el.textContent = msg; el.className = 'show ' + kind; clearTimeout(toastT); toastT = setTimeout(() => el.className = '', 2600); }
-function hudAuto(){ $('auto').setAttribute('aria-pressed', cfg.auto ? 'true' : 'false'); document.body.classList.toggle('auto', cfg.auto); }
+function hudAuto(){ if (tow || foot) cfg.auto = false; $('auto').setAttribute('aria-pressed', cfg.auto ? 'true' : 'false'); document.body.classList.toggle('auto', cfg.auto); }
 function hudLane(){ const v = PLR; if (!v) return; const n = Math.round(nAvail(v.sd, v.p)), el = $('lanes'); el.innerHTML = '';
   const neg = []; for (const z of CFA) if (z.A === v.sd && Math.abs(v.p - z.o1) < 900) for (let j = z.k; j >= 1; j--) neg.push(-j);
   const all = [...Array.from({length: n}, (_, i) => n - 1 - i), ...neg.sort((a, b) => b - a)];
   for (const l of all) { const d = document.createElement('i'); if (l < 0) d.className = 'cf'; else d.dataset.l = l; if (v.rp ? false : l === v.lane) d.className += ' on'; if (l === v.prefLane) d.className += ' pick'; el.append(d); } }
 let rest = false;
-function setRest(on){ rest = on; $('resume').hidden = !on; if (on) toast('Parkir di rest area. Tekan "Lanjut perjalanan" saat siap.'); }
+function setRest(on){ rest = on; $('resume').hidden = !on; if (on) { toast('Parkir di rest area. Pilih layanan, lalu tekan "Lanjut perjalanan".'); if (!cfg.auto) setTimeout(openSvc, 400); } else $('svc').hidden = true; }
 function nextEvents(){
   const u = uOfV(PLR), out = [];
   for (let i = Math.max(0, evAt(u)); i < EV.length && out.length < 4; i++) { const e = EV[i]; if (e.u < u - 120) continue; if (e.origin || (e.kind === 'n0' && i !== trip.destIdx)) continue;
@@ -2677,7 +2837,7 @@ function updateHud(dt){
   if (v.rp) ins = v.rp.parked ? 'Parkir di rest area' : v.rp.kind === 'x' ? 'Di ramp keluar. Berhenti di gerbang tol.' : v.rp.kind === 'detour' ? 'Pengalihan lewat Jalan Nasional' : 'Di ramp';
   else if (!cfg.auto && v.lx < -0.5 && !(cfAt(v.sd, v.p) && cfAt(v.sd, v.p).A === v.sd)) ins = 'Anda melawan arus!';
   else if (!cfg.auto && v.lx > nAvail(v.sd, v.p) - 1 + 1.3) ins = 'Anda keluar badan jalan';
-  else if (!cfg.auto && v.lx > nAvail(v.sd, v.p) - 1 + 0.5 && !(sa && sa.t > -280)) ins = 'Anda di bahu jalan';
+  else if (!cfg.auto && !tow && v.lx > nAvail(v.sd, v.p) - 1 + 0.5 && !(sa && sa.t > -280)) ins = tow ? '' : 'Anda di bahu jalan';
   else if (sa && sa.s.i === trip.destIdx && sa.s.kind === 'x') ins = sa.t > -270 ? '← Arahkan ke kiri sekarang untuk keluar' : `Exit tujuan ${fmtKm(-(sa.t + 150)/1000*cfg.scale)} lagi. Ambil lajur paling kiri.`;
   else if (sa && sa.s.kind === 'r' && sa.t > -270) ins = '← Arahkan ke kiri sekarang untuk masuk rest area';
   else if (lightAhead(v.sd, v.p + v.len/2) && lightAhead(v.sd, v.p + v.len/2).d < 140) { const la = lightAhead(v.sd, v.p + v.len/2), st = sigMain(la.s);
@@ -3118,6 +3278,7 @@ $('auto').onclick = () => { cfg.auto = !cfg.auto; saveCfg(); hudAuto();
 $('mapb').onclick = () => openAtlas();
 { const hb = $('hornb'); hb.addEventListener('pointerdown', e => { e.preventDefault(); playerHorn(true); hb.setPointerCapture && hb.setPointerCapture(e.pointerId); });
   for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) hb.addEventListener(ev, () => playerHorn(false)); }
+$('svcb').onclick = openSvc; $('svc-close').onclick = () => { $('svc').hidden = true; }; $('towb').onclick = () => callTow();
 $('mirb').onclick = () => { cfg.mirror = cfg.mirror === false; saveCfg(); $('mirb').setAttribute('aria-pressed', cfg.mirror !== false ? 'true' : 'false'); toast(cfg.mirror !== false ? 'Spion menyala (kokpit: spion kiri, tengah, kanan)' : 'Spion dimatikan'); };
 $('mirb').setAttribute('aria-pressed', cfg.mirror !== false ? 'true' : 'false');
 $('fsb').hidden = !fsOK; $('fsb').onclick = toggleFull; $('walkb').onclick = footToggle;
@@ -3137,6 +3298,8 @@ addEventListener('keydown', e => { if (e.key === 'Escape' && !$('atlas').hidden)
   else if (k === 'h' && !e.repeat) $('hudb').click();
   else if (k === 'c' && !e.repeat) $('camb').click();
   else if (k === 'v' && !e.repeat) $('mirb').click();
+  else if (k === 'l' && !e.repeat && !$('svcb').hidden) openSvc();
+  else if (k === 't' && !e.repeat && !$('towb').hidden) callTow();
   else if (k === 'k' && !e.repeat) playerHorn(true);
   else if (k === 'e' && !e.repeat) footToggle();
   else if (k === 'shift') input.run = true;
@@ -3161,9 +3324,9 @@ function legsFor(from, first, dest, prev = null){
   const ban = first ? from : prev, r = findRoute(s0, dest, cfg.mode, ban) || findRoute(s0, dest, cfg.mode) || findRoute(s0, dest, 'mix', ban) || findRoute(s0, dest, 'mix');
   return r ? head.concat(r) : null;
 }
-const MBZ_OK = new Set(['car', 'suv', 'pickup', 'police']);
+const MBZ_OK = new Set(['car', 'suv', 'pickup', 'police', 'taxi']);
 function startDrive({from, first = null, dest = null, legs = null, keepPos = false, cont = false, prev = null, home}){
-  RULES.noMbz = !MBZ_OK.has(cfg.veh || 'car');
+  RULES.noMbz = !MBZ_OK.has(cfg.veh || 'car'); RULES.noToll = cfg.veh === 'moto';     // motorbikes may not use toll roads
   legs = legs || legsFor(from, first, dest, prev);
   const t = legs && legs.length ? tripFromLegs(from, legs, dest, cfg.mode) : null; if (!t) { toast('Rute tidak ditemukan', 'bad'); return false; }
   t.home = home !== undefined ? home : (cont || keepPos) && trip ? trip.home : (dest ? from : null);
@@ -3374,13 +3537,13 @@ try { await Promise.race([document.fonts.load('700 64px Archivo'), new Promise(r
 setRoadStyle(); setView(); setClean(); setTod(null);
 if (cfg.trip === 'free' || cfg.trip === 'santai') startDrive({from: NODES.has(cfg.from) ? cfg.from : DEF.from}); else startTrip(NODES.has(cfg.from) ? cfg.from : DEF.from, NODES.has(cfg.to) ? cfg.to : DEF.to);
 if (!localStorage.getItem('tj_seen')) { try { localStorage.setItem('tj_seen', '1'); } catch(e) {} openPlanner(); }
-window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam, startDrive, setNav, clearNav, chooseAt, replanIdx, openAtlas, closeAtlas, atTap, AT, get chunks(){ return chunks; }, get OBJ(){ return OBJ; }, sutetTower, setHour: h => { gameH = h; todT = 0; lastSign = -1; tickClock(0); }, get gameH(){ return gameH; }, volcanoes, updateVolcanoes, regionAt, latLonAt, get ELV(){ return ELV; }, elU, elevAt, get LMS(){ return LMS; }, updateLandmarks, updateRoadSigns, RSIGNS, FX, footToggle, get foot(){ return foot; }};
+window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam, startDrive, setNav, clearNav, chooseAt, replanIdx, openAtlas, closeAtlas, atTap, AT, get chunks(){ return chunks; }, get OBJ(){ return OBJ; }, sutetTower, setHour: h => { gameH = h; todT = 0; lastSign = -1; tickClock(0); }, get gameH(){ return gameH; }, volcanoes, updateVolcanoes, regionAt, latLonAt, get ELV(){ return ELV; }, elU, elevAt, get LMS(){ return LMS; }, callTow, get tow(){ return tow; }, WAL, openSvc, updateLandmarks, updateRoadSigns, RSIGNS, FX, footToggle, get foot(){ return foot; }};
 
 let last = performance.now(), mapT = 0, frames = 0;
 function tick(dt){
   clock += dt;
   if (PLR && PLR.wantU) { PLR.wantU = false; uTurn(PLR); }
-  stepFoot(dt); sim(dt); rampStep(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt); tickClock(dt);
+  stepFoot(dt); tickNeeds(dt); stepTow(dt); sim(dt); rampStep(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt); tickClock(dt);
   if (PLR) camU = foot ? foot.u : uOfV(PLR);
   ensureAhead();
   setupBlocks(false); updateWorld(true); updateSignals(); animGhosts();
@@ -3393,7 +3556,7 @@ renderer.setAnimationLoop(now => {
   const dt = Math.min(0.05, (now - last)/1000); last = now; frames++;
   if ((!$('plan').hidden && trip && !stats.done) || !$('atlas').hidden) { composer.render(); return; }
   tick(dt);
-  placeGroups(); place(); placeFoot(); updateCam(dt); updateVolcanoes(dt); updateLandmarks(); updateRoadSigns(); updateFx(dt); updateSky(dt); updateSound(); flash(); updateBend(); updateHud(dt);
+  placeGroups(); place(); placeFoot(); placeTow(); updateCam(dt); updateVolcanoes(dt); updateLandmarks(); updateRoadSigns(); updateFx(dt); updateSky(dt); updateSound(); flash(); updateBend(); updateHud(dt);
   mapT -= dt; if (mapT <= 0) { mapT = 0.5; drawMap(); }
   composer.render(); drawMirrors(dt);
 });
