@@ -9,7 +9,7 @@ import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
 import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
 import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
-import {CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, walkFree, choicesAt, edgesFrom, turnDeg, fmtKm, nodeLabel, JAVA, RULES} from './network.js';
+import {CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, walkFree, choicesAt, edgesFrom, turnDeg, fmtKm, nodeLabel, JAVA, MADURA, corrGeo, corrLL, RULES} from './network.js';
 
 const MOBILE = matchMedia('(pointer:coarse)').matches || innerWidth < 700;
 const LW = 3.6, MED = 1.2, CH = 120, OPEN_HW = 35, OVH = 7.5, PRC = 328, BACK = 460, FWD = 720;
@@ -94,7 +94,17 @@ function layoutElev(){ ELV = [];
   for (let i = 0; i < EV.length - 1; i++) { const H = ELEVATED[EV[i].cNext]; if (!H) continue; let a = EV[i].u, b = EV[i + 1].u; const last = ELV[ELV.length - 1];
     if (EV[i].cNext === 'mbz') { const g = mbzGeom(a, b); if (!g) continue; const r = Math.min(300, g.RL - 120); ELV.push([g.uH - r, g.uE + r, H, r]); continue; }   // up on its ramps (see layoutMbz)
     if (last && Math.abs(last[1] - a) < 1 && last[2] === H) last[1] = b; else ELV.push([a, b, H]); }
+  // Jembatan Suramadu: the Madura road crosses the strait on a 12 m deck
+  SEA = null;
+  for (let i = 0; i < EV.length - 1; i++) { const a = EV[i], b = EV[i + 1]; if (a.cNext !== 'madura') continue;
+    const n = CORR.madura.nodes.find(n => n.key === a.key), ka = n ? n.km : a.km, kb = b.km; if (Math.abs(kb - ka) < 0.01) continue;
+    const uOf = km => a.u + (km - ka)/(kb - ka)*(b.u - a.u), p = uOf(SURAMADU[0]), q = uOf(SURAMADU[1]), lo = Math.min(p, q), hi = Math.max(p, q);
+    if (hi > a.u - 1 && lo < b.u + 1 && hi - lo > 200) { SEA = [lo, hi]; ELV.push([lo - 160, hi + 160, 12, 160]); } }
+  ELV.sort((p, q) => p[0] - q[0]);
   for (const q of ELV) if (q[3] == null) q[3] = Math.min(700, (q[1] - q[0])/3); }
+// KM range of the Madura road on the Suramadu bridge (Surabaya at KM 0), and its span in route u when the route crosses it
+const SURAMADU = [4.5, 9.7]; let SEA = null;
+const onSea = u => !!SEA && u > SEA[0] && u < SEA[1];
 function elevAt(u){ let e = 0; for (const [a, b, H, r] of ELV) if (u > a && u < b) e += H*sstep(a, a + r, u)*(1 - sstep(b - r, b, u)); return e; }
 let segT = 0;
 function updateSegs(){
@@ -212,6 +222,27 @@ function signPost(parent, x, z, rot, items, y0=0, sc=1){
 
 // ---------- green guide signs ----------
 const SIGN_GREEN = '#0c6a3c', SIGN_BLUE = '#0d3b7a';
+// pictograms on the road signs: vector icons drawn straight into the sign texture (white tiles with a dark symbol, as on real signs)
+const PICTO = {fuel: 'Fuel', food: 'Utensils', mosque: 'MoonStar', wc: 'Toilet', parking: 'CircleParking', cart: 'ShoppingCart', wrench: 'Wrench', atm: 'Banknote', plug: 'PlugZap',
+  coffee: 'Coffee', toll: 'CreditCard', split: 'Split', city: 'Building2', pin: 'MapPin', car: 'Car', bridge: 'Waves', left: 'ArrowUpLeft', route: 'Route', exit: 'LogOut'};
+const REST_ICONS = ['fuel', 'food', 'mosque', 'wc', 'cart'];
+function drawIcon(x, key, cx, cy, size, col = '#1b1b1b'){
+  const L = window.lucide && window.lucide.icons, node = L && L[PICTO[key] || key]; if (!node) return false;
+  x.save(); x.translate(cx - size/2, cy - size/2); x.scale(size/24, size/24); x.strokeStyle = col; x.lineWidth = 2.1; x.lineCap = x.lineJoin = 'round';
+  for (const [tag, a] of node[2]) { if (tag === 'path') { x.stroke(new Path2D(a.d)); continue; }
+    x.beginPath();
+    if (tag === 'line') { x.moveTo(+a.x1, +a.y1); x.lineTo(+a.x2, +a.y2); }
+    else if (tag === 'circle') x.arc(+a.cx, +a.cy, +a.r, 0, Math.PI*2);
+    else if (tag === 'ellipse') x.ellipse(+a.cx, +a.cy, +a.rx, +a.ry, 0, 0, Math.PI*2);
+    else if (tag === 'rect') x.roundRect(+a.x, +a.y, +a.width, +a.height, +(a.rx || 0));
+    else { const q = String(a.points).trim().split(/[\s,]+/).map(Number); for (let i = 0; i < q.length; i += 2) i ? x.lineTo(q[i], q[i + 1]) : x.moveTo(q[i], q[i + 1]); if (tag === 'polygon') x.closePath(); }
+    x.stroke(); }
+  x.restore(); return true; }
+function iconTile(x, key, x0, y0, S){ if (!(window.lucide && window.lucide.icons)) return 0; x.fillStyle = '#fff'; x.beginPath(); x.roundRect(x0, y0, S, S, S*0.14); x.fill(); drawIcon(x, key, x0 + S/2, y0 + S/2, S*0.7); return S; }
+// a row of tiles ending at xr; returns its width
+function iconRow(x, keys, xr, y0, S){ if (!keys || !keys.length || !(window.lucide && window.lucide.icons)) return 0; const g = S*0.16, w = keys.length*S + (keys.length - 1)*g;
+  keys.forEach((k, i) => iconTile(x, k, xr - w + i*(S + g), y0, S)); return w; }
+const iconFor = t => /rest|spbu/i.test(t) ? 'fuel' : /jct|simpang/i.test(t) ? 'split' : /tol\b|gt |gerbang|exit/i.test(t) ? 'toll' : 'city';
 function canvasTex(w, h, draw){
   const c = document.createElement('canvas'); c.width = 1024; c.height = Math.round(1024*h/w);
   const x = c.getContext('2d'); draw(x, c.width, c.height);
@@ -227,7 +258,8 @@ function arrow(x, cx, cy, len, ang){
 function exitPanel(w, h, name, tag='EXIT', dist='', col=SIGN_GREEN, sub=''){ return canvasTex(w, h, (x, W2, H2) => {
   base(x, W2, H2, col);
   x.fillStyle = '#f2c230'; x.fillRect(48, 44, 190, 78); x.fillStyle = '#111'; fit(x, tag, 160, 56, 800); x.textBaseline = 'middle'; x.fillText(tag, 64, 85);
-  x.fillStyle = '#fff'; x.font = '700 56px Archivo, sans-serif'; if (dist) x.fillText(dist, 262, 85);
+  const iw = iconTile(x, tag === 'JCT' ? 'split' : 'toll', 254, 44, 78);
+  x.fillStyle = '#fff'; x.font = '700 56px Archivo, sans-serif'; if (dist) x.fillText(dist, iw ? 352 : 262, 85);
   arrow(x, 120, H2*0.66, 130, -Math.PI/4);
   if (sub) { fit(x, name, W2 - 270, 88); x.fillText(name, 220, H2*0.58); fit(x, sub, W2 - 270, 52, 600); x.fillText(sub, 220, H2*0.82); }
   else { fit(x, name, W2 - 270, 104); x.fillText(name, 220, H2*0.68); }
@@ -236,16 +268,22 @@ function destPanel(w, h, lines){ return canvasTex(w, h, (x, W2, H2) => {
   base(x, W2, H2); x.fillStyle = '#fff'; x.textBaseline = 'middle';
   arrow(x, 110, H2/2, 170, 0);
   const lh = (H2 - 80) / lines.length;
-  lines.forEach((t, i) => { fit(x, t, W2 - 250, 100); x.fillText(t, 200, 40 + lh*(i+0.5)); });
+  lines.forEach((t, i) => { const y = 40 + lh*(i+0.5), S = Math.min(lh*0.72, 96), iw = iconTile(x, iconFor(t), 196, y - S/2, S), tx = iw ? 196 + S + 26 : 200;
+    x.fillStyle = '#fff'; fit(x, t, W2 - tx - 50, 100); x.fillText(t, tx, y); });
 }); }
 function boardPanel(w, h, rows, col=SIGN_GREEN){ return canvasTex(w, h, (x, W2, H2) => {
   base(x, W2, H2, col); x.fillStyle = '#fff'; x.textBaseline = 'middle';
   const lh = (H2 - 80) / rows.length;
   rows.forEach(([t, d], i) => { const y = 40 + lh*(i+0.5); x.textAlign = 'right'; x.font = '700 84px Archivo, sans-serif'; x.fillText(d, W2 - 56, y);
-    x.textAlign = 'left'; fit(x, t, W2 - 400, 84); x.fillText(t, 56, y); });
+    const S = Math.min(lh*0.7, 86), iw = iconTile(x, iconFor(t), 52, y - S/2, S), tx = iw ? 52 + S + 22 : 56;
+    x.fillStyle = '#fff'; x.textAlign = 'left'; fit(x, t, W2 - 344 - (tx - 56), 84); x.fillText(t, tx, y); });
 }); }
-function textPanel(w, h, bg, l1, l2){ return canvasTex(w, h, (x, W2, H2) => { x.fillStyle = bg; x.fillRect(0,0,W2,H2); x.strokeStyle = '#fff'; x.lineWidth = 10; x.strokeRect(16,16,W2-32,H2-32); x.fillStyle = '#fff'; x.textBaseline = 'middle';
-  if (l2) { fit(x, l1, W2-100, H2*0.32, 800); x.fillText(l1, 50, H2*0.38); fit(x, l2, W2-100, H2*0.18, 600); x.fillText(l2, 50, H2*0.72); } else { fit(x, l1, W2-100, H2*0.5, 800); x.fillText(l1, 50, H2/2); } }); }
+function textPanel(w, h, bg, l1, l2, icons = null){ return canvasTex(w, h, (x, W2, H2) => { x.fillStyle = bg; x.fillRect(0,0,W2,H2); x.strokeStyle = '#fff'; x.lineWidth = 10; x.strokeRect(16,16,W2-32,H2-32); x.textBaseline = 'middle';
+  // with a second line the icons get a row of their own between the two lines
+  if (l2 && icons && icons.length && H2 > 300) { const S = Math.min(H2*0.26, 150); iconRow(x, icons, 50 + Math.min(W2 - 100, icons.length*S*1.16), H2*0.53 - S/2, S); x.fillStyle = '#fff';
+    fit(x, l1, W2 - 100, H2*0.24, 800); x.fillText(l1, 50, H2*0.22); fit(x, l2, W2 - 100, H2*0.13, 600); x.fillText(l2, 50, H2*0.83); return; }
+  const S = l2 ? Math.min(H2*0.3, 130) : H2*0.62, iw = iconRow(x, icons, W2 - 46, l2 ? H2*0.38 - S/2 : (H2 - S)/2, S), room = W2 - 100 - (iw ? iw + 30 : 0); x.fillStyle = '#fff';
+  if (l2) { fit(x, l1, room, H2*0.32, 800); x.fillText(l1, 50, H2*0.38); fit(x, l2, W2-100, H2*0.18, 600); x.fillText(l2, 50, H2*0.72); } else { fit(x, l1, room, H2*0.5, 800); x.fillText(l1, 50, H2/2); } }); }
 function panelMesh(w, h, tex){
   const g = new THREE.Group();
   g.add(solid(w+0.1, h+0.1, 0.12, signBackMat, 0, 0, -0.08));
@@ -695,12 +733,37 @@ const roofGeo = new THREE.ConeGeometry(4.6, 2.4, 4); roofGeo.rotateY(Math.PI/4);
 const unitBox = new THREE.BoxGeometry(1, 1, 1); unitBox.userData.keep = true;
 function ubox(mat, x, y, z, w, h, d){ const m = new THREE.Mesh(unitBox, mat); m.scale.set(w, h, d); m.position.set(x, y, z); m.castShadow = m.receiveShadow = true; return m; }
 const townNear = (u, r = TOWN_R) => KSITES.find(t => Math.abs(t.u - u) < r);
+// Jembatan Suramadu: sea on both sides, the deck on piers, parapets and lamps, and the cable-stayed main span with its two pylons
+const seaMat = M(0x3d6f84, {roughness: 0.3, metalness: 0.1}); seaMat.userData.terrain = true;
+const cableMat = new THREE.LineBasicMaterial({color: 0xd8dde0});
+function suramaduBridge(g, u0, u1, Z){
+  const [s0, s1] = SEA, a = Math.max(u0, s0), b = Math.min(u1, s1), e = eAt((u0 + u1)/2);
+  if (b - a > 0.5) g.add(flat(6000, b - a, seaMat, 0, 0.05, Z((a + b)/2)));
+  const p = Math.max(u0, s0 - 160), q = Math.min(u1, s1 + 160); if (q - p < 0.5) return;
+  g.add(solid(2*(e + 3.0), 1.2, q - p, concrete, 0, -0.7, Z((p + q)/2)));
+  for (const sx of [-1, 1]) g.add(solid(0.35, 1.1, q - p, barMat, sx*(e + 2.8), 0.55, Z((p + q)/2)));
+  for (let u = Math.ceil(p/50)*50; u < q; u += 50) { const h = elevAt(u); if (h < 2) continue;
+    for (const sx of [-1, 1]) { const m = new THREE.Mesh(viaPierGeo, concrete); m.position.set(sx*(e - 1), -h/2 - 0.6, Z(u)); m.scale.set(0.9, h, 0.9); g.add(m); }
+    g.add(solid(2*e + 4, 1.0, 2, concrete, 0, -1.6, Z(u))); }
+  const lp = []; for (let u = Math.ceil(p/40)*40 + 20; u < q; u += 40) for (const sx of [-1, 1]) lp.push([sx*(e + 2.75), Z(u)]);
+  g.add(instanced(sPoleGeo, lampMat, lp), instanced(headGeo, lampHeadMat, lp.map(([x, z]) => [x - Math.sign(x)*0.9, z]), 7.9));
+  // main span: two H pylons 434 m apart in the middle of the strait, stay cables fanning down to the deck
+  const mid = (s0 + s1)/2, H = 120, pts = [];
+  for (const pu of [mid - 217, mid + 217]) { if (pu < u0 - 260 || pu > u1 + 260) continue;
+    if (pu >= u0 && pu < u1) { for (const sx of [-1, 1]) g.add(solid(2.6, H + elevAt(pu), 3.2, concrete, sx*(e + 4.4), (H - elevAt(pu))/2, Z(pu)));
+      for (const y of [-2, 40, H - 4]) g.add(solid(2*(e + 4.4), 2.2, 2.6, concrete, 0, y, Z(pu))); }
+    for (let d = -200; d <= 200; d += 20) { if (Math.abs(d) < 15) continue; const ud = pu + d; if (ud < u0 || ud > u1) continue;
+      const top = H - 8 + Math.abs(d)/200*6; for (const sx of [-1, 1]) pts.push(sx*(e + 4.4), top, Z(pu), sx*(e + 2.9), 1.2, Z(ud)); } }
+  if (pts.length) { const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)); g.add(new THREE.LineSegments(geo, cableMat)); }
+}
 function buildChunkNat(i){
   const u0 = i*CH, u1 = u0 + CH, g = new THREE.Group(), R = rng(i*7919 + 29);
   g.userData.u0 = u0; const Z = u => -(u - u0);
   const us = []; for (let u = u0; u <= u1 + 0.01; u += 10) us.push(u);
   const divided = nAt(u0 + CH/2) >= 1.5, town = townNear(u0 + CH/2, TOWN_R + 80);
   const xGap = u => KSITES.some(t => Math.abs(t.u - u) < XW/2 + 9);
+  const sea = SEA && u1 > SEA[0] - 200 && u0 < SEA[1] + 200;    // the Suramadu bridge and its approaches: no land use here
+  if (sea) suramaduBridge(g, u0, u1, Z);
   for (const s of [-1, 1]) {
     g.add(strip(us, u => s*(MED - 0.05), u => s*(eAt(u) + 0.8), 0, asphalt, Z));
     g.add(strip(us, u => s*(eAt(u) + 0.8), u => s*(eAt(u) + (town ? 5 : 2.6)), 0.004, town ? curbMat : shoulderMat, Z));
@@ -710,6 +773,7 @@ function buildChunkNat(i){
     const ku = u0 + 60;
     if (EV.length && !xGap(ku)) { const p = panelMesh(0.5, 0.7, kmPostTex(kmAt(ku).toFixed(1).replace('.', ','))); p.position.set(s*(eAt(ku) + 3.2), 1.1, Z(ku)); p.rotation.y = s < 0 ? 0 : Math.PI; g.add(p);
       addSolid(g, 'Menabrak patok KM', ku - 0.3, ku + 0.3, s*(eAt(ku) + 3.2) - 0.3, s*(eAt(ku) + 3.2) + 0.3); }
+    if (sea) continue;
     if (town) {
       // shophouses (ruko) with coloured awnings, gaps for side streets
       let u = u0 + R()*4;
@@ -739,7 +803,7 @@ function buildChunkNat(i){
     g.add(instanced(uPoleGeo, uPoleMat, pp), instanced(uBarGeo, uBarMat, pp), instanced(insGeo, insMat, pp.flatMap(([x, z]) => [[x - 0.7, z], [x + 0.7, z]]), 8.5));
     g.add(wireMesh(wires, distWireMat));
   }
-  addSutet(g, u0, u1, Z);
+  if (!sea) addSutet(g, u0, u1, Z);
   if (divided) {
     g.add(solid(2*MED - 0.4, 0.25, CH, curbMat, 0, 0.125, -CH/2));
     const sp = []; for (let u = Math.ceil(u0/6)*6; u < u1; u += 6) if (!xGap(u)) sp.push([0, Z(u)]);
@@ -749,7 +813,7 @@ function buildChunkNat(i){
     for (const o of [-0.18, 0.18]) g.add(strip(us, u => o - 0.06, u => o + 0.06, 0.012, yellowLine, Z));
   }
   const per = MOBILE ? 7 : 12, pts = [];
-  for (let k = 0; k < per*2; k++) { const s = k % 2 ? 1 : -1, u = u0 + R()*CH, o = (town ? 24 : 40) + R()*260; if (rampFoot(o, u, 6)) continue;
+  for (let k = 0; k < (sea ? 0 : per*2); k++) { const s = k % 2 ? 1 : -1, u = u0 + R()*CH, o = (town ? 24 : 40) + R()*260; if (rampFoot(o, u, 6)) continue;
     pts.push({x: s*(eAt(u) + o), z: Z(u), k: 0.7 + R()*0.8, h: 0.85 + R()*0.4, r: R()*6.28}); }
   const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, Math.max(1, pts.length)), blobs = new THREE.InstancedMesh(blobGeo, blobMat, Math.max(1, pts.length));
   const q = new THREE.Quaternion(), sc = new THREE.Vector3(), pv = new THREE.Vector3(), upv = new THREE.Vector3(0,1,0);
@@ -989,6 +1053,7 @@ function layoutLandmarks(){
       const k = Math.cos(a.lat*Math.PI/180), ax = 0, ay = 0, bx = (b.lon - a.lon)*111*k, by = (b.lat - a.lat)*111, px = (lon - a.lon)*111*k, py = (lat - a.lat)*111;
       const L2 = bx*bx + by*by; if (L2 < 1e-6) continue; const f = clamp((px*bx + py*by)/L2, 0, 1), d = Math.hypot(px - f*bx, py - f*by);
       if (d < best) { best = d; bu = a.u + f*(b.u - a.u); bs = bx*py - by*px > 0 ? -1 : 1; } }
+    if (kind === 'suramadu' && SEA) best = Infinity;     // driving over it: the bridge itself is drawn
     if (best < 9) { const rad = {monas: 26, borobudur: 64, prambanan: 56, suramadu: 30, sate: 48, sewu: 58, palace: 40, kapal: 40, mosque: (l.o.dome || 30)*1.7}[kind] || 15; l.u = bu; l.side = bs; l.off = clamp(70 + best*70, rad + 45, 640); l.km = best; l.told = false; } }
 }
 function updateLandmarks(){
@@ -1009,9 +1074,10 @@ function provinceAt(lat, lon){
   if ((lat < -7.3 && lon > 111.15) || lon > 111.65) return 'Jawa Timur';
   return 'Jawa Tengah';
 }
-function bigBoard(w, h, bg, lines, fg = '#fff'){ return canvasTex(w, h, (x, W2, H2) => { x.fillStyle = bg; x.fillRect(0, 0, W2, H2); x.strokeStyle = fg; x.lineWidth = 12; x.strokeRect(18, 18, W2 - 36, H2 - 36);
+function bigBoard(w, h, bg, lines, fg = '#fff', icon = null){ return canvasTex(w, h, (x, W2, H2) => { x.fillStyle = bg; x.fillRect(0, 0, W2, H2); x.strokeStyle = fg; x.lineWidth = 12; x.strokeRect(18, 18, W2 - 36, H2 - 36);
+  const S = Math.min(H2*0.5, 230), iw = icon ? iconTile(x, icon, 60, (H2 - S)/2, S) : 0, cx = iw ? (W2 + iw + 60)/2 : W2/2, room = W2 - 120 - (iw ? iw + 40 : 0);
   x.fillStyle = fg; x.textAlign = 'center'; x.textBaseline = 'middle'; const n = lines.length;
-  lines.forEach(([t, k], i) => { fit(x, t, W2 - 120, H2*(k || 0.2), k > 0.24 ? 800 : 600); x.fillText(t, W2/2, H2*(i + 0.5)/n + (i - (n - 1)/2)*4); }); }); }
+  lines.forEach(([t, k], i) => { fit(x, t, room, H2*(k || 0.2), k > 0.24 ? 800 : 600); x.fillText(t, cx, H2*(i + 0.5)/n + (i - (n - 1)/2)*4); }); x.textAlign = 'left'; }); }
 let rsEV = null; const RSIGNS = [];
 function layoutRoadSigns(){
   rsEV = EV; for (const r of RSIGNS) if (r.g) { scene.remove(r.g); r.g.traverse(o => { if (o.material && o.material.userData.own) { o.material.map && o.material.map.dispose(); o.material.dispose(); } }); } RSIGNS.length = 0;
@@ -1020,26 +1086,28 @@ function layoutRoadSigns(){
     // province border: bisect the segment where the province changes
     const pa = provinceAt(a.lat, a.lon), pb = provinceAt(b.lat, b.lon);
     if (pa !== pb) { let lo = a.u, hi = b.u; for (let k = 0; k < 18; k++) { const m = (lo + hi)/2; if (prov(m) === pa) lo = m; else hi = m; }
-      RSIGNS.push({u: hi + 40, side: 1, lines: [['SELAMAT DATANG DI', 0.16], ['PROVINSI', 0.16], [pb.toUpperCase(), 0.3]], bg: SIGN_BLUE, w: 8, h: 3.6});
-      RSIGNS.push({u: hi - 40, side: -1, lines: [['SELAMAT DATANG DI', 0.16], ['PROVINSI', 0.16], [pa.toUpperCase(), 0.3]], bg: SIGN_BLUE, w: 8, h: 3.6});
+      RSIGNS.push({u: hi + 40, side: 1, lines: [['SELAMAT DATANG DI', 0.16], ['PROVINSI', 0.16], [pb.toUpperCase(), 0.3]], bg: SIGN_BLUE, w: 8, h: 3.6, icon: 'pin'});
+      RSIGNS.push({u: hi - 40, side: -1, lines: [['SELAMAT DATANG DI', 0.16], ['PROVINSI', 0.16], [pa.toUpperCase(), 0.3]], bg: SIGN_BLUE, w: 8, h: 3.6, icon: 'pin'});
       RSIGNS.push({u: hi, side: 1, small: true, lines: [['BATAS PROVINSI', 0.3], [`${pa} | ${pb}`, 0.22]], bg: '#f4f4f0', fg: '#111', w: 4.2, h: 1.8}); }
     // start of a toll road: after the gate, or after joining it at a junction
     const cN = CORR[a.cNext], cP = CORR[a.c]; if (!cN || cN.cls !== 't') continue;
     if (i === 0 || !cP || cP.cls !== 't' || a.c !== a.cNext) {
       const mbz = a.cNext === 'mbz', lines = [['SELAMAT DATANG DI', 0.15], ['JALAN TOL', 0.17], [cN.name.replace(/^Tol\s+/i, '').toUpperCase(), 0.26]];
       if (mbz) lines.push(['Khusus Gol I: sedan, SUV, pickup · Bus & truk dilarang', 0.12]);
-      if (!mbz) RSIGNS.push({u: a.u + (a.kind === 'j' ? 430 : 260), side: 1, lines, bg: SIGN_GREEN, w: 8.4, h: 3.6}); } }
+      if (!mbz) RSIGNS.push({u: a.u + (a.kind === 'j' ? 430 : 260), side: 1, lines, bg: SIGN_GREEN, w: 8.4, h: 3.6, icon: 'car'}); } }
+  if (SEA) { RSIGNS.push({u: SEA[0] - 260, side: 1, lines: [['JEMBATAN SURAMADU', 0.24], ['Surabaya – Madura · 5,4 km', 0.16]], bg: SIGN_GREEN, w: 8, h: 3, icon: 'bridge'});
+    RSIGNS.push({u: SEA[1] + 260, side: -1, lines: [['JEMBATAN SURAMADU', 0.24], ['Madura – Surabaya · 5,4 km', 0.16]], bg: SIGN_GREEN, w: 8, h: 3, icon: 'bridge'}); }
   // MBZ: an overhead sign over the two right lanes before the fork on Japek, a welcome gantry on the MBZ itself
   const G = MBZG; if (G && (G.si >= 0 || G.frame === 'mbz')) {
-    RSIGNS.push({u: G.F - 350, side: 1, lines: [['TOL LAYANG MBZ', 0.28], ['← Lajur kiri · 350 m', 0.17], ['Khusus Gol I: sedan, SUV, pickup', 0.13]], bg: SIGN_GREEN, w: 8, h: 3.6});
-    if (G.frame === 'mbz') RSIGNS.push({u: G.uH + 80, side: 1, lines: [['SELAMAT DATANG DI', 0.15], ['TOL LAYANG MBZ', 0.28], ['Khusus Gol I: sedan, SUV, pickup', 0.14]], bg: SIGN_GREEN, w: 6.6, h: 3.2}); }
+    RSIGNS.push({u: G.F - 350, side: 1, lines: [['TOL LAYANG MBZ', 0.28], ['← Lajur kiri · 350 m', 0.17], ['Khusus Gol I: sedan, SUV, pickup', 0.13]], bg: SIGN_GREEN, w: 8, h: 3.6, icon: 'left'});
+    if (G.frame === 'mbz') RSIGNS.push({u: G.uH + 80, side: 1, lines: [['SELAMAT DATANG DI', 0.15], ['TOL LAYANG MBZ', 0.28], ['Khusus Gol I: sedan, SUV, pickup', 0.14]], bg: SIGN_GREEN, icon: 'car', w: 6.6, h: 3.2}); }
 }
 function updateRoadSigns(){
   if (!EV.length) return; if (rsEV !== EV) layoutRoadSigns();
   for (const r of RSIGNS) { const z = camU - r.u, vis = Math.abs(z) < 700;
     // beside the MBZ (Japek right next to it) a sign hangs over the MBZ's lanes from a gantry on the median and the parapet
     if (vis && !r.g && !r.posts && mbzSide(r.u)) { r.posts = [0.75, MED + 2*LW + 0.15]; r.w = Math.min(r.w, 6.6); }
-    if (vis && !r.g) { r.g = new THREE.Group(); const ov = !!r.posts, top = ov ? 7.2 : r.small ? 2.6 : 5.6, b = panelMesh(r.w, r.h, bigBoard(r.w, r.h, r.bg, r.lines, r.fg)); b.position.set(ov ? -(MED + LW) : 0, top, 0); r.g.add(b);
+    if (vis && !r.g) { r.g = new THREE.Group(); const ov = !!r.posts, top = ov ? 7.2 : r.small ? 2.6 : 5.6, b = panelMesh(r.w, r.h, bigBoard(r.w, r.h, r.bg, r.lines, r.fg, r.icon || (r.small ? null : 'pin'))); b.position.set(ov ? -(MED + LW) : 0, top, 0); r.g.add(b);
       if (ov) { const [p0, p1] = r.posts; for (const px of r.posts) r.g.add(solid(0.3, top + 0.3, 0.3, signBackMat, -px, (top + 0.3)/2, -0.3));
         r.g.add(solid(p1 - p0, 0.35, 0.35, signBackMat, -(p0 + p1)/2, top, -0.3)); }
       else for (const dx of r.small ? [0] : [-r.w*0.32, r.w*0.32]) r.g.add(solid(0.2, top - r.h/2 + 0.1, 0.2, signBackMat, dx, (top - r.h/2)/2, -0.15));
@@ -1460,7 +1528,7 @@ const boothMat = M(0xe4e9ec);
 function stemPlaza(g, e, name){ const x = e + GATE_O;
   g.add(flat(36, 17, asphaltDS, x, -0.004, 0), solid(8, 0.6, 17, M(0xf2f2f2), x, 5.8, 0), solid(8.2, 0.6, 17.2, M(0x0c6a3c), x, 6.4, 0));
   for (const du of [-7.9, -3.8, 0, 3.8, 7.9]) g.add(solid(3.2, 2.6, 1.3, boothMat, x, 1.3, du), solid(0.3, 4.4, 0.3, concrete, x, 3.8, du));
-  for (const sd of [1, -1]) { const p = panelMesh(7.6, 1.2, textPanel(7.6, 1.2, SIGN_GREEN, 'GT ' + name.toUpperCase())); p.position.set(x + sd*4.15, 6.1, 0); p.rotation.y = sd*Math.PI/2; g.add(p); }
+  for (const sd of [1, -1]) { const p = panelMesh(7.6, 1.2, textPanel(7.6, 1.2, SIGN_GREEN, 'GT ' + name.toUpperCase(), '', ['toll'])); p.position.set(x + sd*4.15, 6.1, 0); p.rotation.y = sd*Math.PI/2; g.add(p); }
   const et = [SP(20), PL(['Siapkan', 'kartu e-Toll'], '#fff', '#111', 1.3, 0.55)];
   signPost(g, e + GATE_O - 30, -5.6, -Math.PI/2, et); signPost(g, e + GATE_O + 30, 5.6, Math.PI/2, et); }
 function restArea(g, e){ const ex = o => e + o, th = Math.atan2(6, 7), z = u => u - SC;
@@ -1475,7 +1543,8 @@ function restArea(g, e){ const ex = o => e + o, th = Math.atan2(6, 7), z = u => 
   for (const dx of [-3.5, 3.5]) for (const dz of [-5, 5]) g.add(solid(0.35, 5.2, 0.35, M(0xf4f4f4), ex(66)+dx, 2.6, z(222+dz)));
   for (const dz of [-4, 4]) g.add(solid(0.8, 1.6, 1.4, M(0xd0202a), ex(66), 0.8, z(222+dz)));
   // more services: minimarket, coffee kiosk, toilets, ATM, workshop, EV chargers, each with its own sign
-  const lbl = (txt, bg, x, y, zz, w2 = 5) => { const q = panelMesh(w2, 0.9, textPanel(w2, 0.9, bg, txt)); q.position.set(x, y, zz); q.rotation.y = -Math.PI/2; g.add(q); };
+  const LBLI = {MINIMARKET: 'cart', 'FOOD COURT': 'food', MUSALA: 'mosque', KOPI: 'coffee', TOILET: 'wc', ATM: 'atm', BENGKEL: 'wrench', SPKLU: 'plug'};
+  const lbl = (txt, bg, x, y, zz, w2 = 5) => { const q = panelMesh(w2 + 0.9, 0.9, textPanel(w2 + 0.9, 0.9, bg, txt, '', [LBLI[txt]])); q.position.set(x, y, zz); q.rotation.y = -Math.PI/2; g.add(q); };
   g.add(solid(12, 3.8, 13, M(0xf4f4f2), ex(66), 1.9, z(194)), solid(12.4, 0.5, 13.4, M(0x1f5fbf), ex(66), 4.0, z(194)), solid(0.1, 2.2, 10, glassMat, ex(59.95), 1.4, z(194)));
   lbl('MINIMARKET', '#1f5fbf', ex(59.8), 3.2, z(194)); lbl('FOOD COURT', '#9a3b2a', ex(59.8), 3.6, z(168), 6); lbl('MUSALA', '#2f7a55', ex(62.4), 3.4, z(140), 4);
   g.add(solid(5, 3, 4, M(0x6b4a2e), ex(58), 1.5, z(150)), solid(5.6, 0.3, 4.6, M(0x3a2a1c), ex(58), 3.1, z(150))); lbl('KOPI', '#3a2a1c', ex(55.4), 2.4, z(150), 3);
@@ -1485,7 +1554,7 @@ function restArea(g, e){ const ex = o => e + o, th = Math.atan2(6, 7), z = u => 
   lbl('BENGKEL', '#c8341f', ex(62.8), 4.0, z(252), 4.4);
   for (const dz of [-3, 0, 3]) g.add(solid(0.6, 1.6, 0.4, M(0x1e8a4a), ex(52), 0.8, z(236 + dz)), solid(0.62, 0.3, 0.42, M(0xf2f2f2), ex(52), 1.75, z(236 + dz)));
   lbl('SPKLU', '#1e8a4a', ex(51.6), 2.6, z(236), 2.6);
-  const p = panelMesh(6.4, 3.6, textPanel(6.4, 3.6, SIGN_BLUE, 'REST AREA', 'SPBU · Musala · Kuliner · Minimarket · Bengkel · ATM · SPKLU · Toilet')); p.position.set(ex(18), 6.5, z(128)); p.rotation.y = Math.PI;
+  const p = panelMesh(6.4, 3.6, textPanel(6.4, 3.6, SIGN_BLUE, 'REST AREA', 'SPBU · Musala · Kuliner · Minimarket · Bengkel · ATM · SPKLU · Toilet', REST_ICONS)); p.position.set(ex(18), 6.5, z(128)); p.rotation.y = Math.PI;
   g.add(p, solid(0.4, 5, 0.4, signBackMat, ex(18), 2.5, z(128.4))); }
 
 // events seen ahead from event i, travelling on side sd
@@ -1511,10 +1580,10 @@ function siteSigns(g, s, sd, e){
   const roadW = e + 3, rot = Math.PI, i = s.i;
   const kind = s.kind, half = (e - MED)/2, pw = Math.max(5, half - 0.6), ph = 3.2;
   // advance board 500 m
-  const adv = kind === 'r' ? textPanel(5, 2.6, SIGN_BLUE, 'REST AREA', `${nodeLabel(s).replace('Rest Area ', '')} · 500 m`)
+  const adv = kind === 'r' ? textPanel(5, 2.6, SIGN_BLUE, 'REST AREA', `${nodeLabel(s).replace('Rest Area ', '')} · 500 m`, ['fuel', 'food', 'wc'])
     : kind === 'j' ? exitPanel(5.6, 3.2, jctTargets(s, sd).name, 'JCT', '1 km', SIGN_GREEN, jctTargets(s, sd).sub)
     : kind === 'x' ? exitPanel(5.6, 3.2, s.name, 'EXIT', '500 m')
-    : textPanel(5.6, 2.6, SIGN_GREEN, nodeLabel(s).toUpperCase(), '500 m · Siapkan kartu e-Toll');
+    : textPanel(5.6, 2.6, SIGN_GREEN, nodeLabel(s).toUpperCase(), '500 m · Siapkan kartu e-Toll', ['toll']);
   const ab = panelMesh(kind === 'r' ? 5 : 5.6, kind === 'r' ? 2.6 : (kind === 'j' || kind === 'x') ? 3.2 : 2.6, adv);
   ab.position.set(roadW + 3, 4.4, -640); ab.rotation.y = rot; g.add(ab);
   for (const dx of [-2, 2]) g.add(solid(0.18, 4.6, 0.18, signBackMat, roadW + 3 + dx, 2.3, -639.85));
@@ -1531,7 +1600,7 @@ function siteSigns(g, s, sd, e){
   for (const x of [0.75, roadW + 0.6]) g.add(solid(0.35, 9, 0.35, signBackMat, x, 4.5, gz));
   g.add(solid(roadW - 0.15, 0.3, 0.3, signBackMat, 0.75 + (roadW - 0.15)/2, 8.9, gz));
   const t = jctTargets(s, sd);
-  const exTex = kind === 'r' ? textPanel(pw, ph, SIGN_BLUE, 'REST AREA', 'SPBU · Musala · Kuliner')
+  const exTex = kind === 'r' ? textPanel(pw, ph, SIGN_BLUE, 'REST AREA', 'SPBU · Musala · Kuliner', ['fuel', 'food', 'mosque'])
     : kind === 'j' ? exitPanel(pw, ph, t.name, 'JCT', '', SIGN_GREEN, t.sub) : exitPanel(pw, ph, s.name, 'EXIT', '');
   const cs = citiesAhead(i, sd), dl = cs.map(c => c.e.city); if (!dl.length) dl.push('Akhir rute');
   // through lanes at a junction: name the toll road the carriageway continues as
@@ -1605,7 +1674,7 @@ function intersection(s, e){
 }
 function townSigns(g, s, sd, e){
   const roadW = e + 2, rot = Math.PI, cs = citiesAhead(s.i, sd, 1), side = crossNames(s);
-  const wel = panelMesh(5, 2.2, textPanel(5, 2.2, SIGN_GREEN, 'SELAMAT DATANG', `di ${s.name}`)); wel.position.set(roadW + 3.5, 3.6, -TOWN_R + 10); wel.rotation.y = rot; g.add(wel);
+  const wel = panelMesh(5, 2.2, textPanel(5, 2.2, SIGN_GREEN, 'SELAMAT DATANG', `di ${s.name}`, ['city'])); wel.position.set(roadW + 3.5, 3.6, -TOWN_R + 10); wel.rotation.y = rot; g.add(wel);
   for (const dx of [-2, 2]) g.add(solid(0.16, 3.8, 0.16, signBackMat, roadW + 3.5 + dx, 1.9, -TOWN_R + 10.15));
   signPost(g, roadW + 1.5, -TOWN_R, rot, [SP(50)], 0, 1.3);
   const rows = [[0, cs[0] ? cs[0].e.city : 'Pusat Kota']]; if (side[0]) rows.push([-Math.PI/2, side[0]]); if (side[1]) rows.push([Math.PI/2, side[1]]);
@@ -1677,7 +1746,7 @@ function flyover(s, e){ const g = worldGroup(s.u), H = DECK_H, dw = 25.2, W2 = 2
   for (const sx of [-1, 1]) for (const zz of [-7.5, 7.5]) { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.85,0.85,H - 1.7,12), concrete); c.position.set(sx*(e + 6.5), (H - 1.7)/2, zz); c.castShadow = true; g.add(c); }
   for (const sx of [-1, 1]) g.add(solid(2, 1.2, dw - 2, concrete, sx*(e + 6.5), H - 1.6, 0));
   const t = jctTargets(s);
-  for (const sd of [1, -1]) { const p = panelMesh((e - MED)*0.85, 2.4, textPanel((e - MED)*0.85, 2.4, SIGN_GREEN, nodeLabel(s), t.name !== nodeLabel(s) ? t.name : ''));
+  for (const sd of [1, -1]) { const p = panelMesh((e - MED)*0.85, 2.4, textPanel((e - MED)*0.85, 2.4, SIGN_GREEN, nodeLabel(s), t.name !== nodeLabel(s) ? t.name : '', ['toll']));
     p.position.set(-sd*(MED + (e - MED)/2), H - 0.2, sd*(dw/2 + 0.25)); p.rotation.y = sd > 0 ? 0 : Math.PI; g.add(p); }
   // through traffic on the crossing toll road
   g.userData.fly = [];
@@ -1687,7 +1756,7 @@ function flyover(s, e){ const g = worldGroup(s.u), H = DECK_H, dw = 25.2, W2 = 2
   return g; }
 function mainPlaza(s, e){ const g = worldGroup(s.u), wTot = 2*(e + 3);
   g.add(solid(wTot, 0.7, 14, M(0xf2f2f2), 0, 6.2, 0), solid(wTot + 0.2, 0.6, 14.2, M(0x0c6a3c), 0, 6.85, 0));
-  for (const sd of [1, -1]) { const p = panelMesh(Math.min(wTot*0.6, 22), 1.5, textPanel(Math.min(wTot*0.6, 22), 1.5, SIGN_GREEN, nodeLabel(s).toUpperCase()));
+  for (const sd of [1, -1]) { const p = panelMesh(Math.min(wTot*0.6, 22), 1.5, textPanel(Math.min(wTot*0.6, 22), 1.5, SIGN_GREEN, nodeLabel(s).toUpperCase(), '', ['toll']));
     p.position.set(0, 6.6, sd*7.2); p.rotation.y = sd > 0 ? 0 : Math.PI; g.add(p); }
   const n = Math.round((e - MED)/LW);
   for (const s2 of [-1, 1]) {
@@ -2445,8 +2514,11 @@ function mpPlace(){
     if (p.tag) p.tag.rotation.y = Math.atan2(camera.position.x - p.v.g.position.x, camera.position.z - p.v.g.position.z) - p.v.g.rotation.y;
     if (p.audio) p.audio.volume = clamp(1 - Math.abs(z)/900, 0.3, 1); }
 }
-function mpDrawMap(x, P){ if (!mp.on) return; x.font = '600 10px Archivo, sans-serif';
-  for (const p of mp.peers.values()) { if (!p.st) continue; const [a, b] = P(p.st.lat, p.st.lon); x.fillStyle = '#1f5fbf'; x.strokeStyle = '#fff'; x.lineWidth = 2; x.beginPath(); x.arc(a, b, 4, 0, Math.PI*2); x.fill(); x.stroke(); x.fillStyle = '#1f5fbf'; x.fillText(p.name, a + 6, b + 3); } }
+function mpDrawMap(x, P, big = false){ if (!mp.on) return; x.font = `${big ? 700 : 600} ${big ? 12 : 10}px Archivo, sans-serif`; x.textBaseline = 'alphabetic';
+  for (const p of mp.peers.values()) { if (!p.st || p.st.lat == null) continue; const [a, b] = P(p.st.lat, p.st.lon), r = big ? 6 : 4;
+    x.fillStyle = '#1f5fbf'; x.strokeStyle = '#fff'; x.lineWidth = 2; x.beginPath(); x.arc(a, b, r, 0, Math.PI*2); x.fill(); x.stroke();
+    if (big) { x.lineWidth = 3; x.strokeStyle = 'rgba(244,241,234,0.92)'; x.strokeText(p.name, a + r + 3, b + 4); }
+    x.fillStyle = '#1f5fbf'; x.fillText(p.name, a + r + 3, b + 4); } }
 function mpSay(text){ text = String(text).trim().slice(0, 200); if (!text || !mp.ready) return; if (clock - mp.chatT < 0.7) { toast('Tunggu sebentar sebelum mengirim lagi', 'warn'); return; } mp.chatT = clock;
   mp.ch.send({type: 'broadcast', event: 'chat', payload: {id: mp.id, name: mpName(), text}}); mpLine(`${mpName()}: ${text}`); }
 // ---- voice: one WebRTC connection per player; the lower id makes the offer; the mic track is swapped in and out without renegotiation
@@ -3608,12 +3680,12 @@ function drawMap(){
   if (mapBig && PLR) { const u = uOfV(PLR), p = latLonAt(u); lon0 = p.lon - 0.9; lon1 = p.lon + 0.9; const h = 1.8*H/W; lat0 = p.lat + h/2; lat1 = p.lat - h/2; }
   const sx = Math.min(W/(lon1 - lon0), H/Math.abs(lat1 - lat0)), ox = (W - sx*(lon1 - lon0))/2, oy = (H - sx*Math.abs(lat1 - lat0))/2;
   const P = (lat, lon) => [ox + (lon - lon0)*sx, oy + (lat0 - lat)*sx];
-  x.fillStyle = 'rgba(32,30,29,0.06)'; x.beginPath(); JAVA.forEach(([lo, la], i) => { const [a, b] = P(la, lo); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.closePath(); x.fill();
-  x.lineWidth = 1.5; x.strokeStyle = 'rgba(32,30,29,0.45)';
-  for (const c of CORRIDORS) { if (c.cls === 'a') continue; x.lineWidth = c.cls === 'n' ? 1 : 1.5; x.strokeStyle = c.cls === 'n' ? 'rgba(138,90,40,0.55)' : 'rgba(32,30,29,0.45)'; x.setLineDash(c.planned ? [3, 3] : []); x.beginPath(); c.nodes.forEach((n, i) => { const N = NODES.get(n.key); const [a, b] = P(N.lat, N.lon); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke(); }
+  x.fillStyle = 'rgba(32,30,29,0.06)'; for (const isl of [JAVA, MADURA]) { x.beginPath(); isl.forEach(([lo, la], i) => { const [a, b] = P(la, lo); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.closePath(); x.fill(); }
+  x.lineJoin = 'round';
+  for (const c of CORRIDORS) { if (c.cls === 'a' || !roadInView(c.id, P, W, H)) continue; x.lineWidth = c.cls === 'n' ? 1 : 1.5; x.strokeStyle = c.cls === 'n' ? 'rgba(138,90,40,0.55)' : 'rgba(32,30,29,0.45)'; x.setLineDash(c.planned ? [3, 3] : []); strokeRoad(x, P, c.id); }
   x.setLineDash([]);
-  if (trip) { const i0 = PLR ? Math.max(0, evAt(uOfV(PLR))) : 0, i1 = trip.destIdx >= 0 ? trip.destIdx : Math.min(EV.length - 1, i0 + 60);
-    x.lineWidth = 3; x.strokeStyle = acc; x.beginPath(); EV.slice(i0, i1 + 1).forEach((e, i) => { const [a, b] = P(e.lat, e.lon); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke();
+  if (trip) { const u0 = PLR ? uOfV(PLR) : 0, i0 = Math.max(0, evAt(u0)), i1 = trip.destIdx >= 0 ? trip.destIdx : Math.min(EV.length - 1, i0 + 60);
+    x.lineWidth = 3; x.strokeStyle = acc; x.beginPath(); routeLL(u0, i1).forEach((e, i) => { const [a, b] = P(e.lat, e.lon); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke();
     const d = EV[trip.destIdx]; if (d) { const [dx, dy] = P(d.lat, d.lon); x.fillStyle = ink; x.fillRect(dx - 3, dy - 3, 6, 6); }
     if (PLR) { const p = latLonAt(uOfV(PLR)), [px, py] = P(p.lat, p.lon); x.fillStyle = acc; x.strokeStyle = '#fff'; x.lineWidth = 2; x.beginPath(); x.arc(px, py, 5, 0, Math.PI*2); x.fill(); x.stroke(); } }
   x.fillStyle = ink; x.font = '600 9px Archivo, sans-serif';
@@ -3621,8 +3693,20 @@ function drawMap(){
   for (const n of labels) { if (!n) continue; const [a, b] = P(n.lat, n.lon); if (a < 0 || b < 0 || a > W || b > H) continue; x.fillText(n.city || n.name, a + 4, b - 3); }
   mpDrawMap(x, P);
 }
+// where u is on the map: along the curve of the road it is on
 function latLonAt(u){ const i = evAt(u); if (i < 0) return EV[0]; if (i >= EV.length - 1) return EV[EV.length - 1];
-  const a = EV[i], b = EV[i+1], f = clamp((u - a.u)/(b.u - a.u), 0, 1); return {lat: a.lat + (b.lat - a.lat)*f, lon: a.lon + (b.lon - a.lon)*f}; }
+  const a = EV[i], b = EV[i+1], q = corrLL(a.cNext, kmAt(u)); if (q) return {lat: q.lat, lon: q.lon};
+  const f = clamp((u - a.u)/(b.u - a.u), 0, 1); return {lat: a.lat + (b.lat - a.lat)*f, lon: a.lon + (b.lon - a.lon)*f}; }
+// roads drawn along their curves, the route along the curves of the roads it uses
+function strokeRoad(x, P, id){ const g = corrGeo(id); if (!g || g.length < 2) return; x.beginPath(); g.forEach((q, i) => { const [a, b] = P(q.lat, q.lon); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke(); }
+const RBOX = new Map();
+function roadInView(id, P, W, H){ let bb = RBOX.get(id); if (!bb) { const g = corrGeo(id) || []; bb = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const q of g) { bb[0] = Math.min(bb[0], q.lat); bb[1] = Math.min(bb[1], q.lon); bb[2] = Math.max(bb[2], q.lat); bb[3] = Math.max(bb[3], q.lon); } RBOX.set(id, bb); }
+  const [a0, b0] = P(bb[2], bb[1]), [a1, b1] = P(bb[0], bb[3]); return a1 > -20 && a0 < W + 20 && b1 > -20 && b0 < H + 20; }
+function routeLL(u0, i1){ const out = [latLonAt(u0)], i0 = Math.max(0, evAt(u0));
+  for (let i = i0; i < Math.min(i1, EV.length - 1); i++) { const a = EV[i], b = EV[i + 1], ka = i === i0 ? kmAt(u0) : a.kmOut, kb = b.km, n = Math.max(1, Math.ceil(Math.abs(kb - ka)/1.5));
+    for (let k = 1; k <= n; k++) { const q = corrLL(a.cNext, ka + (kb - ka)*k/n); out.push(q && k < n ? q : {lat: b.lat, lon: b.lon}); } }
+  return out; }
 map.onclick = () => openAtlas();
 
 // ---------- full-screen atlas: every road of the network, pan / zoom / search / navigate ----------
@@ -3661,9 +3745,9 @@ function drawAtlas(){
   if (atlas.hidden) return;
   const dpr = atSize(), x = actx, W = AT.W, H = AT.H, k = AT.k; x.setTransform(dpr, 0, 0, dpr, 0, 0);
   x.fillStyle = '#d5e2ea'; x.fillRect(0, 0, W, H);
-  x.fillStyle = '#f4f1ea'; x.strokeStyle = '#9fb3bf'; x.lineWidth = 1.2; x.beginPath(); JAVA.forEach(([lo, la], i) => { const [a, b] = atP(la, lo); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.closePath(); x.fill(); x.stroke();
+  x.fillStyle = '#f4f1ea'; x.strokeStyle = '#9fb3bf'; x.lineWidth = 1.2; for (const isl of [JAVA, MADURA]) { x.beginPath(); isl.forEach(([lo, la], i) => { const [a, b] = atP(la, lo); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.closePath(); x.fill(); x.stroke(); }
   const inView = (a, b, m = 40) => a > -m && b > -m && a < W + m && b < H + m;
-  const line = (c) => { x.beginPath(); c.nodes.forEach((n, i) => { const N = nodeLL(n.key); const [a, b] = atP(N.lat, N.lon); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke(); };
+  const line = c => { if (roadInView(c.id, atP, W, H)) strokeRoad(x, atP, c.id); };
   x.lineCap = 'round'; x.lineJoin = 'round';
   const z = Math.log2(k/100);   // 0 = whole island
   x.setLineDash([4, 4]); x.strokeStyle = 'rgba(80,88,94,0.75)'; x.lineWidth = clamp(0.6 + z*0.35, 0.6, 2.2); for (const c of NET.a) line(c);
@@ -3673,8 +3757,8 @@ function drawAtlas(){
   // the route ahead (navigation or free driving plan)
   const acc = '#ec3013';
   if (trip && PLR) { const u = uOfV(PLR), i0 = Math.max(0, evAt(u)), i1 = trip.destIdx >= 0 ? trip.destIdx : Math.min(EV.length - 1, i0 + 80), p = latLonAt(u);
-    x.strokeStyle = acc; x.globalAlpha = 0.85; x.lineWidth = clamp(3 + z*0.8, 3, 9); x.beginPath(); const [a0, b0] = atP(p.lat, p.lon); x.moveTo(a0, b0);
-    for (const e of EV.slice(i0 + 1, i1 + 1)) { const [a, b] = atP(e.lat, e.lon); x.lineTo(a, b); } x.stroke(); x.globalAlpha = 1; }
+    x.strokeStyle = acc; x.globalAlpha = 0.85; x.lineWidth = clamp(3 + z*0.8, 3, 9); x.beginPath();
+    routeLL(u, i1).forEach((e, j) => { const [a, b] = atP(e.lat, e.lon); j ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke(); x.globalAlpha = 1; }
   // nodes + labels (priority order, no overlaps)
   const show = n => n.kind === 'j' ? z > 0.6 : n.kind === 'k' ? (n.city && n.city === n.name ? true : z > 0.9) : n.kind === 'r' ? z > 3.2 : z > 1.6;
   const pts = [];
@@ -3695,6 +3779,8 @@ function drawAtlas(){
   const sel = AT.sel && nodeLL(AT.sel); if (sel) { const [a, b] = atP(sel.lat, sel.lon); x.strokeStyle = acc; x.lineWidth = 3; x.beginPath(); x.arc(a, b, 11, 0, Math.PI*2); x.stroke(); }
   const pl = playerLL(); if (pl) { const [a, b] = atP(pl.lat, pl.lon); x.save(); x.translate(a, b); x.rotate(pl.hd); x.fillStyle = acc; x.strokeStyle = '#fff'; x.lineWidth = 2.5;
     x.beginPath(); x.moveTo(0, -12); x.lineTo(8, 9); x.lineTo(0, 4); x.lineTo(-8, 9); x.closePath(); x.stroke(); x.fill(); x.restore(); }
+  // the other players (multiplayer)
+  mpDrawMap(x, atP, true);
   // scale bar
   const kmPx = k/111, nice = [1, 2, 5, 10, 20, 50, 100, 200].find(v => v*kmPx > 60) || 200; x.fillStyle = '#201e1d'; x.fillRect(W - 20 - nice*kmPx, H - 22, nice*kmPx, 3);
   x.font = '600 11px Archivo, sans-serif'; x.textAlign = 'right'; x.fillText(`${nice} km`, W - 20, H - 32); x.textAlign = 'left';
@@ -4279,7 +4365,7 @@ function tick(dt){
   ensureAhead();
   setupBlocks(false); updateWorld(true); updateSignals(); animGhosts();
 }
-window.__tj.mbz = () => MBZG; window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
+window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering
 window.__tj.step = (n, dt = 1/20) => { for (let i = 0; i < n; i++) tick(dt); updateSegs(); placeGroups(); place(); for (let k = 0; k < 40; k++) updateCam(dt); updateBend(); hudT = 0; updateHud(dt); drawMap(); };
@@ -4303,7 +4389,7 @@ renderer.setAnimationLoop(now => {
   if ((!$('plan').hidden && trip && !stats.done) || !$('atlas').hidden) { composer.render(); return; }
   tick(dt);
   placeGroups(); place(); placeFoot(); placeTow(); mpPlace(); placeBeams(); placeAngry(); updateCam(dt); updateVolcanoes(dt); updateLandmarks(); updateRoadSigns(); updateFx(dt); updateSky(dt); updateSound(); flash(); updateBend(); updateHud(dt);
-  mapT -= dt; if (mapT <= 0) { mapT = 0.5; drawMap(); }
+  mapT -= dt; if (mapT <= 0) { mapT = 0.5; drawMap(); if (mp.on && !atlas.hidden) reqAtlas(); }
   composer.render(); drawMirrors(dt);
 });
 addEventListener('resize', () => { camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); composer.setSize(innerWidth,innerHeight); drawMap(); reqAtlas(); });

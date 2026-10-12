@@ -208,6 +208,10 @@ export const CORRIDORS = [
     ['Cikampek', 0], ['Purwakarta', 18, -6.550, 107.440], ['Plered', 30, -6.640, 107.390], ['Padalarang', 60]]),
   N('madura', 'Jalan Nasional Suramadu–Bangkalan–Sampang–Pamekasan–Sumenep (Madura)', 'Suramadu–Sumenep', 1, 60, [
     ['Surabaya', 0], ['Bangkalan', 20, -7.050, 112.740], ['Sampang', 75, -7.190, 113.240], ['Pamekasan', 105, -7.160, 113.480], ['Sumenep', 150, -7.010, 113.860]]),
+  N('maduraut', 'Jalan Nasional Bangkalan–Tanjung Bumi–Ketapang–Ambunten–Sumenep (Pantura Madura)', 'Pantura Madura', 1, 60, [
+    ['Bangkalan', 0], ['Arosbaya', 15, -6.955, 112.855], ['Tanjung Bumi', 45, -6.905, 113.085], ['Ketapang Sampang', 68, -6.895, 113.285],
+    ['Pasongsongan', 100, -6.925, 113.615], ['Ambunten', 112, -6.895, 113.735], ['Sumenep', 140]]),
+  N('kalianget', 'Jalan Nasional Sumenep–Kalianget', 'Sumenep–Kalianget', 1, 50, [['Sumenep', 0], ['Kalianget', 10, -7.055, 113.935]]),
   N('jasinga', 'Jalan Nasional Bogor–Leuwiliang–Jasinga–Rangkasbitung–Pandeglang', 'Bogor–Rangkasbitung', 1, 60, [
     ['Bogor', 0], ['Dramaga', 10, -6.560, 106.730], ['Leuwiliang', 22, -6.570, 106.630], ['Jasinga', 45, -6.470, 106.470], ['Rangkasbitung', 80, -6.360, 106.250], ['Pandeglang', 105]]),
   N('sindang', 'Jalan Nasional Cianjur–Sukanagara–Sindangbarang', 'Cianjur–Sindangbarang', 1, 60, [
@@ -458,6 +462,68 @@ export function buildTrip(from, to, mode = 'mix'){ const legs = findRoute(from, 
 export const fmtKm = km => km < 1 ? `${Math.round(km*1000/50)*50} m` : `${km < 10 ? km.toFixed(1).replace('.', ',') : Math.round(km)} km`;
 export const nodeLabel = n => n.kind === 'j' ? n.name.replace('JCT ', 'Simpang Susun ') : n.kind === 'g' || n.kind === 't' ? n.name.replace('GT ', 'Gerbang Tol ')
   : n.kind === 'te' || n.kind === 'ti' ? 'Gerbang Tol ' + n.name.replace('GT ', '') : n.name;
+
+// ---------- road shapes for the maps: a smooth curve through every place on a road, plus shape points where it bends in between ----------
+// SHAPE[corridor]['A>B'] = [[lat, lon], …] between consecutive places A and B (in KM order)
+const SHAPE = {
+  cipularang: {'Jatiluhur>Rest Area KM 88': [[-6.575, 107.405]], 'Rest Area KM 97>JCT Padalarang': [[-6.715, 107.432], [-6.765, 107.445], [-6.810, 107.465]]},
+  cipali: {'Subang>Rest Area KM 102': [[-6.532, 107.790]], 'Cikedung>JCT Kertajati': [[-6.560, 108.170]], 'Sumberjaya>GT Palimanan': [[-6.690, 108.380]]},
+  pantura2: {'Cikampek>Pamanukan': [[-6.380, 107.560], [-6.330, 107.700]], 'Pamanukan>Lohbener': [[-6.300, 107.960], [-6.340, 108.100], [-6.380, 108.200]],
+    'Jatibarang>Cirebon': [[-6.540, 108.380], [-6.620, 108.470]]},
+  pantura3: {'Cirebon>Losari': [[-6.760, 108.640]]},
+  pantura4: {'Rembang>Lasem': [[-6.690, 111.400]], 'Lasem>Tuban': [[-6.660, 111.560], [-6.725, 111.700], [-6.780, 111.860], [-6.830, 111.980]],
+    'Tuban>Lamongan': [[-6.990, 112.120], [-7.090, 112.180], [-7.120, 112.300]], 'Lamongan>Gresik': [[-7.150, 112.530]]},
+  pantura5: {'Situbondo>Ketapang': [[-7.740, 114.120], [-7.760, 114.240], [-7.830, 114.380], [-7.950, 114.430], [-8.050, 114.420]],
+    'Probolinggo>Kraksaan': [[-7.770, 113.320]], 'Kraksaan>Besuki': [[-7.740, 113.560]]},
+  probo2: {'Asembagus>Ketapang': [[-7.830, 114.370], [-7.950, 114.420], [-8.050, 114.410]]},
+  jember: {'Probolinggo>Lumajang': [[-7.900, 113.240], [-8.020, 113.230]], 'Jember>Genteng': [[-8.200, 113.800], [-8.240, 113.900], [-8.290, 113.980], [-8.320, 114.070]],
+    'Genteng>Banyuwangi': [[-8.330, 114.280]]},
+  lumjem: {'Jatiroto>Jember': [[-8.160, 113.450], [-8.200, 113.610]]},
+  selatan1: {'Nagreg>Malangbong': [[-7.060, 108.000]], 'Malangbong>Tasikmalaya': [[-7.150, 108.130], [-7.250, 108.180]], 'Banjar>Wangon': [[-7.310, 108.660], [-7.300, 108.760], [-7.380, 108.880], [-7.480, 108.980]],
+    'Wangon>Kebumen': [[-7.550, 109.180], [-7.610, 109.360], [-7.610, 109.510]], 'Kebumen>Purworejo': [[-7.720, 109.790], [-7.720, 109.910]]},
+  kediri: {'Kepanjen>Blitar': [[-8.160, 112.480], [-8.080, 112.320], [-8.100, 112.240]], 'Blitar>Kediri': [[-7.980, 112.090]]},
+  blora: {'Semarang>Purwodadi': [[-7.030, 110.520], [-7.040, 110.760]], 'Purwodadi>Blora': [[-7.080, 111.120], [-7.040, 111.250]], 'Cepu>Bojonegoro': [[-7.170, 111.730]]},
+  wonogiri: {'Wonogiri>Pacitan': [[-7.980, 110.930], [-8.060, 110.960], [-8.130, 111.020]]},
+  pelratu: {'Sukabumi>Palabuhanratu': [[-6.950, 106.800], [-6.980, 106.680]]},
+  madura: {'Surabaya>Bangkalan': [[-7.215, 112.775], [-7.155, 112.785], [-7.100, 112.770]], 'Bangkalan>Sampang': [[-7.120, 112.900], [-7.200, 113.060]],
+    'Sampang>Pamekasan': [[-7.200, 113.360]], 'Pamekasan>Sumenep': [[-7.110, 113.630], [-7.060, 113.760]]},
+  maduraut: {'Bangkalan>Arosbaya': [[-7.000, 112.790]], 'Arosbaya>Tanjung Bumi': [[-6.920, 112.970]], 'Tanjung Bumi>Ketapang Sampang': [[-6.890, 113.190]],
+    'Ketapang Sampang>Pasongsongan': [[-6.890, 113.450]], 'Ambunten>Sumenep': [[-6.950, 113.800]]},
+};
+const hav2 = (a, b) => hav(a, b);
+const GEO = new Map();
+// dense polyline [{lat, lon, km}] of a road: centripetal Catmull–Rom through its places and shape points
+export function corrGeo(id){
+  if (GEO.has(id)) return GEO.get(id); const c = CORR[id]; if (!c) return null;
+  const ctl = [];
+  c.nodes.forEach((n, i) => { const P = NODES.get(n.key); if (!P || P.lat == null) return;
+    const q = {lat: P.lat, lon: P.lon, km: n.km}, last = ctl[ctl.length - 1];
+    if (last) { const sh = (SHAPE[id] || {})[`${c.nodes[i - 1].name}>${n.name}`];
+      if (sh) { const pts = [last, ...sh.map(([lat, lon]) => ({lat, lon})), q]; let tot = 0; const d = [0]; for (let k = 1; k < pts.length; k++) { tot += hav2(pts[k - 1], pts[k]); d.push(tot); }
+        for (let k = 1; k < pts.length - 1; k++) ctl.push({lat: pts[k].lat, lon: pts[k].lon, km: last.km + (q.km - last.km)*d[k]/(tot || 1)}); } }
+    const l2 = ctl[ctl.length - 1]; if (l2 && hav2(l2, q) < 0.3) { if (q.km > l2.km) l2.km = q.km; return; } ctl.push(q); });
+  const out = [];
+  if (ctl.length === 1) out.push(ctl[0]);
+  const T = (a, b) => Math.sqrt(Math.max(1e-9, hav2(a, b)));
+  for (let i = 0; i < ctl.length - 1; i++) {
+    const p1 = ctl[i], p2 = ctl[i + 1], p0 = ctl[i - 1] || {lat: 2*p1.lat - p2.lat, lon: 2*p1.lon - p2.lon}, p3 = ctl[i + 2] || {lat: 2*p2.lat - p1.lat, lon: 2*p2.lon - p1.lon};
+    const t1 = T(p0, p1), t2 = t1 + T(p1, p2), t3 = t2 + T(p2, p3), n = Math.max(2, Math.ceil(hav2(p1, p2)/1.2));
+    for (let k = 0; k < n; k++) { const t = t1 + (t2 - t1)*k/n, L = (a, b, ta, tb, f) => (tb - t)/(tb - ta)*a[f] + (t - ta)/(tb - ta)*b[f];
+      const pt = {}; for (const f of ['lat', 'lon']) { const A1 = L(p0, p1, 0, t1, f), A2 = L(p1, p2, t1, t2, f), A3 = L(p2, p3, t2, t3, f);
+        const B1 = (t2 - t)/t2*A1 + t/t2*A2, B2 = (t3 - t)/(t3 - t1)*A2 + (t - t1)/(t3 - t1)*A3; pt[f] = (t2 - t)/(t2 - t1)*B1 + (t - t1)/(t2 - t1)*B2; }
+      pt.km = p1.km + (p2.km - p1.km)*k/n; out.push(pt); } }
+  if (ctl.length > 1) out.push(ctl[ctl.length - 1]);
+  GEO.set(id, out); return out;
+}
+// position on a road's curve at a KM
+export function corrLL(id, km){ const g = corrGeo(id); if (!g || !g.length) return null;
+  if (km <= g[0].km) return g[0]; if (km >= g[g.length - 1].km) return g[g.length - 1];
+  let lo = 0, hi = g.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (g[m].km <= km) lo = m; else hi = m; }
+  const a = g[lo], b = g[hi], f = (km - a.km)/((b.km - a.km) || 1); return {lat: a.lat + (b.lat - a.lat)*f, lon: a.lon + (b.lon - a.lon)*f}; }
+
+// Madura coastline [lon, lat]
+export const MADURA = [[112.69,-6.99],[112.85,-6.89],[113.1,-6.87],[113.4,-6.86],[113.7,-6.86],[113.95,-6.9],[114.12,-6.97],[114.1,-7.07],[113.92,-7.1],
+  [113.6,-7.22],[113.3,-7.23],[113.0,-7.25],[112.85,-7.17],[112.73,-7.13],[112.69,-7.06]];
 
 // approximate Java coastline [lon, lat] for the mini-map
 export const JAVA = [[105.85,-5.88],[106.1,-5.95],[106.4,-6.0],[106.7,-6.04],[106.95,-6.08],[107.2,-5.95],[107.6,-6.2],[108.0,-6.28],[108.3,-6.25],
