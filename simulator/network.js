@@ -28,7 +28,7 @@ export const CORRIDORS = [
     ['Grogol', 13, 'x', -6.165, 106.790], ['Jelambar', 15, 'x', -6.145, 106.788], ['JCT Pluit', 18, 'j', -6.120, 106.790]]),
   C('sed', 'Tol Prof. Sedyatmo', 'Sedyatmo', 3, 80, [
     ['JCT Pluit', 0, 'j'], ['Kapuk', 4, 'x', -6.115, 106.750], ['Bandara Soekarno-Hatta', 13, 't', -6.110, 106.660]]),
-  C('japek', 'Tol Jakarta–Cikampek', 'Jakarta–Cikampek', 4, 100, [
+  C('japek', 'Tol Jakarta–Cikampek', 'Jakarta–Cikampek', 5, 100, [
     ['JCT Cawang', 0, 'j'], ['Halim', 3, 'x', -6.250, 106.890], ['Pondok Gede Barat', 6, 'x', -6.258, 106.920],
     ['Rest Area KM 6', 6.6, 'r'], ['Jatibening', 8, 'x', -6.258, 106.940], ['JCT Cikunir', 10, 'j', -6.256, 106.958],
     ['Bekasi Barat', 12, 'x', -6.248, 106.990], ['Bekasi Timur', 16, 'x', -6.255, 107.020], ['Rest Area KM 19', 19, 'r'],

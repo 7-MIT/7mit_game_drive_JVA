@@ -1116,7 +1116,7 @@ function updateRoadSigns(){
       else for (const dx of r.small ? [0] : [-r.w*0.32, r.w*0.32]) r.g.add(solid(0.2, top - r.h/2 + 0.1, 0.2, signBackMat, dx, (top - r.h/2)/2, -0.15));
       applySign([r.g]); bendObj(r.g); scene.add(r.g); }
     if (!r.g) continue; r.g.visible = vis; if (!vis) continue;
-    const hid = mbzHid(r.u) || (mbzRampAt(r.u) && !r.posts), e = hid ? MBZ_EJ : eAt(r.u), off = hid ? 16 : elevAt(r.u) > 1 ? 2.2 : r.small ? 3.4 : 6.5, x = r.posts ? 0 : r.side > 0 ? -(e + off) : e + off;
+    const hid = mbzHid(r.u) || (mbzRampAt(r.u) && !r.posts), e = hid ? mbzEJ() : eAt(r.u), off = hid ? 16 : elevAt(r.u) > 1 ? 2.2 : r.small ? 3.4 : 6.5, x = r.posts ? 0 : r.side > 0 ? -(e + off) : e + off;
     r.g.position.set(x, hid ? -elevAt(r.u) : 0, z); r.g.rotation.y = r.side > 0 ? 0 : Math.PI; }
 }
 
@@ -1179,12 +1179,13 @@ function viaduct(g, u0, u1, Z){
 //   enough to clear the traffic, swings over Japek to the deck above the median (reached at uH = F + RL). The deck runs on one
 //   column per pier in Japek's median to uE = M - RL, where each direction swings out to the side again and comes down onto
 //   Japek's left lane at M = hi - 450. On the MBZ the ramps are driven like any ramp (with the world switching at the deck).
-const MBZ_K = [10, 46], MBZ_H = ELEVATED.mbz, MBZ_W = MED + 2*LW + 0.3, MBZ_EJ = MED + 4*LW;   // deck half width, Japek's edge
+const MBZ_K = [10, 46], MBZ_H = ELEVATED.mbz, MBZ_W = MED + 2*LW + 0.3;   // deck half width
+const mbzNJ = () => nCorr('japek'), mbzEJ = () => MED + mbzNJ()*LW;   // Japek's lanes per direction and its edge
 const MBZ_KEYS = ['JCT Cikunir', 'Karawang Barat'];
 function mbzGeom(lo, hi){ const F = lo + 450, M = hi - 450; if (M - F < 1400) return null;
   const RL = clamp((M - F - 600)/2, 300, 840); return {lo, hi, F, M, RL, uH: F + RL, uE: M - RL}; }
 // a side ramp, tt = metres from where it leaves Japek (0) to the deck over the median (RL): centre line |x| and height
-const mbzRX = (tt, RL) => { const ts = RL*0.52; return tt < ts ? 12 + 11.6*sstep(0, 80, tt) : 23.6 - 18.8*sstep(ts, RL, tt); };
+const mbzRX = (tt, RL) => { const ts = RL*0.52, x0 = mbzEJ() - LW/2 - 1.8, xs = mbzEJ() + 8, xd = MED + LW; return tt < ts ? x0 + (xs - x0)*sstep(0, 80, tt) : xs - (xs - xd)*sstep(ts, RL, tt); };
 const mbzRH = (tt, RL) => MBZ_H*sstep(20, RL, tt);
 let MBZG = null;
 function layoutMbz(){
@@ -1218,8 +1219,8 @@ const mbzSideRanges = () => MBZG && MBZG.frame === 'mbz' ? [[MBZG.uH, MBZG.uE]] 
 const mbzGapRanges = () => MBZG ? [[MBZG.F - 10, MBZG.F + 90], [MBZG.M - 90, MBZG.M + 10]] : [];
 const mbzGap = u => mbzGapRanges().some(([a, b]) => u > a && u < b);
 // keep houses and trees off Japek and the ramps (measured from the centre line)
-const mbzClear = u => { const G = MBZG; if (!G) return 0; if ((u > G.F - 60 && u < G.uH + 60) || (u > G.uE - 60 && u < G.M + 60)) return 32;
-  return mbzSide(u) ? MBZ_EJ + 7 : 0; };
+const mbzClear = u => { const G = MBZG; if (!G) return 0; if ((u > G.F - 60 && u < G.uH + 60) || (u > G.uE - 60 && u < G.M + 60)) return mbzEJ() + 16.4;
+  return mbzSide(u) ? mbzEJ() + 7 : 0; };
 const mbzOK = () => !RULES.noMbz;
 // no overpass or U-turn opening on the ramps, or along the MBZ while Japek is drawn on the land
 const mbzNoOv = u => { const G = MBZG; if (!G) return false; if (G.frame === 'mbz') return u > G.lo - 200 && u < G.M + 300;
@@ -1257,20 +1258,20 @@ function mbzStack(g, u0, u1, Z){
       g.add(ribbonY(ds, u => sx*(X(u) - 3.9), u => sx*(X(u) + 3.9), H, asphaltDS, Z), ribbonY(ds, u => sx*(X(u) - 3.9), u => sx*(X(u) + 3.9), u => H(u) - 1.2, concreteD, Z));
       for (const lat of [-3.75, 3.75]) g.add(ribbonY(ds, u => sx*(X(u) + lat - 0.07), u => sx*(X(u) + lat + 0.07), u => H(u) + 0.03, whiteDS, Z));
       // parapets: the outer one from the start, the inner one once the ramp has left Japek's carriageway
-      const outer = ds.filter(u => tt(u) > 8), inner = ds.filter(u => X(u) - 3.9 > MBZ_EJ + 0.4 || mbzRampAt(u).h > 1.2);
+      const outer = ds.filter(u => tt(u) > 8), inner = ds.filter(u => X(u) - 3.9 > mbzEJ() + 0.4 || mbzRampAt(u).h > 1.2);
       for (const [pts, lat] of [[outer, 3.9], [inner, -3.9]]) for (const r of contig(pts)) {
         g.add(wallY(r, u => sx*(X(u) + lat), u => H(u) - 1.2, u => H(u) + 1.0, concreteD, Z), ribbonY(r, u => sx*(X(u) + lat - 0.15*Math.sign(lat)), u => sx*(X(u) + lat), u => H(u) + 1.0, barMatD, Z)); }
       const dm = new THREE.InstancedMesh(dashGeo, white, ds.length); let n = 0;
       for (let u = Math.ceil(p/9)*9; u < q - 3; u += 9) { tm.makeTranslation(sx*X(u + 1.5), H(u + 1.5) + 0.04, Z(u + 1.5)); dm.setMatrixAt(n++, tm); } dm.count = n; g.add(dm);
-      if (ra === G.F && G.F >= u0 && G.F < u1) g.add(solid(0.8, 0.9, 3, gorMat, sx*(MBZ_EJ + 0.6), off(G.F + 30) + 0.45, Z(G.F + 30)));
+      if (ra === G.F && G.F >= u0 && G.F < u1) g.add(solid(0.8, 0.9, 3, gorMat, sx*(mbzEJ() + 0.6), off(G.F + 30) + 0.45, Z(G.F + 30)));
       // ramp traffic (travelling with the carriageway on this side)
       for (const lat of [1.8, -1.8]) lanes.push({x: u => { const r = mbzRampAt(u); return r ? sx*(r.x + lat) : 0; }, y: u => { const r = mbzRampAt(u); return r ? r.h + off(u) + 0.02 : 0; },
         ok: u => { const r = mbzRampAt(u); return !!r && r.h > 1.5; }, mbz: true, dir: -sx, vel: 16, gap: 120*gp, ph: (lat > 0 ? 11 : 47) + (sx > 0 ? 23 : 0)}); }
     // piers: a single column under the ramp beside Japek, a full-width bent (columns in the median and outside Japek) where it crosses over
     for (let u = Math.ceil(p/40)*40; u < q; u += 40) { const r = mbzRampAt(u); if (!r || r.h < 3) continue; const y0 = off(u), top = y0 + r.h - 1.2;
-      if (r.x - 3.9 > MBZ_EJ + 3.5) { for (const sx of [-1, 1]) { const m = new THREE.Mesh(viaPierGeo, concrete); m.position.set(sx*r.x, y0 + (r.h - 1.2)/2, Z(u)); m.scale.set(0.9, r.h - 1.2, 0.9); m.castShadow = true; g.add(m); g.add(solid(7, 1.0, 2, concrete, sx*r.x, top - 0.5, Z(u))); } continue; }
+      if (r.x - 3.9 > mbzEJ() + 3.5) { for (const sx of [-1, 1]) { const m = new THREE.Mesh(viaPierGeo, concrete); m.position.set(sx*r.x, y0 + (r.h - 1.2)/2, Z(u)); m.scale.set(0.9, r.h - 1.2, 0.9); m.castShadow = true; g.add(m); g.add(solid(7, 1.0, 2, concrete, sx*r.x, top - 0.5, Z(u))); } continue; }
       if (OPENS.some(o => Math.abs(o.u - u) < OPEN_HW + 3) || RSITES.some(s => s.kind !== 'j' && Math.abs(s.u - u) < 260)) continue;
-      const W = MBZ_EJ + 4.5;
+      const W = mbzEJ() + 4.5;
       for (const x of [-W, 0, W]) { const m = new THREE.Mesh(viaPierGeo, concrete); m.position.set(x, y0 + (r.h - 2.2)/2, Z(u)); m.scale.set(0.8, r.h - 2.2, 0.8); m.castShadow = true; g.add(m); }
       g.add(solid(2*W + 2, 1.0, 2, concrete, 0, top - 0.5, Z(u))); }
   }
@@ -1291,15 +1292,15 @@ function mbzStack(g, u0, u1, Z){
   } else {
     // ---- driving the MBZ: Japek on the land below (both carriageways, barrier, rails with the ramp gaps) and its traffic
     const us = []; for (let u = a; u < b; u += 10) us.push(u); us.push(b);
-    const X = l => MED + l*LW, rails = cut([a, b], mbzGapRanges());
+    const X = l => MED + l*LW, NJ = mbzNJ(), rails = cut([a, b], mbzGapRanges());
     for (const sx of [-1, 1]) {
-      g.add(strip(us, u => sx*MED, u => sx*(X(4) + 3), 0.01, prAsphalt, Z), strip(us, u => sx*(X(4) + 3), u => sx*(X(4) + 7), 0.006, prVerge, Z));
-      for (const x of [MED + 0.2, X(4)]) g.add(strip(us, u => sx*(x - 0.08), u => sx*(x + 0.08), 0.02, prWhite, Z));
-      for (const [p, q] of rails) { const r = []; for (let u = p; u < q; u += 10) r.push(u); r.push(q); if (q - p > 1) g.add(wall(r, u => sx*(X(4) + 2.8), 0.55, 0.85, prRail, Z)); }
-      const dp = []; for (let u = Math.ceil(a/9)*9; u < b - 3; u += 9) for (let l = 1; l < 4; l++) dp.push([sx*X(l), Z(u + 1.5)]);
+      g.add(strip(us, u => sx*MED, u => sx*(X(NJ) + 3), 0.01, prAsphalt, Z), strip(us, u => sx*(X(NJ) + 3), u => sx*(X(NJ) + 7), 0.006, prVerge, Z));
+      for (const x of [MED + 0.2, X(NJ)]) g.add(strip(us, u => sx*(x - 0.08), u => sx*(x + 0.08), 0.02, prWhite, Z));
+      for (const [p, q] of rails) { const r = []; for (let u = p; u < q; u += 10) r.push(u); r.push(q); if (q - p > 1) g.add(wall(r, u => sx*(X(NJ) + 2.8), 0.55, 0.85, prRail, Z)); }
+      const dp = []; for (let u = Math.ceil(a/9)*9; u < b - 3; u += 9) for (let l = 1; l < NJ; l++) dp.push([sx*X(l), Z(u + 1.5)]);
       g.add(instanced(prDashGeo, prWhite, dp, 0.02)); }
     g.add(strip(us, u => -MED, u => MED, 0.008, prVerge, Z), solid(0.6, 0.9, b - a, prBar, 0, 0.45, Z((a + b)/2)));
-    for (let l = 0; l < 4; l++) for (const d of [1, -1]) lanes.push({x: -d*(MED + (l + 0.5)*LW), y: u => -elevAt(u) + 0.02, dir: d, vel: 18 + l*4, gap: (80 + l*15)*gp, ph: l*13 + (d > 0 ? 0 : 7)});
+    for (let l = 0; l < NJ; l++) for (const d of [1, -1]) lanes.push({x: -d*(MED + (l + 0.5)*LW), y: u => -elevAt(u) + 0.02, dir: d, vel: 18 + l*4, gap: (80 + l*15)*gp, ph: l*13 + (d > 0 ? 0 : 7)});
   }
   // moving traffic: car positions follow one global pattern (u = phase + n·gap + v·t), so they flow seamlessly from chunk to chunk
   const pool = []; for (const L of lanes) for (let k = 0; k < Math.ceil(CH/L.gap) + 1; k++) { const t = Math.random();
@@ -3256,19 +3257,22 @@ function mbzPathFor(sd, kind, x0, t0){
   const G = MBZG, ps = mbzStarts(sd)[kind], pts = [];
   for (let t = t0; t <= G.RL + 0.01; t += 10) { const tt = kind === 'up' ? t : G.RL - t;
     let x = mbzRX(tt, G.RL) + 1.8; if (t - t0 < 40) x = x0 + (x - x0)*sstep(0, 40, t - t0);
-    pts.push([x - MBZ_EJ, t, mbzRH(tt, G.RL) - elevAt(sd*(ps + t))]); }
+    pts.push([x - mbzEJ(), t, mbzRH(tt, G.RL) - elevAt(sd*(ps + t))]); }
   return pts; }
 function toMbzRamp(v, kind){
   const sd = v.sd, ps = mbzStarts(sd)[kind], x0 = Math.abs(v.x ?? posX(-sd, v.lx)), t0 = clamp(v.p - ps, 0, MBZG.RL - 40);
-  v.rp = {P: mkPath(mbzPathFor(sd, kind, x0, t0)), d: 0, i: 0, pc: ps, sd, e: MBZ_EJ, shift: 0, end: 'mbz', kind: 'mbz', up: kind === 'up', site: null, mergeAt: Infinity};
+  v.rp = {P: mkPath(mbzPathFor(sd, kind, x0, t0)), d: 0, i: 0, pc: ps, sd, e: mbzEJ(), shift: 0, end: 'mbz', kind: 'mbz', up: kind === 'up', site: null, mergeAt: Infinity};
   v.rpOff = 0; v.exitWant = false; v.q = pathAt(v.rp.P, 0, 0); v.p = ps + v.q.u;
   rm(vehicles, v); rampers.push(v); if (v.player) hudLane();
 }
 // end of an MBZ ramp: onto the deck (driving Japek, the world becomes the MBZ's here) or back onto Japek's left lane
 function mbzRampEnd(v, rp){
-  const G = MBZG, sd = rp.sd, last = rp.P.pts[rp.P.pts.length - 1], p = rp.pc + last[1], x = rp.e + last[0];
+  const G = MBZG, sd = rp.sd, last = rp.P.pts[rp.P.pts.length - 1], x = rp.e + last[0]; let p = rp.pc + last[1];
   if (v.player && rp.up && G && G.frame === 'japek') { const s = EV[G.si], to = s && MBZ_KEYS.find(k => k !== s.key);
     if (s) seamlessTurn(s, {to, c: 'mbz'}); }
+  // up on the deck: the world is the MBZ's now; its deck may start a little further on after the new layout, so the car lands on it
+  if (v.player && rp.up && MBZG && MBZG.frame === 'mbz') { p = Math.max(p, MBZG.uH + 2); v.onMbz = true; }
+  if (v.player && !rp.up) v.onMbz = false;
   const n = nAvail(sd, p), lx = clamp((x - (MED + LW/2))/LW, 0, n - 1);
   if (!v.player && !spanFree(sd, Math.round(lx), p - v.len/2 - 3, p + v.len/2 + 3)) { killVehicle(v); return; }
   Object.assign(v, {sd, p, lane: Math.round(lx), lx, rp: null, siteId: null, yaw: 0, hd: 0, steer: 0}); v.x = posX(-sd, v.lx);
@@ -3281,11 +3285,11 @@ function mbzRampEnd(v, rp){
 function mbzSwitch(v){
   const G = MBZG; if (!G || v.rp || v.sd !== 1 || v.vel <= 0) return;
   const f = v.p + v.len/2, n = nAvail(1, v.p);
-  if (f > G.F - 30 && f < G.F + 70 && Math.abs(v.hd || 0) < 0.4 && (v.lx > n - 1 + 0.6 || (cfg.auto && G.frame === 'mbz'))) {
+  if (f > G.F - 30 && f < G.F + 70 && Math.abs(v.hd || 0) < 0.4 && (v.lx > n - 1 + 0.6 || (G.frame === 'mbz' && (cfg.auto || v.lx > n - 1.45)))) {
     if (!mbzOK()) { if (!v.mbzWarn) { v.mbzWarn = true; toast('Kendaraan Anda dilarang masuk Tol Layang MBZ', 'warn'); } return; }
     if (G.frame === 'mbz' || (G.si >= 0 && corrAt(f) === 'japek')) { toMbzRamp(v, 'up'); toast('Ramp naik Tol Layang MBZ'); return; } }
   if (G.frame !== 'mbz') return;
-  if (f >= G.F + 70 && f < G.uH) { const s = EV[G.si], o = s && choicesAt(s.key, prevKeyOf(s), 'mix').find(o => o.e.c === 'japek');
+  if (f >= G.F + 70 && f < G.uH && !v.onMbz) { const s = EV[G.si], o = s && choicesAt(s.key, prevKeyOf(s), 'mix').find(o => o.e.c === 'japek');
     if (o && seamlessTurn(s, o.e)) { hudLane(); toast('Tetap di Tol Jakarta–Cikampek · rute dihitung ulang'); } else toMbzRamp(v, 'up'); return; }
   if (f >= G.uE && f < G.uE + 80) toMbzRamp(v, 'down');
 }
@@ -3299,7 +3303,7 @@ function mbzTraffic(){
 }
 function mbzHint(v){
   const G = MBZG; if (!G || cfg.auto || !v || v.rp) return ''; const f = v.p + v.len/2;
-  if (f > G.F - 800 && f < G.F + 60) { if (G.frame === 'mbz') return 'Ke Tol Layang MBZ: ambil lajur paling kiri, lalu arahkan ke kiri di ramp';
+  if (f > G.F - 800 && f < G.F + 60) { if (G.frame === 'mbz') return 'Ke Tol Layang MBZ: ambil lajur paling kiri, lajur ini naik ke ramp';
     if (G.si >= 0 && corrAt(f) === 'japek' && mbzOK()) return 'Tol Layang MBZ: ambil lajur paling kiri, lalu arahkan ke kiri di ramp (khusus Gol I)'; }
   if (G.frame === 'mbz' && f > G.uE - 800 && f < G.uE) return 'Tol Layang MBZ berakhir: turun ke Tol Jakarta–Cikampek';
   return '';

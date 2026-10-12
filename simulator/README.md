@@ -165,7 +165,7 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
   - Cipularang, Bawen–Salatiga, Bocimi, Cisumdawu, Pandaan–Malang and the mountain roads run between green hills.
   - About thirty volcanoes (Salak, Gede-Pangrango, Ciremai, Slamet, Merbabu, Merapi, Lawu, Arjuno, Semeru …) stand on the horizon at their real bearing.
 - **Tol Layang MBZ is for passenger cars only.** Only sedans, SUVs and pickups (and police) may use it, as the entry board says: routes for buses, trucks, angkot, ambulances and fire engines never use MBZ, and the traffic on the deck is passenger cars only. How you get on and off it:
-  - **Getting on.** About 450 m after JCT Cikunir a two-lane ramp leaves Jakarta–Cikampek on the left, like an exit. Signs and the instruction bar say "lajur paling kiri"; steer left at the gap in the guard rail. The ramp climbs beside the toll road, outside the guard rail, and only once it clears the traffic does it swing over Japek to the deck above the median. Stay on Japek and you simply drive on underneath.
+  - **Getting on.** About 450 m after JCT Cikunir a two-lane ramp leaves Jakarta–Cikampek on the left, like an exit. Signs and the instruction bar say "lajur paling kiri"; on a route that goes over the MBZ the left lane simply carries on up the ramp, and on a Japek route you steer left at the gap in the guard rail. At the top you stay on the deck whatever your destination, even one before Karawang Barat (the route is worked out again from there). The ramp climbs beside the toll road, outside the guard rail, and only once it clears the traffic does it swing over Japek to the deck above the median. Stay on Japek and you simply drive on underneath.
   - **Getting off.** At the far end each direction swings out to the side again and comes down onto Japek's left lane before Karawang Barat. On an MBZ route that you leave at the fork, the route carries on along Japek.
   - **Supports.** The deck stands on one column per pier in Japek's median. Beside Japek the ramps have a single column each; where they cross over it, a bent with columns in the median and outside the road carries them, so no column ever stands in a lane.
   - **The same world from both roads.** Driving Japek or the MBZ you see the same ramps, deck, columns and traffic.
@@ -194,7 +194,7 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
 - **Signs.** Junction gantries and the 1 km boards name the toll road each ramp leads to (for example "Tol JORR · Pluit / Tj. Priok"), and the through-lane sign names the toll road the carriageway continues as.
 - **Other signs.** There are gantry signs (EXIT/JCT plus the next cities), 500 m advance boards, km distance boards after each interchange, KM posts, speed-limit and minimum-speed signs, and warning boards for works and contraflow.
 - **Distance scale.** "Nyata 1:1" uses the real distances between exits. "Ringkas 1:5" and "Cepat 1:20" shorten the empty stretches, so a Jakarta–Surabaya drive fits into a session. The HUD always shows real km.
-- **Lanes.** Lane counts come from the data per road (for example Cipali has 2, Japek 4). "Lajur tol" can force 2–5 lanes. When the count changes between roads, the lane tapers and traffic has to merge.
+- **Lanes.** Lane counts come from the data per road (for example Cipali has 2, Jagorawi 4, Japek 5; the MBZ deck above Japek stays 2). "Lajur tol" can force 2–5 lanes. When the count changes between roads, the lane tapers and traffic has to merge.
 
 ## Files
 

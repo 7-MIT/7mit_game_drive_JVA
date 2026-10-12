@@ -26,7 +26,7 @@
   [hidden]{display:none!important}
   /* One grid holds every instrument, so panels can never overlap each other.
      Phone portrait, phone landscape and tablet/desktop each get their own areas. */
-  #ui{position:fixed;inset:0;height:100dvh;display:grid;gap:8px;pointer-events:none;z-index:2;
+  #ui{position:fixed;inset:0;height:100dvh;box-sizing:border-box;display:grid;gap:8px;pointer-events:none;z-index:2;
     padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));
     grid-template-columns:minmax(260px,400px) minmax(0,1fr) minmax(200px,300px);
     grid-template-rows:auto auto minmax(0,1fr) auto auto;
