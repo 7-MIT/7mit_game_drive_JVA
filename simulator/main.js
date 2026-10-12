@@ -695,7 +695,7 @@ function roadside(g, u0, u1, Z, R, toll){
     // keep only the real footprint of each interchange clear: trumpet + stem, cloverleaf loops, rest area
     for (const st of RSITES) { const du = Math.abs(st.u - u) - w/2; if (du > 460) continue;
       if (st.kind === 'x' && du < 200 && o - w/2 < 350) return false;
-      if (st.kind === 'x' && du < 580 && o - w/2 < 275) return false;     // room for the link road to town
+      if (st.kind === 'x' && du < 580 && o - w/2 < 330) return false;     // room for the link road to town
       if (st.kind === 'j' && du < 220 && o - w/2 < 700) return false;
       if (st.kind === 'r' && du < 280 && o - w/2 < 70) return false; }
     if (OVS.some(ov => Math.abs(ov.u - u) < 30 + w/2)) return false; if (PLAZAS.some(p => Math.abs(p.u - u) < 90) && o < 60) return false;
@@ -1088,7 +1088,7 @@ function prof(p, keys){ const c = [0]; for (let i=1; i<p.length; i++) c.push(c[i
 const TR_H = 6.8, GATE_O = 200, PR_IN = PRC - 7.2 + 3;
 // the player's exit when the trip carries on into town: through the gate on the stem, then a link road that curves forward
 // and joins the main axis, which beyond this exit is already the road to town (no teleport, no reload)
-const xLink = () => [[1.8,50],[2.6,58],[4.5,66],[8,75],[40,108],[62,130],[74,146],[82,162],[90,174],[100,178.25],[232,178.25],[246,186],[252,200],[250,230],[236,280],[200,340],[150,400],[100,450],[55,495],[25,530],[9,562],[3.5,592],[1.8,630],[1.8,700]];
+const xLink = () => [[1.8,50],[2.6,58],[4.5,66],[8,75],[40,108],[62,130],[74,146],[82,162],[90,174],[100,178.25],[296,178.25],[309,186],[313,200],[310,235],[290,290],[245,345],[190,400],[135,450],[85,495],[45,530],[18,562],[6,592],[1.8,630],[1.8,700]];
 const xLinkHere = s => s.kind === 'x' && EV[s.i] && EV[s.i + 1] && CORR[EV[s.i].cNext] && CORR[EV[s.i].cNext].cls !== 't' && s.i !== trip.destIdx;
 const trOut = () => [[1.8,50],[2.6,58],[4.5,66],[8,75],[40,108],[62,130],[74,146],[82,162],[90,174],[100,178.25],[PR_IN,178.25]];
 function trIn(){ const head = [[PR_IN,181.75],[40,181.75]], p = [...head, ...arcP(35,156.75,25,Math.PI/2,Math.PI*2)], i0 = head.length;
@@ -1693,11 +1693,11 @@ function toRamp(v, site, kind){
     if (v.player && v.jSwap) { raw = jLink(); end = 'merge'; mergeAt = 346; } }
   else { raw = trOut(); end = 'pr';
     if (v.player) { v.xSwap = seamlessExit(site);
-      if (v.xSwap) { raw = xLink(); end = 'merge'; mergeAt = 628; v.xSwap = false;
+      if (v.xSwap) { raw = xLink(); end = 'merge'; mergeAt = 628; v.xSwap = false; v.xl = true;
         // draw the link road now if the site was built before this exit was chosen
         for (const [o, gs] of [...built]) if (o.type === 'site' && Math.abs(o.u - site.u) < 1) { freeObj(gs); built.delete(o); }
         updateWorld(); } } }
-  v.rp = {P: mkPath([...head, ...raw]), d: 0, i: 0, pc: v.sd*site.u, sd: v.sd, e, shift: SC, end, park, kind, site, mergeAt}; v.rpOff = 0;
+  v.rp = {P: mkPath([...head, ...raw]), d: 0, i: 0, pc: v.sd*site.u, sd: v.sd, e, shift: SC, end, park, kind, site, mergeAt, xl: !!v.xl}; v.rpOff = 0; v.xl = false;
   v.exitWant = false; v.q = pathAt(v.rp.P, 0, 0);
   rm(vehicles, v); rampers.push(v);
 }
@@ -1736,6 +1736,8 @@ function rampStep(dt){
       if (d > 0 && d < 40 && Math.abs(dO*q.hu - du*q.ho) < 2.2 && Math.abs((o.q.h||0) - (q.h||0)) < 3) { const g2 = d - (v.len + o.len)/2; if (g2 < gap) { gap = g2; lead = o; } } }
     const cap = capAt(v, q); let acc = idm(v, lead, gap, cap);
     if (v.rp.park || v.rp.end === 'merge') acc = Math.min(acc, idm(v, STOP, v.rp.P.len - v.rp.d - (v.rp.park ? 0.1 : 1), cap));
+    // traffic coming in from town waits at the end of the stem while the player crosses it on the link road
+    if (!v.player && v.rp.kind === 'x' && v.rp.end === 'merge' && PLR && PLR.rp && PLR.rp.xl && PLR.rp.site === v.rp.site && PLR.q && PLR.q.u < 205 && q.o > 316) acc = Math.min(acc, v.vel > 0.1 ? -4 : 0);
     if (v.player && v.rp.kind === 'x' && !v.rp.paid) { const dg = GATE_O - 1 - q.o; if (dg > -1 && q.u > 170) acc = Math.min(acc, idm(v, STOP, Math.max(0, dg) + 2, cap)); }
     if (v.player && !cfg.auto) { acc = playerAcc(v, dt); const st = (input.left ? 1 : 0) - (input.right ? 1 : 0);
       v.rpOff = clamp((v.rpOff || 0) + st*Math.min(Math.abs(v.vel), 12)*0.14*dt, -1.6, 1.6); }
@@ -2206,6 +2208,11 @@ function hitFx(dv, msg, where = 'front', o = null){
   else if (dv > 0.2) scrapeFx(u, v.x, py, 1);
   shake = Math.max(shake, Math.min(1.6, dv*0.08)); }
 // collisions from real positions, so side swipes, rear-ends and head-ons all count
+// heading of a vehicle in world (x, u) terms, for oriented collision tests
+function headW(o){
+  if (o.rp && o.q) { const sd = o.rp.sd; return [-sd*(o.q.ho || 0), sd*(o.q.hu || 1)]; }
+  const sd = o.sd || 1, hd = o.player ? (o.hd || 0) : 0; return [-sd*Math.sin(hd), sd*Math.cos(hd)];
+}
 function playerCollide(v){
   const onRamp = !!v.rp, uP = onRamp ? v.rp.sd*v.p : uOfV(v), hP = onRamp ? (v.q.h || 0) : 0, hwP = HW[v.type] || 1;
   const fwd = Math.sign((onRamp ? v.rp.sd : v.sd)*(v.vel || 1));
@@ -2215,6 +2222,16 @@ function playerCollide(v){
     const ou = o.rp ? o.rp.sd*o.p : o.sd*o.p, oh = o.rp ? (o.q && o.q.h) || 0 : 0;
     const du = ou - uP; if (Math.abs(du) > 25 || Math.abs(oh - hP) > 2.5) continue;
     const dx = o.x - v.x, px = hwP + (HW[o.type] || 1) - Math.abs(dx), pu = (v.len + o.len)/2 - Math.abs(du);
+    // on ramps and stem roads vehicles point every which way: test the two boxes in the player's own heading frame
+    if (onRamp || o.rp) { const hA = headW(v), hB = headW(o), hwO = HW[o.type] || 1, al = dx*hA[0] + du*hA[1], la = dx*hA[1] - du*hA[0];
+      const c = Math.abs(hA[0]*hB[0] + hA[1]*hB[1]), sn = Math.sqrt(Math.max(0, 1 - c*c)), extA = v.len/2 + o.len/2*c + hwO*sn, extL = hwP + hwO*c + o.len/2*sn;
+      if (Math.abs(al) >= extA - 0.1 || Math.abs(la) >= extL - 0.1) continue;
+      const ahead = al*Math.sign(v.vel || 1) > 0; if (!ahead) continue;
+      const vo = Math.max(0, o.vel*(hA[0]*hB[0] + hA[1]*hB[1])*Math.sign(v.vel || 1)), closing = Math.abs(v.vel) - vo;
+      pushBack(extA - Math.abs(al) + 0.05);
+      if (closing > 0) { const [a1] = impact1D(Math.abs(v.vel), MASS[v.type] || 1300, vo, MASS[o.type] || 1300), a2 = closing < 3 ? Math.min(Math.abs(v.vel), vo) : a1, dv = Math.abs(a2 - Math.abs(v.vel));
+        v.vel = Math.sign(v.vel || 1)*a2; hitFx(dv, 'Tabrakan dari belakang', 'front', o); }
+      continue; }
     if (px <= 0 || pu <= 0) continue;
     const osd = o.rp ? o.rp.sd : o.sd, vsd = onRamp ? v.rp.sd : v.sd, mP = MASS[v.type] || 1300, mO = MASS[o.type] || 1300;
     if (!onRamp && px < pu*0.6) {
