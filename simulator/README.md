@@ -154,4 +154,5 @@ When the plan changes (a choice in free driving, navigation, or the road ahead r
 
 - The world ahead is built a little at a time (at most two road pieces and one interchange per frame, nearest first), so there are no stutters while driving.
 - Leaving the toll road for a town is seamless: after the gate on the exit road, a link road curves forward and joins the road to town. There is no teleport, fade or reload.
+- Where nothing stops the car you can leave the road: through gaps in the guard rail (around exits, junctions and rest areas) and beside national roads outside towns. On the grass the car slows down, has less grip and bumps along; it counts once as "keluar badan jalan". Once you are outside the rail it stops you from the outside too. Buildings near the road are solid.
 - A median opening on a toll road only lets you through for a deliberate U-turn (or in a contraflow on your side), so you cannot drift into oncoming traffic by accident.

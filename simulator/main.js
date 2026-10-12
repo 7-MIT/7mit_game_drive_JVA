@@ -702,6 +702,7 @@ function roadside(g, u0, u1, Z, R, toll){
     const k = Math.round(u/SPAN); for (const kk of [k - 1, k, k + 1]) { const t = sutetTower(kk); if (t && Math.abs(t.u - u) < 14 + w/2 && Math.abs(Math.abs(t.x) - (eAt(u) + o)) < 14 + w/2) return false; }
     return true; };
   const house = (s, u, o, w, d, h, roof = true, wc, rc) => { const x = s*(eAt(u) + o);
+    if (o < 70) addSolid(g, 'Menabrak bangunan', u - w/2, u + w/2, x - d/2, x + d/2);     // buildings near the road are solid when you drive off it
     boxes.push([x, h/2, Z(u), d, h, w, wc ?? WALLS[Math.floor(R()*WALLS.length)]]);
     if (roof) roofs.push([x, h + 1.0*Math.min(w, d)/6, Z(u), d*0.78, Math.min(w, d)/3, w*0.78, rc ?? ROOFS[Math.floor(R()*ROOFS.length)]]); };
   for (const s of toll ? [-1, 1] : [-1, 1]) {
@@ -2104,12 +2105,14 @@ const slopeG = v => v.rp ? 0 : 9.81*(v.sd || 1)*gYD(uOfV(v))*Math.cos(v.hd || 0)
 const GEAR_UP = [5.5, 11, 17.5, 25, 33], GEAR_K = [1, 0.8, 0.64, 0.52, 0.43, 0.36];
 const gearOf = vel => 1 + GEAR_UP.filter(x => vel >= x).length;
 function playerAcc(v, dt){
-  const a = playerAcc0(v, dt);
+  let a = playerAcc0(v, dt);
+  // on grass: much more rolling resistance, and the car bumps along
+  if (v.offroad && Math.abs(v.vel) > 0.3) { a -= Math.sign(v.vel)*(1.3 + 0.0016*v.vel*v.vel); shake = Math.max(shake, Math.min(0.25, Math.abs(v.vel)*0.012)); }
   if (v.vel >= 0 && v.vel + a*dt < 0 && !(input.brake && input.brakeT > 0.6)) return -v.vel/dt;
   if (v.vel < 0 && v.vel + a*dt > 0 && !input.gas) return -v.vel/dt;
   return a;
 }
-const muOf = v => (heavy(v) || v.type === 'damkar' ? 0.62 : 0.92)*((WEATHER[cfg.weather] || {}).rain ? 0.68 : 1)*(1 - Math.min(0.25, (v.dmg || 0)*0.0025));
+const muOf = v => (v.offroad ? 0.6 : 1)*(heavy(v) || v.type === 'damkar' ? 0.62 : 0.92)*((WEATHER[cfg.weather] || {}).rain ? 0.68 : 1)*(1 - Math.min(0.25, (v.dmg || 0)*0.0025));
 function playerAcc0(v, dt){
   const sp0 = VEH[v.type] || VEH.car, dk = 1 - Math.min(0.6, (v.dmg || 0)*0.006), spec = {...sp0, vmax: sp0.vmax*dk, acc: sp0.acc*dk}, hv = heavy(v) ? 0.6 : 1;
   if ((v.dmg || 0) >= 100) { if (!v.deadT) { v.deadT = clock; toast('Mesin mati: kendaraan rusak berat. Menunggu derek…', 'bad'); }
@@ -2138,13 +2141,23 @@ function bodyMotion(v, yawRate, dt){
   v.rol = (v.rol || 0) + (clamp(-yawRate*Math.abs(v.vel)*0.011*(heavy(v) ? 1.4 : 1), -0.07, 0.07) - (v.rol || 0))*k;
   v.stv = v.player && !cfg.auto ? (v.steer || 0) : clamp(-yawRate*wheelbase(v)/Math.max(Math.abs(v.vel), 2), -0.5, 0.5);
 }
-// lateral room for the player: guard rail and median barrier on toll roads, buildings and the far kerb on national roads
+// is there a gap in the guard rail beside the player (around exits, junctions and rest areas, as drawn in siteEdge)?
+function railGap(v){ const i = siteNearIdx(uOfV(v));
+  for (const j of [i - 1, i, i + 1]) { const s = RSITES[j]; if (!s) continue; const t = v.p - v.sd*s.u + SC; if (t < 0 || t > 360) continue;
+    if ((s.kind === 'j' ? [[10, 352]] : [[10, 80], [285, 352]]).some(([a, b]) => t > a && t < b)) return true; }
+  return false; }
+// lateral room for the player: guard rail and median barrier on toll roads, buildings in towns; where nothing stops
+// the car (a gap in the rail, open country beside a national road) it can leave the road onto the verge and grass
+const OFFROAD = 60;
 function lxBounds(v){
   const u = uOfV(v), toll = isToll(u), e = eAt(u), c = MED + LW/2, nn = Math.round(nAt(u));
-  const inTown = !toll && townNear(u);
-  let hi = toll ? (e + 1.7 - c)/LW : (e + (inTown ? 4.4 : 7.5) - c)/LW, lo = -nn - 0.35;
+  const inTown = !toll && townNear(u), high = elevAt(u) > 0.5, open = !high && (toll ? railGap(v) : !inTown);
+  let hi = open ? (e + (toll ? OFFROAD : 8.6) - c)/LW : toll ? (e + 1.7 - c)/LW : (e + (inTown ? 4.4 : 7.5) - c)/LW, lo = -nn - 0.35;
   const sa = siteAhead(v.sd, v.p);
-  if (toll && sa && sa.t > -280 && sa.t < -100) hi += 1.6;          // gap in the guard rail at the exit
+  if (toll && !open && sa && sa.t > -280 && sa.t < -100) hi += 1.6;
+  // already out on the grass beyond the guard rail (or beyond the kerb in town): the barrier now stops the car from the outside
+  const wall = toll ? e + 2.8 : e + (inTown ? 4.4 : 8.6), xNow = c + v.lx*LW;
+  if (!open && !high && xNow > wall + 0.3) return [(wall + 0.25 + (HW[v.type] || 0.92) - c)/LW, Math.max(v.lx, (e + (toll ? OFFROAD : 8.6) - c)/LW)];          // gap in the guard rail at the exit
   // the median opening is only for a deliberate U-turn (or a contraflow on this side): driving straight you cannot drift across into oncoming traffic
   if (toll) { const z = cfAt(v.sd, v.p), cf = z && z.A === v.sd, atOpen = OPENS.some(o => Math.abs(o.u - u) < OPEN_HW - 4) && (cf || Math.abs(v.hd || 0) > 0.9 || v.lx < -0.5);
     if (!atOpen) { if (v.lx < -0.5) hi = Math.min(hi, -0.71); else lo = -0.29; } }
@@ -2178,13 +2191,15 @@ function steerPlayer(v, dt){
   if (lx > hi) { lx = hi; if (v.hd*Math.sign(v.vel) > 0) wallHit(isToll(uOfV(v)) ? 'Menyerempet pagar pengaman' : townNear(uOfV(v)) ? 'Menabrak bangunan di tepi jalan' : 'Masuk parit di tepi jalan'); }
   if (lx < lo) { lx = lo; if (v.hd*Math.sign(v.vel) < 0) wallHit(isToll(uOfV(v)) ? 'Menyerempet median beton' : 'Keluar badan jalan'); }
   v.lx = lx; v.lane = Math.round(lx);
+  { const n0 = nAvail(v.sd, v.p), was = v.offroad; v.offroad = !v.rp && lx > n0 - 1 + (2.9 + LW/2)/LW;
+    if (v.offroad && !was && clock - (v.offT || -9) > 4) { v.offT = clock; toast('Keluar dari jalan: rumput, laju berkurang', 'warn'); } }
   if (Math.abs(v.hd) > 2.3 && lx < -0.7 && Math.abs(v.vel) > 0.3 && clock - (v.uT || 0) > 2) { v.uT = clock; v.wantU = true; }   // done at the start of the next tick
   if (Math.abs(v.hd) > 1) return;      // turning around: no ramps or turns
   // leaving the road on the left: exit ramp, rest area, detour or turn at an intersection
   const n = nAvail(v.sd, v.p), front = v.p + v.len/2;
   if (lx > n - 1 + 0.65 && v.vel > 0) {
     const sa = siteAhead(v.sd, v.p);
-    if (sa && sa.t > -250 && sa.t < -110) { toRamp(v, sa.s, sa.s.kind); toast(sa.s.kind === 'r' ? `Masuk ${sa.s.name}` : sa.s.kind === 'j' ? `Masuk ramp ${nodeLabel(sa.s)}` : `Keluar di ${sa.s.name}`); hudLane(); return; }
+    if (sa && sa.t > -250 && sa.t < -110 && lx < n - 1 + 1.6 && Math.abs(v.hd) < 0.32) { toRamp(v, sa.s, sa.s.kind); toast(sa.s.kind === 'r' ? `Masuk ${sa.s.name}` : sa.s.kind === 'j' ? `Masuk ramp ${nodeLabel(sa.s)}` : `Keluar di ${sa.s.name}`); hudLane(); return; }
     const ow = CFA.find(z => z.oneWay && z.B === v.sd && v.p - z.bStart > -330 && v.p - z.bStart < -40);
     if (ow) { toDetour(v, ow); toast('Pengalihan lewat Jalan Nasional'); hudLane(); return; }
     const ks = KSITES.find(k => { const d = v.sd*k.u - SL - front; return d > -4 && d < 25; });
@@ -2294,7 +2309,7 @@ function playerRules(dt){
     const z = cfAt(v.sd, v.p), legitCf = z && z.A === v.sd && v.lane < 0 && -v.lane <= z.k;
     if (v.lx < -0.5 && !legitCf && !sirenOn(v) && Math.abs(v.hd || 0) < Math.PI/2) violation('melawan arus');
     if (v.lx > -0.5 && Math.abs(v.hd || 0) > 2 && Math.abs(v.vel) > 3) violation('melawan arus');
-    if (v.lx > n - 1 + 1.3) { offT += dt; if (offT > 1) { violation('keluar badan jalan'); offT = 0; } } else offT = 0;
+    if (v.lx > n - 1 + 1.3) { offT += dt; if (offT > 1 && !v.offV) { v.offV = true; violation('keluar badan jalan'); } } else { offT = 0; v.offV = false; }
     if (v.lx > n - 1 + 0.5 && v.lx <= n - 1 + 1.3 && !siteAhead(v.sd, v.p) && !sirenOn(v)) { shoulderT += dt; if (shoulderT > 2) { violation('berkendara di bahu jalan'); shoulderT = 0; } } else shoulderT = 0;
     if (isToll(uOfV(v)) && v.lx < -0.4 && v.lx > -0.8 && !(z && z.A === v.sd)) violation('melintasi putaran balik khusus petugas');
     const inBlock = v.lane >= 0 && v.lane < n && blockAhead(v.sd, v.lane, front) === 0;
