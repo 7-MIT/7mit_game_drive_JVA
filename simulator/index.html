@@ -28,8 +28,8 @@
   #ui{position:fixed;inset:0;height:100dvh;display:grid;gap:8px;pointer-events:none;z-index:2;
     padding:max(12px,env(safe-area-inset-top)) max(12px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));
     grid-template-columns:minmax(260px,400px) minmax(0,1fr) minmax(200px,300px);
-    grid-template-rows:auto auto minmax(0,1fr) auto;
-    grid-template-areas:"top mid map" "ins mid map" "set mid map" "dash dash drive"}
+    grid-template-rows:auto auto minmax(0,1fr) auto auto;
+    grid-template-areas:"top mid map" "ins mid map" "set mid map" "dash mid map" "drive drive drive"}
   #ui>*{pointer-events:auto;min-width:0;min-height:0}
 
   /* top bar */
@@ -164,21 +164,24 @@
   .stats div b{font-variant-numeric:tabular-nums;white-space:nowrap}
 
   /* driving controls */
-  #drive{grid-area:drive;align-self:end;justify-self:end;display:grid;grid-template-columns:repeat(3,64px);grid-template-rows:auto 64px 64px auto;gap:6px}
+  /* like on a phone: steer with the left thumb (◀ ▶ bottom left), pedals with the right (REM GAS bottom right) */
+  #drive{grid-area:drive;align-self:end;justify-self:stretch;display:grid;grid-template-columns:80px 80px auto minmax(0,1fr) 96px 96px;grid-template-rows:80px;gap:8px}
   .dbtn{background:var(--color-bg);border:2px solid var(--color-text);font-weight:800;font-size:13px;cursor:pointer;display:flex;align-items:flex-end;justify-content:flex-start;padding:6px 8px;touch-action:none;text-align:left;-webkit-touch-callout:none}
   .dbtn:hover{background:var(--color-neutral-200)}
   .dbtn:active,.dbtn[aria-pressed="true"]{background:var(--color-text);color:var(--color-bg)}
   .dbtn svg{width:22px;height:22px}
   #lft,#rgt{align-items:center;justify-content:center}
-  #gas{grid-column:3;grid-row:2/4;background:var(--color-text);color:var(--color-bg)}
+  #gas{grid-column:6;grid-row:1;background:var(--color-text);color:var(--color-bg)}
   #gas:active{background:var(--color-accent-600);border-color:var(--color-accent-600)}
-  #brake{grid-column:2;grid-row:2/4}
+  #brake{grid-column:5;grid-row:1}
   #brake:active{background:var(--color-accent);border-color:var(--color-accent);color:#fff}
-  #lft{grid-column:1;grid-row:2}#rgt{grid-column:1;grid-row:3}
-  .mini{grid-column:1/-1;grid-row:1;display:flex;gap:6px}
-  .mini .dbtn{flex:1;min-height:36px;font-size:11px;align-items:center;padding:6px 5px}
+  #lft{grid-column:1;grid-row:1}#rgt{grid-column:2;grid-row:1}
+  .mini{grid-column:3;grid-row:1;display:flex;gap:6px;align-self:end}
+  .mini .dbtn{flex:1;min-height:36px;min-width:74px;font-size:11px;align-items:center;padding:6px 5px}
+  /* keyboard in use: the on-screen pedals and steering hide until the screen is touched again */
+  body.kbd #lft, body.kbd #rgt, body.kbd #brake, body.kbd #gas{display:none!important}
   #auto[aria-pressed="true"]{background:var(--color-accent);border-color:var(--color-accent);color:#fff}
-  .keys{grid-column:1/-1;grid-row:4;font-size:10px;line-height:1.35;opacity:.8;text-align:right;color:#111;text-shadow:0 0 6px rgba(255,255,255,.8);width:192px;justify-self:end}
+  .keys{grid-column:4;grid-row:1;align-self:end;font-size:10px;line-height:1.35;opacity:.8;text-align:right;color:#111;text-shadow:0 0 6px rgba(255,255,255,.8);max-width:280px;justify-self:end}
   @media (hover:none), (pointer:coarse){ .keys{display:none} }
 
   /* messages live in the open road area, not over instruments */
@@ -244,6 +247,8 @@
     .ln{height:30px}
     .ln svg{width:18px;height:18px}
     #drive{justify-self:stretch;grid-template-columns:64px 64px minmax(0,1fr) 80px 80px;grid-template-rows:auto 62px}
+    .mini{grid-column:1/-1;grid-row:1}
+    .mini .dbtn{min-width:0}
     .mini .dbtn{min-height:32px}
     #lft{grid-column:1;grid-row:2}#rgt{grid-column:2;grid-row:2}
     #brake{grid-column:4;grid-row:2}#gas{grid-column:5;grid-row:2}
@@ -411,12 +416,13 @@
       <button id="camb" class="dbtn">Kamera</button>
       <button id="mapb" class="dbtn">Peta</button>
       <button id="hudb" class="dbtn" aria-pressed="false" aria-label="HUD ringkas">HUD</button>
+      <button id="sirb" class="dbtn" aria-pressed="false" hidden title="Sirene (N)">Sirene</button>
     </div>
     <button id="lft" class="dbtn" aria-label="Setir ke kiri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"><path d="M15 5l-7 7 7 7"/></svg></button>
     <button id="rgt" class="dbtn" aria-label="Setir ke kanan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"><path d="M9 5l7 7-7 7"/></svg></button>
     <button id="brake" class="dbtn">REM</button>
     <button id="gas" class="dbtn">GAS</button>
-    <div class="keys">↑/W gas · ↓/S rem (tahan saat berhenti = mundur) · tahan ←/→ setir · P autopilot · C kamera · M peta · H HUD ringkas</div>
+    <div class="keys">↑/W gas · ↓/S rem (tahan saat berhenti = mundur) · tahan ←/→ setir · P autopilot · C kamera · M peta · H HUD ringkas · K klakson · N sirene</div>
   </div>
 </div>
 
