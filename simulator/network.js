@@ -10,6 +10,9 @@ const C = (id, name, short, lanes, limit, nodes, planned = false) => ({id, name,
 const N = (id, name, short, lanes, limit, nodes) => ({id, name, short, lanes, limit, planned: false, cls: 'n',
   nodes: nodes.map(([name, km, lat, lon]) => ({name, km, kind: 'k', lat, lon}))});
 
+// Jalan provinsi / kabupaten: routed like national roads, drawn finer on the maps
+const PV = (...a) => ({...N(...a), prov: true});
+
 export const CORRIDORS = [
   C('tm', 'Tol Jakarta–Tangerang–Merak', 'Tangerang–Merak', 3, 100, [
     ['JCT Tomang', 0, 'j', -6.178, 106.795], ['JCT Kebon Jeruk', 6, 'j', -6.193, 106.763], ['Meruya', 8, 'x', -6.196, 106.738],
@@ -212,6 +215,30 @@ export const CORRIDORS = [
     ['Bangkalan', 0], ['Arosbaya', 15, -6.955, 112.855], ['Tanjung Bumi', 45, -6.905, 113.085], ['Ketapang Sampang', 68, -6.895, 113.285],
     ['Pasongsongan', 100, -6.925, 113.615], ['Ambunten', 112, -6.895, 113.735], ['Sumenep', 140]]),
   N('kalianget', 'Jalan Nasional Sumenep–Kalianget', 'Sumenep–Kalianget', 1, 50, [['Sumenep', 0], ['Kalianget', 10, -7.055, 113.935]]),
+  // ---- jalan provinsi & kabupaten (ibu kota kabupaten dan tujuan wisata, koordinat asli) ----
+  PV('p-majalengka', 'Jalan Provinsi Cirebon–Sumber–Majalengka–Kadipaten', 'Cirebon–Majalengka', 1, 50, [
+    ['Cirebon', 0], ['Sumber (Cirebon)', 9, -6.760, 108.480], ['Majalengka', 45, -6.836, 108.228], ['Kadipaten', 57]]),
+  PV('p-indramayu', 'Jalan Provinsi Lohbener–Indramayu–Jatibarang', 'Lohbener–Indramayu', 1, 50, [
+    ['Lohbener', 0], ['Indramayu', 10, -6.327, 108.322], ['Jatibarang', 28]]),
+  PV('p-soreang', 'Jalan Provinsi Bandung–Soreang–Ciwidey', 'Bandung–Ciwidey', 1, 50, [
+    ['Bandung', 0], ['Soreang', 24, -7.030, 107.519], ['Ciwidey', 40, -7.100, 107.440]]),
+  PV('p-depok', 'Jalan Margonda Raya–Jalan Raya Bogor (Jakarta–Depok–Bojonggede–Bogor)', 'Jakarta–Depok–Bogor', 2, 50, [
+    ['Jakarta', 0], ['Depok', 22, -6.402, 106.818], ['Bojonggede', 35, -6.490, 106.800], ['Bogor', 50]]),
+  PV('p-tigaraksa', 'Jalan Provinsi Cikupa–Tigaraksa', 'Cikupa–Tigaraksa', 1, 50, [['Cikupa', 0], ['Tigaraksa', 9, -6.267, 106.473]]),
+  PV('p-tawangmangu', 'Jalan Provinsi Solo–Karanganyar–Tawangmangu–Sarangan–Magetan', 'Solo–Tawangmangu–Magetan', 1, 40, [
+    ['Solo', 0], ['Karanganyar', 14, -7.597, 110.950], ['Tawangmangu', 40, -7.665, 111.130], ['Sarangan', 52, -7.676, 111.218], ['Magetan', 66, -7.650, 111.330]]),
+  PV('p-magetan', 'Jalan Provinsi Magetan–Madiun', 'Magetan–Madiun', 1, 50, [['Magetan', 0], ['Madiun', 22]]),
+  PV('p-kajen', 'Jalan Kabupaten Pekalongan–Kajen', 'Pekalongan–Kajen', 1, 50, [['Pekalongan', 0], ['Kajen', 25, -7.030, 109.590]]),
+  PV('p-mungkid', 'Jalan Provinsi Magelang–Mungkid–Muntilan–Sleman–Yogyakarta', 'Magelang–Sleman–Yogyakarta', 1, 50, [
+    ['Magelang', 0], ['Mungkid', 10, -7.555, 110.270], ['Muntilan', 15, -7.580, 110.290], ['Sleman', 32, -7.715, 110.355], ['Yogyakarta', 45]]),
+  PV('p-bantul', 'Jalan Parangtritis (Yogyakarta–Bantul–Parangtritis)', 'Yogyakarta–Parangtritis', 1, 50, [
+    ['Yogyakarta', 0], ['Bantul', 12, -7.888, 110.330], ['Parangtritis', 28, -8.020, 110.330]]),
+  PV('p-dieng', 'Jalan Provinsi Wonosobo–Dieng', 'Wonosobo–Dieng', 1, 40, [['Wonosobo', 0], ['Dieng', 26, -7.210, 109.910]]),
+  PV('p-trenggalek', 'Jalan Provinsi Tulungagung–Trenggalek', 'Tulungagung–Trenggalek', 1, 50, [['Tulungagung', 0], ['Trenggalek', 30, -8.050, 111.710]]),
+  PV('p-pare', 'Jalan Provinsi Kediri–Pare–Jombang', 'Kediri–Pare–Jombang', 1, 50, [['Kediri', 0], ['Pare', 25, -7.765, 112.195], ['Jombang', 40]]),
+  PV('p-bromo', 'Jalan Provinsi Probolinggo–Sukapura–Bromo (Cemoro Lawang)', 'Probolinggo–Bromo', 1, 40, [
+    ['Probolinggo', 0], ['Sukapura', 28, -7.880, 113.080], ['Cemoro Lawang', 45, -7.930, 112.955]]),
+  PV('p-kamal', 'Jalan Provinsi Bangkalan–Kamal', 'Bangkalan–Kamal', 1, 50, [['Bangkalan', 0], ['Kamal', 18, -7.160, 112.720]]),
   N('jasinga', 'Jalan Nasional Bogor–Leuwiliang–Jasinga–Rangkasbitung–Pandeglang', 'Bogor–Rangkasbitung', 1, 60, [
     ['Bogor', 0], ['Dramaga', 10, -6.560, 106.730], ['Leuwiliang', 22, -6.570, 106.630], ['Jasinga', 45, -6.470, 106.470], ['Rangkasbitung', 80, -6.360, 106.250], ['Pandeglang', 105]]),
   N('sindang', 'Jalan Nasional Cianjur–Sukanagara–Sindangbarang', 'Cianjur–Sindangbarang', 1, 60, [
@@ -487,6 +514,10 @@ const SHAPE = {
   pelratu: {'Sukabumi>Palabuhanratu': [[-6.950, 106.800], [-6.980, 106.680]]},
   madura: {'Surabaya>Bangkalan': [[-7.215, 112.775], [-7.155, 112.785], [-7.100, 112.770]], 'Bangkalan>Sampang': [[-7.120, 112.900], [-7.200, 113.060]],
     'Sampang>Pamekasan': [[-7.200, 113.360]], 'Pamekasan>Sumenep': [[-7.110, 113.630], [-7.060, 113.760]]},
+  'p-tawangmangu': {'Karanganyar>Tawangmangu': [[-7.625, 111.030], [-7.650, 111.090]]},
+  'p-dieng': {'Wonosobo>Dieng': [[-7.300, 109.920], [-7.255, 109.900]]},
+  'p-bromo': {'Probolinggo>Sukapura': [[-7.800, 113.180], [-7.850, 113.120]]},
+  'p-majalengka': {'Sumber (Cirebon)>Majalengka': [[-6.800, 108.380], [-6.830, 108.300]]},
   maduraut: {'Bangkalan>Arosbaya': [[-7.000, 112.790]], 'Arosbaya>Tanjung Bumi': [[-6.920, 112.970]], 'Tanjung Bumi>Ketapang Sampang': [[-6.890, 113.190]],
     'Ketapang Sampang>Pasongsongan': [[-6.890, 113.450]], 'Ambunten>Sumenep': [[-6.950, 113.800]]},
 };

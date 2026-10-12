@@ -14,7 +14,7 @@ import {CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, w
 const MOBILE = matchMedia('(pointer:coarse)').matches || innerWidth < 700;
 const LW = 3.6, MED = 1.2, CH = 120, OPEN_HW = 35, OVH = 7.5, PRC = 328, BACK = 460, FWD = 720;
 let VIEWX = 0;   // extra metres of road and scenery built ahead (Jarak pandang: jauh)
-const DEF = {mode:'mix', cam:'chase', den:1, tod:'day', lanes:'auto', closed:{'1':[1], '-1':[]}, cf:0, cfk:2, ovl:2, scale:5, veh:'car', tspd:1, steerAssist:false, weather:'cerah', roadStyle:'data', view:'normal', autoSteer:false, sound:true, clean:false,
+const DEF = {mode:'mix', gfx:'auto', cam:'chase', den:1, tod:'day', lanes:'auto', closed:{'1':[1], '-1':[]}, cf:0, cfk:2, ovl:2, scale:5, veh:'car', tspd:1, steerAssist:false, weather:'cerah', roadStyle:'data', view:'normal', autoSteer:false, sound:true, clean:false,
   from:'Bekasi Barat', to:'Pasteur', auto:false, trip:'route'};
 let cfg; try { cfg = {...DEF, ...JSON.parse(localStorage.getItem('tj_cfg1') || '{}')}; } catch(e) { cfg = {...DEF}; }
 const saveCfg = () => { try { localStorage.setItem('tj_cfg1', JSON.stringify(cfg)); } catch(e) {} };
@@ -1152,7 +1152,7 @@ function drawMirrors(dt){
     const side = m.k === 'l' ? -1 : m.k === 'r' ? 1 : 0, hw = (HW[v.type] || 0.92) + 0.15;
     m.cam.position.set(g.position.x + right.x*side*hw + fwd.x*(m.k === 'c' ? -0.2 : 0.6), up + (side ? -0.25 : 0.2), g.position.z + right.z*side*hw + fwd.z*(m.k === 'c' ? -0.2 : 0.6));
     m.cam.lookAt(m.cam.position.x - fwd.x*40 + right.x*side*6, up - (side ? 1.2 : 0.5), m.cam.position.z - fwd.z*40 + right.z*side*6);
-    if (redraw) { g.visible = m.k !== 'c'; renderer.setRenderTarget(m.rt); renderer.render(scene, m.cam); g.visible = true; }    // the interior mirror looks out through the rear window
+    if (redraw) { g.visible = m.k !== 'c'; if (CKP) CKP.g.visible = false; renderer.setRenderTarget(m.rt); renderer.render(scene, m.cam); g.visible = camMode !== 'cockpit'; if (CKP) CKP.g.visible = camMode === 'cockpit' && !foot && !tow; }    // the interior mirror looks out through the rear window
     const [x, y, w, h] = mirBox[m.k]; m.face.scale.set(w, h, 1); m.face.position.set(x + w/2, H - y - h/2, 0.1); m.frame.scale.set(w + 6, h + 6, 1); m.frame.position.set(x + w/2, H - y - h/2, 0); }
   renderer.setRenderTarget(null); const ac = renderer.autoClear; renderer.autoClear = false; renderer.clearDepth(); renderer.render(mirScene, mirCam2); renderer.autoClear = ac;
 }
@@ -1931,7 +1931,7 @@ function freeObj(gs){ dropSolids(gs); for (const g of gs) { g.traverse(m => { if
 function updateWorld(budget = false){
   const lo = Math.floor((camU - BACK - 140)/CH), hi = Math.floor((camU + FWD + 340 + VIEWX)/CH), c0 = Math.floor(camU/CH);
   for (const [i, g] of chunks) if (i < lo || i > hi) { dropSolids([g]); dispose(g); chunks.delete(i); }
-  let nC = budget ? 2 : Infinity;
+  let nC = budget ? (MOBILE || QUAL.level >= 2 ? 1 : 2) : Infinity;
   for (let d = 0; d <= Math.max(c0 - lo, hi - c0) && nC > 0; d++) for (const i of d ? [c0 + d, c0 - d] : [c0]) {
     if (i < lo || i > hi || chunks.has(i) || nC <= 0) continue; chunks.set(i, buildChunk(i)); applySign([chunks.get(i)]); nC--; }
   const a = camU - BACK - 200, b = camU + FWD + 500 + VIEWX;
@@ -2101,6 +2101,9 @@ function toDetour(v, z){
   v.exitWant = false; v.detour = null; v.q = pathAt(v.rp.P, 0, 0);
   rm(vehicles, v); rampers.push(v);
 }
+// posted limits on ramps (m/s): rest area and exit ramps 40 km/h, junction ramps 60, the MBZ ramps 80
+const rampLimit = rp => rp.kind === 'mbz' ? 80/3.6 : rp.kind === 'j' ? 60/3.6 : rp.kind === 'detour' ? 50/3.6 : rp.parked ? 10/3.6 : 40/3.6;
+let rampSpdT = 0;
 function capAt(v, q){ const k = v.rp.kind;
   if (k === 'mbz') return 22;
   if (k === 'r' && q.o > 26 && q.u > 112 && q.u < 242) return 5;
@@ -2141,7 +2144,8 @@ function rampStep(dt){
     for (const w of v.wh) w.rotation.x += v.vel*dt / v.r;
     const q = v.q = pathAt(rp.P, rp.d, rp.i); rp.i = q.i;
     v.p = rp.pc + q.u - rp.shift;
-    if (v.player && !cfg.auto) { v.x = -rp.sd*(rp.e + q.o + (v.rpOff || 0)*q.hu); playerCollide(v); }
+    if (v.player && !cfg.auto) { v.x = -rp.sd*(rp.e + q.o + (v.rpOff || 0)*q.hu); playerCollide(v);
+      const lim = rampLimit(rp); rampSpdT = Math.abs(v.vel) > lim + 2.8 ? rampSpdT + dt : 0; if (rampSpdT > 2.5) { rampSpdT = 0; violation(`melebihi batas ${KMH(lim)} km/j di ramp`); } }
     if (v.player && rp.kind === 'x' && !rp.paid && q.o > GATE_O - 5 && q.u > 170 && Math.abs(v.vel) < 0.5) { rp.paid = true; payToll(rp.site); }
     if (v.player && rp.kind === 'x' && !rp.paid && q.o > GATE_O + 3 && q.u > 170) { rp.paid = true; violation('menerobos gerbang tol'); }
     if (rp.park && rp.d >= rp.P.len - 0.3) { rp.parked = true; v.vel = 0; if (v.player) setRest(true); }
@@ -2364,27 +2368,65 @@ function callTow(auto = false){
   const P = PLR; if (!P || tow) return; if (foot) { toast('Masuk ke kendaraan dulu', 'warn'); return; }
   if (P.rp) { toast('Derek datang setelah kendaraan berada di jalur utama', 'warn'); return; }
   const v = makeVehicle('derek'), n = nAvail(P.sd, P.p);
-  Object.assign(v, {sd: P.sd, p: P.p - 260, lx: n - 0.15, vel: 24, lane: n - 1}); v.x = posX(-P.sd, v.lx); scene.add(v.g);
+  // it comes in traffic: in the left lane, at a gap behind the car (never dropped into another vehicle)
+  let p0 = P.p - 380; for (let k = 0; k < 20 && !spanFree(P.sd, n - 1, p0 - v.len/2 - 12, p0 + v.len/2 + 12); k++) p0 -= 25;
+  Object.assign(v, {sd: P.sd, p: p0, lx: n - 1, vel: 18, lane: n - 1, tow: true}); v.x = posX(-P.sd, v.lx); scene.add(v.g);
   tow = {v, phase: 'come', t: 0, fuelOnly: !!P.noFuel && (P.dmg || 0) < 40 && !P.deadT};
   cfg.auto = false; hudAuto(); input.gas = input.brake = input.left = input.right = false;
-  toast(`${auto ? 'Mesin mati. ' : ''}Derek ${tow.fuelOnly ? 'membawa BBM darurat' : 'dalam perjalanan'}: tiba ± 15 detik`, 'warn'); uiNeeds();
+  toast(`${auto ? 'Mesin mati. ' : ''}Derek ${tow.fuelOnly ? 'membawa BBM darurat' : 'dalam perjalanan'}: tiba ± 30 detik`, 'warn'); uiNeeds();
+}
+// the tow truck drives by the rules: in a lane at the speed limit, keeping its distance and queueing behind traffic, stopping at the
+// toll gate and at red lights; it uses the shoulder only right at the broken-down car (and when it drops it off again)
+function towDrive(d, dt, vmax){
+  const n = nAvail(d.sd, d.p), front = d.p + d.len/2;
+  // the left-most lane that is open ahead (roadworks close the left lane now and then)
+  let want = n - 1; while (want > 0 && blockAhead(d.sd, want, front) < 160) want--;
+  if (want !== d.lane && spanFree(d.sd, want, d.p - d.len/2 - 8, front + 8)) d.lane = want;
+  d.lx += clamp(d.lane - d.lx, -0.6*dt, 0.6*dt);
+  const g = gapInfo(d, laneList(d.sd, d.lane)); let acc = idm(d, g.lead, g.ld, Math.min(vmax, limitAt(uOfV(d))*0.95));
+  const pz = plazaAhead(d.sd, front);
+  if (pz && d.paid !== pz.s.id) { acc = Math.min(acc, idm(d, STOP, pz.d + 2, vmax));
+    if (pz.d < 2.5 && d.vel < 0.6 && (d.payT = (d.payT || 0) + dt) > 1.5) { d.paid = pz.s.id; d.payT = 0; } }
+  const la = lightAhead(d.sd, front); if (la) { const st = sigMain(la.s); if (st === 'R' || (st === 'Y' && la.d > Math.max(6, d.vel*d.vel/6))) acc = Math.min(acc, idm(d, STOP, la.d + 2.2, vmax)); }
+  const bd = blockAhead(d.sd, d.lane, front); if (bd < Infinity) acc = Math.min(acc, idm(d, STOP, bd - 1.5, vmax));
+  d.vel = Math.max(0, d.vel + acc*dt); d.p += d.vel*dt;
 }
 function stepTow(dt){
   if (!tow || !PLR) return; const T = tow, d = T.v, P = PLR, n = nAvail(P.sd, P.p), sh = n - 0.15; T.t += dt;
   if (T.phase === 'come') {
-    const target = P.p + (P.len + d.len)/2 + 3, gap = target - d.p;
-    d.vel = Math.min(24, Math.sqrt(2*2.5*Math.max(0, gap))); d.p = Math.min(target, d.p + d.vel*dt); d.lx = sh;
+    // the car waits on the shoulder; the truck comes in the left lane behind the traffic, passes it, then pulls onto the shoulder ahead
     P.lx += clamp(sh - P.lx, -0.7*dt, 0.7*dt); P.lane = Math.round(P.lx); P.vel = Math.max(0, P.vel - 5*dt); P.hd = 0; P.steer = 0;
-    if (gap < 0.4 && Math.abs(P.lx - sh) < 0.05 && P.vel < 0.2) { T.phase = T.fuelOnly ? 'fuel' : 'load'; T.t = 0; T.p0 = P.p; P.vel = 0;
+    const past = d.p - d.len/2 > P.p + P.len/2 + 3;
+    if (!past) towDrive(d, dt, d.p < P.p - 120 ? 22 : 11);
+    else { const target = P.p + (P.len + d.len)/2 + 14, gap = target - d.p; d.vel = Math.min(d.vel, 10, Math.sqrt(2*2.5*Math.max(0, gap))); d.p = Math.min(target, d.p + d.vel*dt);
+      d.lx += clamp(sh - d.lx, -0.8*dt, 0.8*dt); d.lane = n - 1;
+      if (gap < 0.4 && Math.abs(d.lx - sh) < 0.05) { T.phase = 'back'; T.t = 0; toast('Derek tiba · mundur ke depan kendaraan Anda'); } } }
+  else if (T.phase === 'back') {
+    // on the shoulder, reverse slowly up to the car
+    const target = P.p + (P.len + d.len)/2 + 3; d.vel = -Math.min(2, Math.max(0.3, (d.p - target)*0.8)); d.p = Math.max(target, d.p + d.vel*dt); d.lx = sh;
+    P.lx += clamp(sh - P.lx, -0.7*dt, 0.7*dt); P.vel = 0;
+    if (d.p - target < 0.05 && Math.abs(P.lx - sh) < 0.05) { d.vel = 0; T.phase = T.fuelOnly ? 'fuel' : 'load'; T.t = 0; T.p0 = P.p; P.vel = 0;
       toast(T.fuelOnly ? 'Petugas derek mengisi BBM darurat 10 L…' : 'Kendaraan dinaikkan ke truk derek…'); } }
   else if (T.phase === 'fuel') { P.vel = 0; if (T.t > 4) { WAL.fuel = Math.max(WAL.fuel, 10); P.noFuel = false; WAL.cash -= 150000; toast(`BBM darurat 10 L diisi · biaya ${rp$(150000)}`); T.phase = 'leave'; T.t = 0; } }
   else if (T.phase === 'load') { const k = sstep(0, 1, Math.min(1, T.t/4)); P.vel = 0; P.lift = 1.2*k; P.p = T.p0 + (d.p - 1.2 - T.p0)*k;
-    if (T.t > 4.2) { T.phase = 'tow'; T.t = 0; T.dur = plazaAhead(P.sd, d.p + d.len/2) ? 8 : 22; toast('Diderek ke bengkel terdekat…'); } }
-  else if (T.phase === 'tow') { d.vel = Math.min(20, d.vel + 2*dt); d.p += d.vel*dt; d.lx = sh; P.p = d.p - 1.2; P.lx = sh; P.vel = d.vel; P.lift = 1.2;
-    if (T.t > T.dur) { const cost = 250000 + Math.round((P.dmg || 0)*6000/1000)*1000; WAL.cash -= cost; repairPlayer(); P.lift = 0; P.vel = 0; P.lx = n - 1; P.lane = n - 1; P.p = d.p - d.len/2 - P.len/2 - 6;
+    if (T.t > 4.2) { T.phase = 'tow'; T.t = 0; T.dur = 26; d.lane = n - 1; toast('Diderek ke bengkel terdekat…'); } }
+  else if (T.phase === 'tow') {
+    // back into the traffic when there is a gap, then on in its lane like everybody else
+    if (d.lx > n - 1 + 0.05) { d.vel = Math.min(d.vel + 1.5*dt, 8); d.p += d.vel*dt; if (spanFree(d.sd, n - 1, d.p - d.len/2 - 15, d.p + d.len/2 + 10)) d.lx += clamp(n - 1 - d.lx, -0.5*dt, 0.5*dt); }
+    else towDrive(d, dt, 20);
+    P.p = d.p - 1.2; P.lx = d.lx; P.lane = Math.round(d.lx); P.vel = d.vel; P.lift = 1.2;
+    if (T.t > T.dur && !plazaAhead(d.sd, d.p + d.len/2 + 60) && !lightAhead(d.sd, d.p + d.len/2)) { T.phase = 'drop'; T.t = 0; } }
+  else if (T.phase === 'drop') {
+    // pull over onto the shoulder and stop, then the repaired car is put down behind the truck
+    d.vel = Math.max(0, d.vel - 3*dt); d.p += d.vel*dt; d.lx += clamp(sh - d.lx, -0.5*dt, 0.5*dt); P.p = d.p - 1.2; P.lx = d.lx; P.vel = d.vel;
+    if (d.vel < 0.05 && Math.abs(d.lx - sh) < 0.05) { const cost = 250000 + Math.round((P.dmg || 0)*6000/1000)*1000; WAL.cash -= cost; repairPlayer(); P.lift = 0; P.vel = 0;
+      P.lx = sh; P.lane = n - 1; P.p = d.p - d.len/2 - P.len/2 - 6;
       gameH = mod(gameH + 0.75, 24); todT = 0; tickClock(0); blink(); toast(`Kendaraan sudah diperbaiki di bengkel · biaya derek & bengkel ${rp$(cost)}`); T.phase = 'leave'; T.t = 0; } }
-  else if (T.phase === 'leave') { d.vel = Math.min(25, d.vel + 2.5*dt); d.p += d.vel*dt; if (T.t > 3) d.lx += clamp(n - 1 - d.lx, -0.4*dt, 0.4*dt);
-    if (T.t > 14) { scene.remove(d.g); killVehicle(d); tow = null; uiNeeds(); } }
+  else if (T.phase === 'leave') {
+    // off the shoulder only into a gap, then away with the traffic
+    if (d.lx > n - 1 + 0.05) { d.vel = Math.min(d.vel + 1.5*dt, 8); d.p += d.vel*dt; if (spanFree(d.sd, n - 1, d.p - d.len/2 - 15, d.p + d.len/2 + 10)) d.lx += clamp(n - 1 - d.lx, -0.4*dt, 0.4*dt); }
+    else towDrive(d, dt, 22);
+    if (T.t > 30 || Math.abs(d.p - P.p) > 450) { scene.remove(d.g); killVehicle(d); tow = null; uiNeeds(); } }
   if (tow) P.x = posX(-P.sd, P.lx);
 }
 function placeTow(){ if (!tow) return; const d = tow.v; d.x = posX(-d.sd, d.lx); d.g.position.set(d.x, 0, camU - d.sd*d.p); d.g.rotation.y = d.sd > 0 ? Math.PI : 0;
@@ -2393,9 +2435,30 @@ function placeTow(){ if (!tow) return; const d = tow.v; d.x = posX(-d.sd, d.lx);
 // ================================================================
 // VEHICLE MODS: paint, rims, window tint, spoiler, lowered suspension, sport stripes, number plate
 // ================================================================
-const MOD_DEF = {paint: '#ec3013', rim: '#c9ccd0', tint: 0, plate: '', plateCat: '', spoiler: false, low: false, stripe: false};
+const MOD_DEF = {paint: '#ec3013', paint2: '#f4f4f2', livery: 'polos', rim: '#c9ccd0', tint: 0, plate: '', plateCat: '', spoiler: false, low: false, stripe: false};
 const MODS = () => Object.assign({}, MOD_DEF, cfg.mod || {});
 const PAINTS = ['#ec3013', '#f4f4f2', '#1b1c1f', '#8d939a', '#1f3f73', '#2f5a4a', '#e0a020', '#6a1d2b', '#3a9fd8', '#f07a1a'], RIMS = ['#c9ccd0', '#1b1c1f', '#d4af37', '#b02020', '#3a6fd8'];
+// body liveries: a 4 m tile painted in the two colours, mapped onto the body panels
+const LIVERY = {polos: 'Polos', balap: 'Garis balap', api: 'Api', kamo: 'Kamuflase', batik: 'Batik kawung', karbon: 'Karbon', gradasi: 'Gradasi', kotak: 'Kotak balap', polkadot: 'Polkadot'};
+const LIVTEX = new Map();
+function liveryTex(kind, c1, c2){
+  const k = kind + c1 + c2; if (LIVTEX.has(k)) return LIVTEX.get(k);
+  const S = 512, c = document.createElement('canvas'); c.width = c.height = S; const x = c.getContext('2d'), R = rng(kind.length*977 + 7);
+  x.fillStyle = c1; x.fillRect(0, 0, S, S); x.fillStyle = c2; x.strokeStyle = c2;
+  if (kind === 'balap') { x.fillRect(0, S*0.42, S, S*0.06); x.fillRect(0, S*0.52, S, S*0.06); x.save(); x.translate(S*0.5, S*0.25); x.rotate(-0.5); x.fillRect(-S, -12, S*2, 24); x.restore(); }
+  else if (kind === 'api') { for (let i = 0; i < 6; i++) { const y0 = S*(0.55 + 0.07*Math.sin(i)); x.beginPath(); x.moveTo(0, y0 + 40); for (let k2 = 0; k2 <= 8; k2++) { const xx = S*k2/8, tip = k2 % 2 ? -60 - 50*R() : 10; x.quadraticCurveTo(xx - S/16, y0 + tip*0.4, xx, y0 + tip); } x.lineTo(S, S); x.lineTo(0, S); x.closePath(); x.globalAlpha = 0.55; x.fill(); } x.globalAlpha = 1; }
+  else if (kind === 'kamo') { for (let i = 0; i < 26; i++) { x.beginPath(); const cx = R()*S, cy = R()*S; for (let a = 0; a < 7; a++) { const r = 30 + R()*45, t = a/7*Math.PI*2; a ? x.lineTo(cx + Math.cos(t)*r, cy + Math.sin(t)*r) : x.moveTo(cx + Math.cos(t)*r, cy + Math.sin(t)*r); } x.closePath(); x.globalAlpha = i % 2 ? 0.85 : 0.45; x.fill(); } x.globalAlpha = 1; }
+  else if (kind === 'batik') { const n = 4, q = S/n; x.lineWidth = 6; for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) { const cx = (i + 0.5)*q, cy = (j + 0.5)*q;
+      for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) { x.beginPath(); x.ellipse(cx + dx*q*0.22, cy + dy*q*0.22, dx ? q*0.2 : q*0.11, dx ? q*0.11 : q*0.2, 0, 0, Math.PI*2); x.fill(); }
+      x.fillStyle = c1; x.beginPath(); x.arc(cx, cy, q*0.06, 0, Math.PI*2); x.fill(); x.fillStyle = c2; } }
+  else if (kind === 'karbon') { const q = 16; for (let i = 0; i < S/q; i++) for (let j = 0; j < S/q; j++) { x.globalAlpha = (i + j) % 2 ? 0.7 : 0.25; x.fillRect(i*q, j*q, q, q); } x.globalAlpha = 1; }
+  else if (kind === 'gradasi') { const gr = x.createLinearGradient(0, 0, 0, S); gr.addColorStop(0, c2); gr.addColorStop(0.5, c1); gr.addColorStop(1, c2); x.fillStyle = gr; x.fillRect(0, 0, S, S); }
+  else if (kind === 'kotak') { const q = S/8; for (let i = 0; i < 8; i++) for (let j = 0; j < 2; j++) if ((i + j) % 2) x.fillRect(i*q, S*0.44 + j*q*0.5, q, q*0.5); }
+  else if (kind === 'polkadot') { const q = S/6; for (let i = 0; i < 6; i++) for (let j = 0; j < 6; j++) { x.beginPath(); x.arc((i + 0.5 + (j % 2)*0.5)*q, (j + 0.5)*q, q*0.22, 0, Math.PI*2); x.fill(); } }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(0.25, 0.25); t.anisotropy = 4;
+  if (LIVTEX.size > 24) { const [k0, t0] = LIVTEX.entries().next().value; t0.dispose(); LIVTEX.delete(k0); }
+  LIVTEX.set(k, t); return t;
+}
 // applies the mods to a vehicle model (own copies of the shared materials, so nothing else changes)
 function applyMods(v, m){
   if (!v || !m) return; const g = v.g; let rimM = null, glassM = null, plateM = null;
@@ -2406,6 +2469,11 @@ function applyMods(v, m){
       if (!plateM) { const cat = m.plateCat || plateCatOf(v.type), d = new Date(), def = randPlate(cat, 'B');
         plateM = new THREE.MeshStandardMaterial({map: plateCanvas((m.plate || def[0]).toUpperCase(), cat === 'polri' ? 'POLRI' : cat === 'dinas' ? 'DINAS' : cat === 'diplomatik' ? '' : `${String(d.getMonth() + 1).padStart(2, '0')} · ${String((d.getFullYear() + 5) % 100).padStart(2, '0')}`, cat), roughness: 0.45});
         plateM.userData.own = true; } o.material = plateM; } });
+  // livery on the body paint
+  const bodyM = g.children.find(o => o.isMesh && o.material && o.material.userData && o.material.userData.own && o.material !== rimM && o.material !== glassM && o.material !== plateM)?.material;
+  if (bodyM && bodyM.isMeshStandardMaterial) { const lv = m.livery && m.livery !== 'polos' && LIVERY[m.livery] ? m.livery : null;
+    if (bodyM.userData.paint == null) bodyM.userData.paint = bodyM.color.getHex();
+    bodyM.map = lv ? liveryTex(lv, '#' + new THREE.Color(bodyM.userData.paint).getHexString(), m.paint2 || '#f4f4f2') : null; bodyM.color.set(lv ? 0xffffff : bodyM.userData.paint); bodyM.needsUpdate = true; }
   const box3 = new THREE.Box3().setFromObject(g), top = box3.max.y, len = v.len, w = (HW[v.type] || 0.92)*2;
   if (m.spoiler && !heavy(v) && v.type !== 'moto') { const sp = new THREE.Group(); const pm = g.children.find(o => o.isMesh && o.material && o.material.userData.own && o.material !== rimM)?.material || trimMat;
     const zR = -len/2 + 0.25, yR = v.type === 'car' || v.type === 'taxi' || v.type === 'police' ? 1.02 : top - 0.05;
@@ -2420,6 +2488,8 @@ function buildModUI(){
   const m = MODS(), set = (k, val) => { cfg.mod = {...MODS(), [k]: val}; saveCfg(); buildModUI(); };
   const sw = (el, list, key) => { el.innerHTML = ''; for (const c of list) { const b = document.createElement('button'); b.style.background = c; b.title = c; b.setAttribute('aria-pressed', m[key] === c ? 'true' : 'false'); b.onclick = e => { e.preventDefault(); set(key, c); }; el.append(b); } };
   sw($('paintsel'), PAINTS, 'paint'); sw($('rimsel'), RIMS, 'rim');
+  sw($('paint2sel'), PAINTS, 'paint2');
+  const lv = $('m-livery'); if (!lv.options.length) for (const [k, l] of Object.entries(LIVERY)) lv.append(new Option(l, k)); lv.value = m.livery || 'polos'; lv.onchange = e => set('livery', e.target.value);
   $('m-paint').value = m.paint; $('m-paint').oninput = e => set('paint', e.target.value);
   $('m-tint').value = String(m.tint); $('m-tint').onchange = e => set('tint', +e.target.value);
   $('m-plate').value = m.plate; $('m-plate').onchange = e => set('plate', e.target.value.toUpperCase().replace(/[^A-Z0-9 \-]/g, '').replace(/\s+/g, ' ').slice(0, 12));
@@ -2654,7 +2724,7 @@ function makePeace(){ const o = peaceTarget; if (!o || !o.angry) return; const a
 // Stored in server.7mit (table drive7_server); the admin PIN is checked by the server (function drive7_set_settings).
 const SRV_KEYS = ['den', 'weather', 'roadStyle', 'tod', 'tspd', 'lanes', 'close:1', 'close:-1', 'cf', 'cfk', 'ovl', 'scale'];
 // in multiplayer an ordinary player cannot change any setting; only personal ones (camera, sound, HUD, steering aids) stay free
-const MP_FREE = ['cam', 'sound', 'clean', 'autoSteer', 'steerAssist'];   // personal: kept on this device, never sent to the server
+const MP_FREE = ['cam', 'sound', 'clean', 'autoSteer', 'steerAssist', 'gfx'];   // personal: kept on this device, never sent to the server
 const srvLocked = id => mp.on && !mp.admin && !MP_FREE.includes(id);
 function srvCollect(){ return {den: cfg.den, weather: cfg.weather, roadStyle: cfg.roadStyle, lanes: cfg.lanes, closed: cfg.closed, cf: cfg.cf, cfk: cfg.cfk, ovl: cfg.ovl, scale: cfg.scale,
   clock: {h: +gameH.toFixed(3), t: Date.now(), spd: +cfg.tspd || 0}}; }
@@ -2839,6 +2909,7 @@ function sim(dt){
   const reg = (k, v) => { let a = lanesOf.get(k); if (!a) lanesOf.set(k, a = []); a.push(v); };
   emergencyPlan(dt);
   for (const v of vehicles){ if (v.player && !cfg.auto) continue; if (v.esc && Math.abs(v.lx - v.lane) > 0.45) continue; reg(key(v.sd, v.lane), v); }
+  if (tow && Math.abs(tow.v.lx - Math.round(tow.v.lx)) < 0.45) reg(key(tow.v.sd, Math.round(tow.v.lx)), tow.v);
   if (PLR && !PLR.rp && !cfg.auto && !tow && vehicles.includes(PLR)) { const v = PLR, z = cfAt(v.sd, v.p);
     for (const l of new Set([Math.floor(v.lx), Math.ceil(v.lx)])) {
       if (l >= 0 || (z && z.A === v.sd && -l <= z.k)) reg(key(v.sd, l), v);
@@ -2880,7 +2951,9 @@ function sim(dt){
     const bd = blockAhead(v.sd, v.lane, front);
     if (!manual && bd < Infinity && !(v.esc && Math.abs(v.lx - v.lane) > 0.45)) v.acc = Math.min(v.acc, idm(v, STOP, bd - 1.5, v0));
     if (v.ngStop) v.acc = Math.min(v.acc, v.vel > 0.2 ? -2.5 : -v.vel/dt);
-    if (pz && v.paid !== pz.s.id && pz.d < 2.5 && v.vel < 0.6) { v.payT = (v.payT || 0) + dt; if (v.payT > (v.player ? 0.9 : 1.2)) { v.paid = pz.s.id; v.payT = 0; if (v.player) payToll(pz.s); } }
+    // paying at the gate: AI stop right at the line; the player may stop anywhere in the last 9 m as long as nobody is between them and the gate
+    const atGate = pz && v.paid !== pz.s.id && Math.abs(v.vel) < 0.6 && (pz.d < 2.5 || (v.player && pz.d < 9 && !laneList(v.sd, v.lane).some(o => o !== v && o.p > v.p && o.p - o.len/2 < v.sd*pz.s.u)));
+    if (atGate) { v.payT = (v.payT || 0) + dt; if (v.payT > (v.player ? 0.7 : 1.2)) { v.paid = pz.s.id; v.payT = 0; if (v.player) payToll(pz.s); } } else if (v.player) v.payT = 0;
     if (!manual && v.crashT > clock) { v.acc = v.angry && v.angry.phase === 'pull' ? (v.vel > 0.2 ? -3 : -v.vel/dt) : v.vel > 0.2 ? -6.5 : -v.vel/dt; continue; }
     if (manual || v.esc || v.ngStop || v.yieldT > clock) continue;
     if (pz && pz.d < 150) continue;   // no lane changes in front of the toll plaza
@@ -2974,7 +3047,7 @@ function place(){
   const ph = (clock*3.2) % 1;
   for (const v of vehicles.concat(rampers)) if (v.lights) { const on = sirenOn(v); v.lights[0].visible = on && ph < 0.5; v.lights[1].visible = on && ph >= 0.5; }
   for (const v of vehicles){ const u = v.sd*v.p, z = camU - u;
-    v.g.position.set(v.x, (v.lift || 0) - (v.lowered || 0), z); v.g.rotation.y = (v.sd > 0 ? Math.PI : 0) - v.yaw*v.sd; v.g.visible = z < zb && z > -zf;
+    v.g.position.set(v.x, (v.lift || 0) - (v.lowered || 0), z); v.g.rotation.y = (v.sd > 0 ? Math.PI : 0) - v.yaw*v.sd; v.g.visible = z < zb && z > -zf && !(v.player && camMode === 'cockpit' && !foot && !tow);
     // level of detail: far away the wheels are not drawn (hidden under the body at that distance anyway)
     const near = Math.abs(z) < 140 || v.player; if (v.lod !== near) { v.lod = near; for (const w of v.wh) w.visible = near; }
     if (v.g.visible && Math.abs(z) < 300) { v.g.rotation.x = v.pit || 0; v.g.rotation.z = v.rol || 0; for (const w of v.front || []) w.rotation.y = v.stv || 0; } }
@@ -3004,6 +3077,107 @@ function spawnPlayer(){
   Object.assign(v, {sd: 1, lane: Math.max(0, n - 1), p: startP, vel: o.kind === 'k' || o.kind === 'n0' ? 8 : 16, cd: 0, yaw: 0, cfWant: false, v0: limitAt(startP)});
   v.lx = v.lane; v.x = posX(-1, v.lane); v.paid = o.kind === 't' || o.kind === 'g' ? o.id : null;
   scene.add(v.g); vehicles.push(v); PLR = v; camU = startP; sirenUI(); uiNeeds();
+}
+// ================================================================
+// JOBS (mode pekerjaan): ojek online, food delivery, taxi, bus, angkot, freight truck. Stops are marked by the road;
+// pull over next to the marker and stop to pick up / drop off. Pay goes to the cash wallet, with a rating for how you drove.
+// ================================================================
+const JOBS = {
+  ojek:   {name: 'Ojek online', veh: 'moto', desc: 'Jemput penumpang di pinggir jalan, antar ke tujuan', pay: 'Rp 9.000 + Rp 2.500/km', base: 9000, perKm: 2500, kind: 'ride', who: 'penumpang'},
+  food:   {name: 'Antar makanan', veh: 'moto', desc: 'Ambil pesanan di warung, antar ke pelanggan', pay: 'Rp 10.000 + Rp 2.500/km', base: 10000, perKm: 2500, kind: 'ride', who: 'pesanan'},
+  taksi:  {name: 'Sopir taksi', veh: 'taxi', desc: 'Antar penumpang dengan argo', pay: 'Rp 7.500 + Rp 6.500/km', base: 7500, perKm: 6500, kind: 'ride', who: 'penumpang'},
+  bus:    {name: 'Sopir bus', veh: 'bus', desc: 'Berhenti di setiap halte: penumpang naik dan turun', pay: 'Rp 8.000 per penumpang', perPax: 8000, kind: 'line', stops: 5, gap: [380, 720]},
+  angkot: {name: 'Sopir angkot', veh: 'angkot', desc: 'Banyak penumpang jarak pendek', pay: 'Rp 5.000 per penumpang', perPax: 5000, kind: 'line', stops: 6, gap: [200, 420]},
+  truk:   {name: 'Sopir truk ekspedisi', veh: 'truck', desc: 'Muat barang di gudang, antar ke tujuan; muatan rusak dipotong', pay: 'Rp 250.000 + Rp 9.000/km', base: 250000, perKm: 9000, kind: 'ride', who: 'muatan'},
+};
+let job = null;
+// swap the player's vehicle in place (same spot, lane and speed), without rebuilding the world
+function swapPlayerVeh(type){
+  const old = PLR; if (!old || old.rp || foot || tow) return false;
+  const md = MODS(), fixed = ['taxi', 'police', 'ambulance', 'damkar', 'angkot'].includes(type), pc = new THREE.Color(md.paint).getHex();
+  const v = makeVehicle(type, fixed ? null : pc, true); v.player = true; v.paint = fixed ? 0xf4f4f2 : pc; v.dmg = 0; applyMods(v, md);
+  for (const k of ['sd', 'p', 'lane', 'lx', 'vel', 'hd', 'yaw', 'steer', 'cd', 'paid', 'x', 'v0']) v[k] = old[k];
+  const i = vehicles.indexOf(old); if (i >= 0) vehicles[i] = v; else vehicles.push(v); killVehicle(old); scene.add(v.g); PLR = v;
+  cfg.veh = type; saveCfg(); RULES.noMbz = !MBZ_OK.has(type); RULES.noToll = type === 'moto'; sirenUI(); uiNeeds(); return true;
+}
+// a spot by the road from u on: not at a junction, gate, rest area, town crossing or on the MBZ ramps
+function jobSpot(u, noToll = cfg.veh === 'moto'){ for (let k = 0; k < 120; k++, u += 40) { const bad = (noToll && isToll(u)) || RSITES.some(s => Math.abs(s.u - u) < 420) || PLAZAS.some(s => Math.abs(s.u - u) < 300) || KSITES.some(s => Math.abs(s.u - u) < 40)
+    || mbzHid(u) || mbzGap(u) || (MBZG && MBZG.frame === 'japek' && u > MBZG.F - 60 && u < MBZG.F + 120) || elevAt(u) > 0.5 || onSea(u); if (!bad) return u; } return u; }
+function jobStart(k){
+  const J = JOBS[k], P = PLR; if (!J || !P || !trip) return;
+  if (P.rp || foot || tow) return toast('Kembali ke jalan utama dulu', 'warn');
+  const u = uOfV(P), last = EV[EV.length - 1].u;
+  if (J.veh === 'moto' && isToll(u)) return toast('Sepeda motor tidak boleh di jalan tol: mulai dari jalan non-tol', 'warn');
+  if (k === 'angkot' && isToll(u)) return toast('Angkot tidak beroperasi di jalan tol: mulai dari jalan non-tol', 'warn');
+  if (corrAt(u) === 'mbz' && !MBZ_OK.has(J.veh)) return toast('Kendaraan ini tidak boleh di Tol Layang MBZ', 'warn');
+  if (cfg.veh !== J.veh && !swapPlayerVeh(J.veh)) return;
+  // a motorbike may not use toll roads: the road ahead is planned again without them
+  if (J.veh === 'moto') { const i0 = Math.max(0, evAt(u)); if (EV.slice(i0, EV.length - 1).some(e => CORR[e.cNext] && CORR[e.cNext].cls === 't')) { const i = replanIdx(u), e = EV[i];
+      if (trip.dest) setNav(trip.dest, true); else if (e) { const tail = walkFree(e.key, prevKeyOf(e), e.c, null, 50, 'mix'); if (tail) replan(i, tail, null); } } }
+  const stops = [];
+  if (J.kind === 'ride') { const a = jobSpot(u + rnd(350, 700)), b = jobSpot(a + rnd(600, 1500)); stops.push({u: a, kind: 'pick'}, {u: b, kind: 'drop'}); }
+  else { let x = u; for (let i = 0; i < J.stops; i++) { x = jobSpot(x + rnd(J.gap[0], J.gap[1])); stops.push({u: x, kind: 'halte', on: 1 + Math.floor(Math.random()*(k === 'bus' ? 9 : 4)), off: 0}); } }
+  if (stops[stops.length - 1].u > last - 100) return toast('Rute di depan terlalu pendek untuk pekerjaan ini: pilih tujuan yang lebih jauh', 'warn');
+  job = {k, J, stops, i: 0, earned: 0, pax: 0, hold: 0, viol0: stats.viol, crash0: stats.crashes, dmg0: P.dmg || 0, t0: clock};
+  $('jobdlg').hidden = true; jobMarker(); jobUI(); toast(`${J.name}: ${jobGoal()}`);
+}
+function jobStop(){ if (!job) return; if (job.mk) { scene.remove(job.mk); job.mk.traverse(o => o.geometry && o.geometry.dispose()); } job = null; jobUI(); }
+const JOB_COL = {pick: 0x2fa84f, drop: 0xec3013, halte: 0x1f5fbf};
+// the marker: a glowing post and a waiting person (or a bus-stop shelter) on the verge
+function jobMarker(){
+  if (job.mk) { scene.remove(job.mk); job.mk.traverse(o => o.geometry && o.geometry.dispose()); job.mk = null; }
+  const st = job.stops[job.i]; if (!st) return; const g = new THREE.Group(), col = JOB_COL[st.kind];
+  const glow = new THREE.MeshBasicMaterial({color: col, transparent: true, opacity: 0.55}), solidM = M(col);
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 9, 12, 1, true), glow); post.position.y = 4.5; g.add(post);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.12, 8, 28), solidM); ring.rotation.x = Math.PI/2; ring.position.y = 0.15; g.add(ring);
+  if (st.kind === 'halte') { g.add(solid(3.4, 0.12, 1.6, M(0x1f5fbf), 0, 2.5, 0), solid(0.1, 2.5, 0.1, M(0x8a8f96), -1.6, 1.25, -0.7), solid(0.1, 2.5, 0.1, M(0x8a8f96), 1.6, 1.25, -0.7), solid(3.2, 0.1, 0.5, M(0xc9ccd0), 0, 0.5, -0.5)); }
+  const n = st.kind === 'halte' ? Math.min(4, st.on) : 1;
+  for (let i = 0; i < n; i++) { const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.8, 4, 8), M([0x2f4f7a, 0x7a2f3a, 0x3a6a3a, 0x6a5a2f][i % 4])), head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), M(0xc58c5c));
+    body.position.set(-0.9 + i*0.6, 0.7, 0.2); head.position.set(-0.9 + i*0.6, 1.42, 0.2); g.add(body, head);
+    if (st.kind === 'pick' && job.k === 'food') { body.visible = head.visible = false; g.add(solid(1.6, 2.2, 1.4, M(0xd9a24a), 0, 1.1, 0), solid(1.8, 0.2, 1.6, M(0x9a3b2a), 0, 2.3, 0)); }
+    if (st.kind === 'pick' && job.k === 'truk') { body.visible = head.visible = false; for (let b = 0; b < 3; b++) g.add(solid(1.1, 1.1, 1.1, M(0xb8894a), -1 + b*1.15, 0.55, 0)); } }
+  bendObj(g); scene.add(g); job.mk = g;
+}
+function placeJob(){ if (!job || !job.mk) return; const st = job.stops[job.i]; if (!st) return; const sd = 1, e = eAt(st.u);
+  job.mk.position.set(-sd*(e + (isToll(st.u) ? 4.2 : 3.4)), 0, camU - st.u); job.mk.visible = Math.abs(camU - st.u) < 900; }
+function jobGoal(){ if (!job) return ''; const st = job.stops[job.i]; if (!st) return ''; const d = st.u - (PLR.p + PLR.len/2), dk = fmtKm(Math.max(0, d)/1000*cfg.scale);
+  if (st.kind === 'pick') return `${job.k === 'food' ? 'Ambil pesanan di warung' : job.k === 'truk' ? 'Muat barang di gudang' : 'Jemput penumpang'} · ${dk}`;
+  if (st.kind === 'drop') return `${job.k === 'food' ? 'Antar pesanan' : job.k === 'truk' ? 'Antar muatan' : 'Antar penumpang'} ke tujuan · ${dk}`;
+  return `Halte ${job.i + 1}/${job.stops.length} · ${dk} · ${job.pax} penumpang di dalam`; }
+function jobUI(){ const c = $('jobcard'); c.hidden = !job; $('jobb').setAttribute('aria-pressed', job ? 'true' : 'false'); if (!job) return;
+  $('jc-name').textContent = job.J.name; $('jc-goal').textContent = jobGoal() + (job.hold > 0 ? ' · berhenti…' : ''); $('jc-pay').textContent = `Pendapatan pekerjaan ini ${rp$(job.earned)} · menepi di samping penanda lalu berhenti`; }
+function jobStars(){ const s = clamp(5 - (stats.viol - job.viol0) - 2*(stats.crashes - job.crash0), 1, 5); return s; }
+function jobTick(dt){
+  if (!job || !PLR) return; const P = PLR, st = job.stops[job.i]; if (!st) return jobStop();
+  if (P.rp || foot || tow) { job.hold = 0; return; }
+  const front = P.p + P.len/2, d = st.u - front, n = nAvail(P.sd, P.p);
+  if (d < -150) { toast(job.J.kind === 'line' ? 'Halte terlewat: penumpang menunggu bus berikutnya' : 'Titik terlewat! Putar balik atau batalkan pekerjaan', 'bad'); if (job.J.kind === 'line') { job.i++; jobMarker(); } else { job.stops[job.i].u = jobSpot(front + 400); } return; }
+  const there = d > -14 && d < 14 && Math.abs(P.vel) < 1.2 && P.lx > n - 1 - 0.35;
+  job.hold = there ? job.hold + dt : 0;
+  if (job.hold > 1.0) { job.hold = 0;
+    if (st.kind === 'pick') { job.pickU = st.u; toast(job.k === 'food' ? 'Pesanan diambil · antar ke pelanggan' : job.k === 'truk' ? 'Barang dimuat · antar ke tujuan' : 'Penumpang naik · antar ke tujuan'); job.i++; jobMarker(); }
+    else if (st.kind === 'drop') { const km = Math.max(0.5, (st.u - job.pickU)/1000*cfg.scale), stars = jobStars();
+      let fare = Math.round((job.J.base + job.J.perKm*km)/500)*500;
+      if (job.k === 'truk') { const dd = Math.max(0, (P.dmg || 0) - job.dmg0); if (dd > 2) { fare = Math.round(fare*(1 - Math.min(0.6, dd/100))/500)*500; } }
+      const tip = stars === 5 && job.k !== 'truk' ? 5000 : 0; job.earned += fare + tip;
+      earn(fare + tip, `${job.J.name} · ${fmtKm(km)} · ${'★'.repeat(stars)}${'☆'.repeat(5 - stars)}${tip ? ' · tip ' + rp$(tip) : ''}`);
+      // next order straight away
+      const a = jobSpot(front + rnd(350, 700)), b = jobSpot(a + rnd(600, 1500)); if (b < EV[EV.length - 1].u - 100) { job.stops = [{u: a, kind: 'pick'}, {u: b, kind: 'drop'}]; job.i = 0; job.viol0 = stats.viol; job.crash0 = stats.crashes; job.dmg0 = P.dmg || 0; jobMarker(); setTimeout(() => job && toast(`Order baru: ${jobGoal()}`), 2800); }
+      else { toast('Tidak ada order lagi di rute ini · pekerjaan selesai'); jobStop(); return; } }
+    else { const off = Math.min(job.pax, 1 + Math.floor(Math.random()*Math.max(1, job.pax))), on = st.on; job.pax = job.pax - off + on;
+      const fare = on*job.J.perPax; job.earned += fare; earn(fare, `${job.J.name} · ${off} turun, ${on} naik`); job.i++;
+      if (job.i >= job.stops.length) { let x = front; for (let i = 0; i < job.J.stops; i++) { x = jobSpot(x + rnd(job.J.gap[0], job.J.gap[1])); job.stops.push({u: x, kind: 'halte', on: 1 + Math.floor(Math.random()*(job.k === 'bus' ? 9 : 4))}); }
+        if (job.stops[job.stops.length - 1].u > EV[EV.length - 1].u - 100) { toast('Trayek selesai'); jobStop(); return; } }
+      jobMarker(); } }
+  if ((job.uiT = (job.uiT || 0) - dt) < 0) { job.uiT = 0.3; jobUI(); }
+}
+function openJobs(){
+  const L = $('job-list'); L.innerHTML = '';
+  for (const [k, J] of Object.entries(JOBS)) { const b = document.createElement('button'), bt = document.createElement('b'), sp = document.createElement('span'), pp = document.createElement('span');
+    bt.textContent = J.name; sp.textContent = `${J.desc} · ${VEH[J.veh].label}`; pp.textContent = J.pay; b.append(bt, sp, pp); b.setAttribute('aria-pressed', job && job.k === k ? 'true' : 'false');
+    b.onclick = () => { if (job) jobStop(); jobStart(k); }; L.append(b); }
+  $('job-stat').textContent = job ? `Sedang bekerja: ${job.J.name} · ${jobGoal()} · pendapatan ${rp$(job.earned)}` : `Pilih pekerjaan. Kendaraan diganti otomatis sesuai pekerjaan. Tunai ${rp$(WAL.cash)}`;
+  $('job-stop').hidden = !job; $('jobdlg').hidden = false;
 }
 const slopeG = v => v.rp ? 0 : 9.81*(v.sd || 1)*gYD(uOfV(v))*Math.cos(v.hd || 0);    // g · grade along the direction of travel
 const GEAR_UP = [5.5, 11, 17.5, 25, 33], GEAR_K = [1, 0.8, 0.64, 0.52, 0.43, 0.36];
@@ -3518,7 +3692,60 @@ let camMode = cfg.cam;
 function setCam(m){ camMode = m; controls.enabled = m === 'orbit'; controls.autoRotate = false;
   if (m === 'orbit') { camera.position.set(pPos.x - 30, 18, pPos.z + 30); controls.target.copy(pPos); } }
 function fovFor(base){ const a = camera.aspect; return a < 1.3 ? Math.min(75, 2*Math.atan(Math.tan(base*Math.PI/360)*1.3/a)*180/Math.PI) : base; }
+// ---------- cockpit interior: dashboard, steering wheel (turning with the wheels), live instrument cluster, pillars, headliner, the bonnet ----------
+// right-hand drive as in Indonesia; it rides with the camera, so it is drawn without the road bend
+let CKP = null;
+function buildCockpit(){
+  const g = new THREE.Group(), dash = M(0x26272a, {roughness: 0.85}), trim = M(0x3a3b3f, {roughness: 0.6}), lining = M(0x8f8c86, {roughness: 0.95}), chrome = M(0xb8bcc2, {metalness: 0.8, roughness: 0.3});
+  const add = (w, h, d, mat, x, y, z, rx = 0, rz = 0) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.rotation.set(rx, 0, rz); g.add(m); return m; };
+  add(2.0, 0.07, 0.62, dash, -0.48, -0.33, -0.97);             // top of the dashboard
+  add(2.0, 0.34, 0.06, dash, -0.48, -0.51, -0.67);             // its face
+  add(0.48, 0.12, 0.22, dash, 0, -0.26, -0.79);                // hood over the instruments
+  add(0.32, 0.26, 0.62, dash, -0.6, -0.74, -0.42);             // centre console
+  add(0.3, 0.12, 0.02, trim, -0.6, -0.43, -0.665);              // air vents and radio
+  add(0.36, 0.14, 0.02, M(0x101214, {roughness: 0.3, metalness: 0.4}), -0.6, -0.59, -0.665);
+  add(0.05, 0.95, 0.05, trim, -1.32, 0.0, -0.86, 0, -0.42);   // A-pillars at the edges of the windscreen, leaning in at the top
+  add(0.05, 0.95, 0.05, trim, 0.62, 0.0, -0.86, 0, 0.42);
+  add(2.1, 0.06, 1.0, lining, -0.48, 0.36, -0.3);              // headliner
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 160; const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.13), new THREE.MeshBasicMaterial({map: tex, toneMapped: false})); scr.position.set(0, -0.325, -0.675); g.add(scr);
+  const wheel = new THREE.Group(); wheel.position.set(0, -0.41, -0.53); wheel.rotation.x = -0.38; g.add(wheel);
+  wheel.add(new THREE.Mesh(new THREE.TorusGeometry(0.19, 0.022, 10, 40), trim));
+  for (const a of [Math.PI/2, -Math.PI/2, Math.PI]) { const sp = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.03, 0.018), trim); sp.position.set(Math.cos(a)*0.09, Math.sin(a)*0.09, 0); sp.rotation.z = a; wheel.add(sp); }
+  const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.06, 0.05, 20), trim); hub.rotation.x = Math.PI/2; wheel.add(hub);
+  const logo = new THREE.Mesh(new THREE.CircleGeometry(0.022, 16), chrome); logo.position.z = 0.027; wheel.add(logo);
+  add(0.05, 0.05, 0.22, trim, 0, -0.49, -0.62, 0.4);            // steering column
+  const hood = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 1.5), new THREE.MeshStandardMaterial({color: 0xec3013, roughness: 0.35, metalness: 0.35}));
+  hood.rotation.x = -Math.PI/2 + 0.12; hood.position.set(-0.48, -0.47, -2.0); g.add(hood);
+  g.traverse(o => { o.frustumCulled = false; });
+  CKP = {g, wheel, cv, tex, hood, t: 0};
+  if (!camera.parent) scene.add(camera); camera.add(g);
+}
+function drawCluster(v){
+  const x = CKP.cv.getContext('2d'), W = 512, H = 160, kmh = Math.round(Math.abs(v.vel)*3.6);
+  x.fillStyle = '#07090b'; x.fillRect(0, 0, W, H); x.strokeStyle = '#2b3138'; x.lineWidth = 4; x.strokeRect(2, 2, W - 4, H - 4);
+  // speed arc
+  x.lineWidth = 10; x.strokeStyle = '#1d2329'; x.beginPath(); x.arc(110, 120, 80, Math.PI, 2*Math.PI); x.stroke();
+  x.strokeStyle = kmh > KMH(limitAt(uOfV(v))) + 5 ? '#ec3013' : '#3ab0ff'; x.beginPath(); x.arc(110, 120, 80, Math.PI, Math.PI*(1 + Math.min(1, kmh/180))); x.stroke();
+  x.fillStyle = '#f2f4f6'; x.textAlign = 'center'; x.textBaseline = 'alphabetic'; x.font = `800 58px ${SIGN_FONT}`; x.fillText(String(kmh), 110, 128);
+  x.font = `600 18px ${SIGN_FONT}`; x.fillStyle = '#9aa4ad'; x.fillText('km/jam', 110, 152);
+  x.textAlign = 'left'; x.fillStyle = '#f2c230'; x.font = `800 40px ${SIGN_FONT}`; x.fillText($('gear').textContent, 230, 70);
+  const f = WAL.fuel != null ? clamp(WAL.fuel/tankOf(), 0, 1) : 1; x.fillStyle = '#9aa4ad'; x.font = `600 18px ${SIGN_FONT}`; x.fillText('BBM', 230, 110);
+  x.fillStyle = '#1d2329'; x.fillRect(280, 96, 200, 16); x.fillStyle = f < 0.15 ? '#ec3013' : '#46c37b'; x.fillRect(280, 96, 200*f, 16);
+  x.fillStyle = '#9aa4ad'; x.fillText(`${String(Math.floor(gameH)).padStart(2, '0')}:${String(Math.floor(gameH%1*60)).padStart(2, '0')}`, 330, 70);
+  CKP.tex.needsUpdate = true;
+}
+function updateCockpit(dt){
+  const on = camMode === 'cockpit' && !!PLR && !foot && !tow;
+  if (!CKP) { if (!on) return; buildCockpit(); }
+  CKP.g.visible = on; const near = on ? 0.05 : 0.3; if (camera.near !== near) { camera.near = near; camera.updateProjectionMatrix(); }
+  if (!on) return;
+  CKP.wheel.rotation.z = clamp((PLR.steer || 0)*6, -3, 3);
+  if (CKP.paint !== PLR.paint) { CKP.paint = PLR.paint; CKP.hood.material.color.setHex(PLR.paint || 0xec3013); }
+  if ((CKP.t -= dt) <= 0) { CKP.t = 0.15; drawCluster(PLR); }
+}
 function updateCam(dt){
+  updateCockpit(dt);
   const v0 = PLR; if (!v0) return; const v = foot ? {g: foot.g, q: null, sd: v0.sd, len: 0.5, type: 'car'} : v0;
   pPos.copy(v.g.position); if (foot) pPos.y = 0;
   if (foot && camMode === 'chase') { const hy = foot.g.rotation.y, hdv = tmpV.set(Math.sin(hy), 0, Math.cos(hy)); headV.lerp(hdv, Math.min(1, dt*4)).normalize();
@@ -3534,7 +3761,7 @@ function updateCam(dt){
     camera.lookAt(pPos.x + headV.x*20, 1.4 + (v.q ? v.q.h || 0 : 0), pPos.z + headV.z*20); camera.fov = fovFor(58);
   } else if (camMode === 'cockpit') {
     const h = (v.type === 'bus' || v.type === 'truck') ? 2.6 : v.type === 'suv' ? 1.6 : 1.3;
-    camera.position.copy(pPos).addScaledVector(headV, v.len*0.12); camera.position.y = h + (v.q ? v.q.h || 0 : 0); camera.position.x += -v.sd*0.35 + shk;
+    camera.position.copy(pPos).addScaledVector(headV, v.len*0.05); camera.position.y = h + (v.q ? v.q.h || 0 : 0); camera.position.x += v.sd*0.36 + shk;   // the driver sits on the right
     camera.lookAt(camera.position.x + headV.x*30, camera.position.y - 0.6, camera.position.z + headV.z*30); camera.fov = fovFor(66);
   } else if (camMode === 'drone') {
     const pt = camera.aspect < 1, want = new THREE.Vector3().copy(pPos).addScaledVector(headV, pt ? -38 : -48); want.y = (pt ? 24 : 32) + Math.sin(clock*0.2)*3; want.x += Math.sin(clock*0.15)*(pt ? 8 : 18);
@@ -3588,7 +3815,7 @@ function updateHud(dt){
   const v = PLR, u = uOfV(v), rk = rkAt(u), dest = EV[trip.destIdx];
   $('spd').textContent = v.vel < -0.3 ? 'R ' + KMH(-v.vel) : KMH(Math.abs(v.vel));
   const gr = v.vel < -0.3 ? 'R' : Math.abs(v.vel) < 0.3 && !input.gas ? 'N' : 'D' + (cfg.auto || !v.gear ? gearOf(Math.max(0, v.vel)/(heavy(v) ? 0.6 : 1)) : v.gear); if ($('gear').textContent !== gr) $('gear').textContent = gr;
-  const lim = Math.min(limitAt(u), postedCap(v.sd, v.p + v.len/2), v.lane < 0 ? 16.7 : 99);
+  const lim = v.rp ? rampLimit(v.rp) : Math.min(limitAt(u), postedCap(v.sd, v.p + v.len/2), v.lane < 0 ? 16.7 : 99);
   const limK = Math.round(KMH(lim)/10)*10; if ($('lim').dataset.v !== String(limK)) { $('lim').dataset.v = limK; $('lim').textContent = limK; replay($('lim'), 'chg'); }
   $('spdbox').classList.toggle('over', v.vel > lim + 1.4);
   $('corr').textContent = CORR[corrAt(u)].name;
@@ -3615,6 +3842,8 @@ function updateHud(dt){
   else if (sa && sa.s.kind === 'r' && sa.t > -270) ins = '← Arahkan ke kiri sekarang untuk masuk rest area';
   else if (lightAhead(v.sd, v.p + v.len/2) && lightAhead(v.sd, v.p + v.len/2).d < 140) { const la = lightAhead(v.sd, v.p + v.len/2), st = sigMain(la.s);
     ins = st === 'R' ? `Lampu merah di ${la.s.name}: berhenti di garis stop (${Math.round(la.d)} m)` : st === 'Y' ? 'Lampu kuning: bersiap berhenti' : `Lampu hijau di ${la.s.name}${la.s.i === trip.destIdx ? ' · tujuan Anda' : ''}`; }
+  else if (!cfg.auto && plazaAhead(v.sd, v.p + v.len/2) && plazaAhead(v.sd, v.p + v.len/2).d < 160 && v.paid !== plazaAhead(v.sd, v.p + v.len/2).s.id) { const pz = plazaAhead(v.sd, v.p + v.len/2);
+    ins = pz.d < 9 ? (Math.abs(v.vel) < 0.6 ? 'Tap e-Toll…' : 'Berhenti untuk tap e-Toll') : `Gerbang tol ${Math.round(pz.d*cfg.scale/10)*10} m: antre dan berhenti di depan palang untuk tap e-Toll`; }
   else if (mbzHint(v)) ins = mbzHint(v);
   else { const bd = blockAhead(v.sd, v.lane, v.p + v.len/2, mbzOK() && !cfg.auto), z = cfAt(v.sd, v.p);
     const ow = CFA.find(z => z.oneWay && z.B === v.sd && v.p - z.bStart > -700 && v.p - z.bStart < -236);
@@ -3696,10 +3925,15 @@ function drawMap(){
   if (mapBig && PLR) { const u = uOfV(PLR), p = latLonAt(u); lon0 = p.lon - 0.9; lon1 = p.lon + 0.9; const h = 1.8*H/W; lat0 = p.lat + h/2; lat1 = p.lat - h/2; }
   const sx = Math.min(W/(lon1 - lon0), H/Math.abs(lat1 - lat0)), ox = (W - sx*(lon1 - lon0))/2, oy = (H - sx*Math.abs(lat1 - lat0))/2;
   const P = (lat, lon) => [ox + (lon - lon0)*sx, oy + (lat0 - lat)*sx];
-  x.fillStyle = 'rgba(32,30,29,0.06)'; for (const isl of [JAVA, MADURA]) { x.beginPath(); isl.forEach(([lo, la], i) => { const [a, b] = P(la, lo); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.closePath(); x.fill(); }
-  x.lineJoin = 'round';
-  for (const c of CORRIDORS) { if (c.cls === 'a' || !roadInView(c.id, P, W, H)) continue; x.lineWidth = c.cls === 'n' ? 1 : 1.5; x.strokeStyle = c.cls === 'n' ? 'rgba(138,90,40,0.55)' : 'rgba(32,30,29,0.45)'; x.setLineDash(c.planned ? [3, 3] : []); strokeRoad(x, P, c.id); }
-  x.setLineDash([]);
+  // the island and its roads: drawn once into a cached layer for the whole-island view, every time when zoomed in on the car
+  const base = y => { y.fillStyle = 'rgba(32,30,29,0.06)'; for (const isl of [JAVA, MADURA]) { y.beginPath(); isl.forEach(([lo, la], i) => { const [a, b] = P(la, lo); i ? y.lineTo(a, b) : y.moveTo(a, b); }); y.closePath(); y.fill(); }
+    y.lineJoin = 'round';
+    for (const c of CORRIDORS) { if (c.cls === 'a' || !roadInView(c.id, P, W, H)) continue; y.lineWidth = c.prov ? 0.7 : c.cls === 'n' ? 1 : 1.5; y.strokeStyle = c.prov ? 'rgba(160,120,70,0.45)' : c.cls === 'n' ? 'rgba(138,90,40,0.55)' : 'rgba(32,30,29,0.45)'; y.setLineDash(c.planned ? [3, 3] : []); strokeRoad(y, P, c.id); }
+    y.setLineDash([]); };
+  if (mapBig) base(x);
+  else { const k = `${W}x${H}x${dpr}`; if (!drawMap.cache || drawMap.key !== k) { const c = document.createElement('canvas'); c.width = Math.round(W*dpr); c.height = Math.round(H*dpr);
+      const y = c.getContext('2d'); y.setTransform(dpr, 0, 0, dpr, 0, 0); base(y); drawMap.cache = c; drawMap.key = k; }
+    x.drawImage(drawMap.cache, 0, 0, W, H); }
   if (trip) { const u0 = PLR ? uOfV(PLR) : 0, i0 = Math.max(0, evAt(u0)), i1 = trip.destIdx >= 0 ? trip.destIdx : Math.min(EV.length - 1, i0 + 60);
     x.lineWidth = 3; x.strokeStyle = acc; x.beginPath(); routeLL(u0, i1).forEach((e, i) => { const [a, b] = P(e.lat, e.lon); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke();
     const d = EV[trip.destIdx]; if (d) { const [dx, dy] = P(d.lat, d.lon); x.fillStyle = ink; x.fillRect(dx - 3, dy - 3, 6, 6); }
@@ -3729,7 +3963,7 @@ map.onclick = () => openAtlas();
 const NET = {t: CORRIDORS.filter(c => c.cls === 't'), n: CORRIDORS.filter(c => c.cls === 'n'), a: CORRIDORS.filter(c => c.cls === 'a')};
 const NAVABLE = [...NODES.values()].filter(n => edgesFrom(n.key).length);
 const NAV_COUNT = NAVABLE.length;
-const NET_SUMMARY = `${NET.t.length} ruas tol, ${NET.n.length} ruas jalan nasional, ${NET.a.length} jalan akses, ${NAVABLE.filter(n => n.kind === 'k').length} kota, ${NAVABLE.filter(n => n.kind === 'j').length} simpang susun, ${NAVABLE.filter(n => n.kind === 'x' || n.kind === 't' || n.kind === 'g').length} gerbang tol`;
+const NET_SUMMARY = `${NET.t.length} ruas tol, ${NET.n.filter(c => !c.prov).length} ruas jalan nasional, ${NET.n.filter(c => c.prov).length} ruas jalan provinsi/kabupaten, ${NET.a.length} jalan akses, ${NAVABLE.filter(n => n.kind === 'k').length} kota, ${NAVABLE.filter(n => n.kind === 'j').length} simpang susun, ${NAVABLE.filter(n => n.kind === 'x' || n.kind === 't' || n.kind === 'g').length} gerbang tol`;
 const KIND_NAME = {x: 'Gerbang tol (exit)', t: 'Gerbang tol (ujung tol)', g: 'Gerbang tol utama', j: 'Simpang susun', r: 'Rest area', k: 'Kota / persimpangan'};
 const KIND_TAG = {x: 'EXIT', t: 'GT', g: 'GT', j: 'JCT', r: 'REST', k: 'KOTA'};
 const atlas = $('atlas'), acv = $('atlas-map'), actx = acv.getContext('2d');
@@ -3752,7 +3986,7 @@ function openAtlas(){
 }
 function closeAtlas(){ atlas.hidden = true; $('at-res').hidden = true; $('at-q').blur(); }
 function legendText(){
-  $('lg-t').textContent = `Jalan tol · ${NET.t.length} ruas`; $('lg-n').textContent = `Jalan nasional · ${NET.n.length} ruas`; $('lg-a').textContent = `Jalan akses gerbang tol · ${NET.a.length}`;
+  $('lg-t').textContent = `Jalan tol · ${NET.t.length} ruas`; $('lg-n').textContent = `Jalan nasional · ${NET.n.filter(c => !c.prov).length} ruas · provinsi/kabupaten · ${NET.n.filter(c => c.prov).length} ruas`; $('lg-a').textContent = `Jalan akses gerbang tol · ${NET.a.length}`;
   const d = trip && EV[trip.destIdx];
   $('at-nav').textContent = d ? `Navigasi ke ${d.name} · ${fmtKm(Math.max(0, d.rk - rkAt(uOfV(PLR))))}` : 'Rute di depan (keliling bebas)';
 }
@@ -3767,7 +4001,8 @@ function drawAtlas(){
   x.lineCap = 'round'; x.lineJoin = 'round';
   const z = Math.log2(k/100);   // 0 = whole island
   x.setLineDash([4, 4]); x.strokeStyle = 'rgba(80,88,94,0.75)'; x.lineWidth = clamp(0.6 + z*0.35, 0.6, 2.2); for (const c of NET.a) line(c);
-  x.setLineDash([]); x.strokeStyle = '#a0682e'; x.lineWidth = clamp(1 + z*0.6, 1, 4.5); for (const c of NET.n) line(c);
+  x.setLineDash([]); x.strokeStyle = '#c49a62'; x.lineWidth = clamp(0.7 + z*0.45, 0.7, 3.2); for (const c of NET.n) if (c.prov) line(c);
+  x.strokeStyle = '#a0682e'; x.lineWidth = clamp(1 + z*0.6, 1, 4.5); for (const c of NET.n) if (!c.prov) line(c);
   for (const c of NET.t) { x.setLineDash(c.planned ? [7, 5] : []); x.strokeStyle = '#fff'; x.lineWidth = clamp(2.4 + z*0.9, 2.4, 8); line(c); x.strokeStyle = c.planned ? '#6d6a66' : '#201e1d'; x.lineWidth = clamp(1.4 + z*0.7, 1.4, 6); line(c); }
   x.setLineDash([]);
   // the route ahead (navigation or free driving plan)
@@ -3883,6 +4118,7 @@ function rowsSpec(){
     ['weather', 'Cuaca', [['cerah','Cerah'],['berawan','Berawan'],['hujan','Hujan'],['kabut','Kabut']]],
     ['roadStyle', 'Gaya jalan', [['data','Sesuai medan'],['kelok','Lebih berkelok & berbukit'],['lurus','Lebih lurus']]],
     ['view', 'Jarak pandang', [['normal','Normal'],['jauh','Jauh (lebih berat)']]],
+    ['gfx', 'Grafis', [['auto','Otomatis'],['hemat','Hemat (paling ringan)'],['sedang','Sedang'],['tinggi','Tinggi']]],
     ['autoSteer', 'Setir otomatis', [[false,'Mati'],[true,'Aktif (gas & rem tetap manual)']]],
     ['sound', 'Suara', [[true,'Nyala'],[false,'Mati']]],
     ['clean', 'Tampilan HUD', [[false,'Normal'],[true,'Ringkas (lebih kecil, tekan H)']]],
@@ -3970,6 +4206,7 @@ function apply(id, v, fromServer = false){
   else if (id === 'autoSteer') { if (PLR) PLR.autoLane = null; toast(`Setir otomatis: ${v ? 'aktif, gas & rem manual' : 'mati'}`); }
   else if (id === 'sound') { if (v) audioStart(); toast(`Suara: ${v ? 'nyala' : 'mati'}`); }
   else if (id === 'clean') setClean();
+  else if (id === 'gfx') { applyGfx(); toast(`Grafis: ${label()}`); }
   else if (id === 'steerAssist') toast(`Asisten setir: ${v ? 'aktif' : 'mati'}`);
   else if (id === 'den') { fillTraffic(); rebuildObjects(['site', 'ov']); toast(`Lalu lintas: ${label()}`); }
   else if (id === 'cf' || id === 'cfk') { const msg = cfg.cf ? ahead('cf') : ''; applyTraffic(['cf', 'ut']); fillTraffic(); updateWorld(); toast(`Contraflow: ${cfg.cf ? (cfg.cfk >= 9 ? 'semua lajur' : cfg.cfk + ' lajur') + (cfg.cf > 0 ? ' untuk arah saya' : ' untuk arah lawan') : 'mati'}${msg}`); }
@@ -4109,6 +4346,7 @@ $('mus-in').addEventListener('keydown', e => { if (e.key === 'Escape' || (!e.tar
   grip.addEventListener('pointerdown', e => { const r = box.getBoundingClientRect(); d = {dx: e.clientX - r.left, dy: e.clientY - r.top}; grip.setPointerCapture(e.pointerId); e.preventDefault(); });
   grip.addEventListener('pointermove', e => { if (!d) return; const r = box.getBoundingClientRect(); Object.assign(box.style, {left: clamp(e.clientX - d.dx, 4, innerWidth - r.width - 4) + 'px', top: clamp(e.clientY - d.dy, 4, innerHeight - 40) + 'px', right: 'auto'}); });
   for (const ev of ['pointerup', 'pointercancel']) grip.addEventListener(ev, () => { d = null; }); }
+$('jobb').onclick = openJobs; $('job-close').onclick = () => { $('jobdlg').hidden = true; }; $('job-stop').onclick = () => { jobStop(); $('jobdlg').hidden = true; toast('Berhenti bekerja'); };
 $('peaceb').onclick = makePeace; $('svcb').onclick = openSvc; $('svc-close').onclick = () => { $('svc').hidden = true; }; $('towb').onclick = () => callTow();
 $('mirb').onclick = () => { cfg.mirror = cfg.mirror === false; saveCfg(); $('mirb').setAttribute('aria-pressed', cfg.mirror !== false ? 'true' : 'false'); toast(cfg.mirror !== false ? 'Spion menyala (kokpit: spion kiri, tengah, kanan)' : 'Spion dimatikan'); };
 $('mirb').setAttribute('aria-pressed', cfg.mirror !== false ? 'true' : 'false');
@@ -4131,6 +4369,7 @@ addEventListener('keydown', e => { if (e.key === 'Escape' && !$('atlas').hidden)
   else if (k === 'c' && !e.repeat) $('camb').click();
   else if (k === 'v' && !e.repeat) $('mirb').click();
   else if (k === 'u' && !e.repeat) $('musb').click();
+  else if (k === 'j' && !e.repeat) { if ($('jobdlg').hidden) openJobs(); else $('jobdlg').hidden = true; }
   else if (k === 'l' && !e.repeat && !$('svcb').hidden) openSvc();
   else if (k === 't' && !e.repeat && !$('towb').hidden) callTow();
   else if (k === 'k' && !e.repeat) playerHorn(true);
@@ -4159,6 +4398,7 @@ function legsFor(from, first, dest, prev = null){
 }
 const MBZ_OK = new Set(['car', 'suv', 'pickup', 'police', 'taxi']);
 function startDrive({from, first = null, dest = null, legs = null, keepPos = false, cont = false, prev = null, home}){
+  if (job) jobStop();
   RULES.noMbz = !MBZ_OK.has(cfg.veh || 'car'); RULES.noToll = cfg.veh === 'moto';     // motorbikes may not use toll roads
   legs = legs || legsFor(from, first, dest, prev);
   const t = legs && legs.length ? tripFromLegs(from, legs, dest, cfg.mode) : null; if (!t) { toast('Rute tidak ditemukan', 'bad'); return false; }
@@ -4170,6 +4410,7 @@ function startDrive({from, first = null, dest = null, legs = null, keepPos = fal
   if (!cont && !keepPos) { Object.assign(stats, {t0: clock, toll: 0, viol: 0, crashes: 0, lastPay: 0, km0: 0, log: []}); WAL.fuel = null; WAL.sleep = 0; }
   Object.assign(stats, {missed: false, done: false});
   spawnPlayer();
+  setTimeout(precompile, 1500);
   if (keepU != null) { let u = 0; for (let i = 1; i < EV.length; i++) if (EV[i].rk >= keepU) { const a = EV[i-1], b = EV[i]; u = a.u + (b.u - a.u)*(keepU - a.rk)/((b.rk - a.rk) || 1); break; }
     const rs = RSITES.concat(PLAZAS).find(s => Math.abs(s.u - u) < 400); if (rs) u = rs.u + 420;
     PLR.p = Math.max(PLR.p, u); camU = PLR.p; }
@@ -4376,35 +4617,43 @@ let last = performance.now(), mapT = 0, frames = 0;
 function tick(dt){
   clock += dt;
   if (PLR && PLR.wantU) { PLR.wantU = false; uTurn(PLR); }
-  stepFoot(dt); tickNeeds(dt); stepTow(dt); stepAngry(dt); mpTick(dt); sim(dt); mbzTraffic(); rampStep(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt); tickClock(dt);
+  stepFoot(dt); tickNeeds(dt); stepTow(dt); stepAngry(dt); mpTick(dt); sim(dt); mbzTraffic(); rampStep(dt); jobTick(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt); tickClock(dt);
   if (PLR) camU = foot ? foot.u : uOfV(PLR);
   ensureAhead();
   setupBlocks(false); updateWorld(true); updateSignals(); animGhosts();
 }
-window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
+window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering
 window.__tj.step = (n, dt = 1/20) => { for (let i = 0; i < n; i++) tick(dt); updateSegs(); placeGroups(); place(); for (let k = 0; k < 40; k++) updateCam(dt); updateBend(); hudT = 0; updateHud(dt); drawMap(); };
 // automatic quality: if the frame rate stays low, step down (shadows less often, lower resolution, no bloom, shorter view)
 const QUAL = {level: 0, acc: 0, n: 0, slow: 0, t: 0, pr0: renderer.getPixelRatio()};
-function govern(rawDt){
-  QUAL.acc += rawDt; QUAL.n++; QUAL.t += rawDt; if (QUAL.t < 1) return;
-  const fps = QUAL.n/QUAL.acc; QUAL.acc = QUAL.n = QUAL.t = 0; if (document.hidden) return;
+function govern(rawDt, force = false){
+  if (!force) { QUAL.acc += rawDt; QUAL.n++; QUAL.t += rawDt; } if (QUAL.t < 1) return;
+  const fps = force ? 0 : QUAL.n/QUAL.acc; QUAL.acc = QUAL.n = QUAL.t = 0; if (document.hidden && !force) return;
+  if (cfg.gfx === 'tinggi' && !force) return;
   QUAL.slow = fps < 38 ? QUAL.slow + 1 : 0; if (QUAL.slow < 3 || QUAL.level >= 5) return; QUAL.slow = 0; const L = ++QUAL.level;
   if (L === 1) { renderer.shadowMap.autoUpdate = false; }
   if (L === 2) { renderer.setPixelRatio(Math.max(0.75, QUAL.pr0*0.7)); composer.setSize(innerWidth, innerHeight); }
   if (L === 3) { bloom.enabled = false; }
   if (L === 4) { sun.castShadow = false; renderer.shadowMap.enabled = false; scene.traverse(o => { if (o.material) o.material.needsUpdate = true; }); }
   if (L === 5) { renderer.setPixelRatio(Math.max(0.6, QUAL.pr0*0.5)); composer.setSize(innerWidth, innerHeight); scene.fog.far *= 0.8; }
-  toast(`Grafis diturunkan otomatis agar lancar (tingkat ${L})`);
+  if (!force) toast(`Grafis diturunkan otomatis agar lancar (tingkat ${L})`);
 }
+// graphics preset (a personal setting): Hemat starts at the lightest level, Sedang in the middle; Otomatis / Tinggi let the governor decide
+function applyGfx(){ const want = {hemat: 5, sedang: 2}[cfg.gfx] || 0;
+  if (want > QUAL.level) { while (QUAL.level < want) { QUAL.slow = 3; QUAL.t = 1; govern(0, true); } } }
+applyGfx();
+// shaders compiled up front, so new objects do not stutter the first time they appear
+let precompiled = false;
+function precompile(){ if (precompiled) return; precompiled = true; try { renderer.compile(scene, camera); } catch (e) {} }
 let shadowFrame = 0;
 renderer.setAnimationLoop(now => {
   const rawDt = (now - last)/1000, dt = Math.min(0.05, rawDt); last = now; frames++; if (rawDt > 0 && rawDt < 1) govern(rawDt);
   if (QUAL.level >= 1 && renderer.shadowMap.enabled) renderer.shadowMap.needsUpdate = (shadowFrame = (shadowFrame + 1) % 3) === 0;
   if ((!$('plan').hidden && trip && !stats.done) || !$('atlas').hidden) { composer.render(); return; }
   tick(dt);
-  placeGroups(); place(); placeFoot(); placeTow(); mpPlace(); placeBeams(); placeAngry(); updateCam(dt); updateVolcanoes(dt); updateLandmarks(); updateRoadSigns(); updateFx(dt); updateSky(dt); updateSound(); flash(); updateBend(); updateHud(dt);
+  placeGroups(); place(); placeFoot(); placeTow(); placeJob(); mpPlace(); placeBeams(); placeAngry(); updateCam(dt); updateVolcanoes(dt); updateLandmarks(); updateRoadSigns(); updateFx(dt); updateSky(dt); updateSound(); flash(); updateBend(); updateHud(dt);
   mapT -= dt; if (mapT <= 0) { mapT = 0.5; drawMap(); if (mp.on && !atlas.hidden) reqAtlas(); }
   composer.render(); drawMirrors(dt);
 });

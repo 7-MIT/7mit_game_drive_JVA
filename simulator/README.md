@@ -231,3 +231,89 @@ When the plan changes (a choice in free driving, navigation, or the road ahead r
 ### Exit ramps and interchanges
 - **Two lanes.** Exit and entry ramps are two lanes wide. The stem to the toll gate has two lanes each way, with five toll booths, and the link road from the gate into town is two lanes.
 - **Clear ramp areas.** Nothing is built on the footprint of an interchange: no houses, shophouses or trees on the ramps, the stem or the link road to town. This holds both on the toll road and on the road you join after leaving it.
+
+### Maps
+- **Curved roads.** Every road on the mini map and the atlas is drawn as a smooth curve through its places. Extra shape points are added where a road bends between towns, for example the coast roads Lasem–Tuban and Situbondo–Ketapang, Cipularang, and Banjar–Wangon. The route line and your position follow the same curves.
+- **Madura.** The island is drawn on the maps with its roads: the Suramadu–Bangkalan–Sampang–Pamekasan–Sumenep road, the north-coast road Bangkalan–Tanjung Bumi–Ketapang–Ambunten–Sumenep, Sumenep–Kalianget and Bangkalan–Kamal.
+- **Other players.** In multiplayer the other players are shown with their names on the mini map and on the atlas, which redraws while it is open.
+- **Jembatan Suramadu.** The Madura road crosses the strait on a 12 m deck. There is sea on both sides, piers, parapets and lamps, and two cable-stayed pylons with stay cables over the 434 m main span.
+
+### Provincial and regency roads (jalan provinsi / kabupaten)
+These roads link regency seats and well-known destinations, using real town coordinates. They are routed like national roads and drawn finer on the maps:
+- Cirebon–Sumber–Majalengka–Kadipaten
+- Lohbener–Indramayu–Jatibarang
+- Bandung–Soreang–Ciwidey
+- Jakarta–Depok–Bojonggede–Bogor
+- Cikupa–Tigaraksa
+- Solo–Karanganyar–Tawangmangu–Sarangan–Magetan, and Magetan–Madiun
+- Pekalongan–Kajen
+- Magelang–Mungkid–Muntilan–Sleman–Yogyakarta
+- Yogyakarta–Bantul–Parangtritis
+- Wonosobo–Dieng
+- Tulungagung–Trenggalek
+- Kediri–Pare–Jombang
+- Probolinggo–Sukapura–Bromo (Cemoro Lawang)
+- Bangkalan–Kamal
+
+Every village and city street is not included: that is millions of road segments, far more than a browser game can load.
+
+### Road signs
+- **Icons.** Every sign carries pictograms on white tiles, as on real signs:
+  - toll roads, exits and gates: the road symbol;
+  - junctions: a fork;
+  - rest areas: fuel, food, prayer room, toilet and minimarket;
+  - towns: a building;
+  - provinces: a map pin;
+  - Suramadu: waves;
+  - each facility in a rest area: its own symbol.
+- **Typeface.** Sign lettering uses Overpass, the open typeface modelled on Highway Gothic. It is self-hosted in `fonts/` under the SIL Open Font License. A device that has Highway Gothic installed uses that instead.
+
+### Money for driving
+Cash is added while the car is moving:
+- Rp 30.000 every 1–2 minutes of driving.
+- Rp 50.000 every 5 minutes.
+- Rp 100.000 every 2 km.
+
+The counters are saved with the wallet.
+
+### Jobs (Kerja, key J)
+Pick a job and the vehicle is swapped for the right one on the spot.
+
+| Job | Vehicle | Pay |
+|---|---|---|
+| Ojek online | motorbike | Rp 9.000 + Rp 2.500/km |
+| Antar makanan | motorbike | Rp 10.000 + Rp 2.500/km |
+| Sopir taksi | taxi | Rp 7.500 + Rp 6.500/km |
+| Sopir bus | bus | Rp 8.000 per boarding passenger |
+| Sopir angkot | angkot | Rp 5.000 per boarding passenger |
+| Sopir truk ekspedisi | truck | Rp 250.000 + Rp 9.000/km, less damage to the load |
+
+- **Stops.** Stops are marked by the road: a coloured post with people waiting, a bus shelter, a food stall or a pile of crates. Pull over next to the marker and stop to pick up or drop off.
+- **Rating.** Each trip is rated with 1–5 stars according to violations and crashes. Five stars earns a Rp 5.000 tip.
+- **Motorbikes.** Motorbike jobs never use toll roads: the road ahead is planned again without them.
+
+### Cockpit interior
+The cockpit camera now sits in a right-hand-drive interior:
+- a dashboard and a steering wheel that turns with the front wheels;
+- a live instrument cluster: speed, gear, fuel and time;
+- A-pillars, headliner, centre console and the bonnet in the car's paint.
+
+### Body textures (liveries)
+Under Modifikasi, choose a pattern for the body in the paint colour and a second colour: Polos, Garis balap, Api, Kamuflase, Batik kawung, Karbon, Gradasi, Kotak balap or Polkadot.
+
+### Tow truck drives by the rules
+- **Coming.** It comes in the left lane at the speed limit, keeps its distance and queues behind traffic. It stops and pays at toll gates and stops at red lights. Other traffic sees it and queues behind it too.
+- **At your car.** Only there does it pull onto the shoulder, then it reverses slowly up to your car.
+- **Towing.** It rejoins the lane only when there is a gap and tows in traffic.
+- **Dropping off.** It puts the repaired car down on the shoulder.
+
+### Fixes
+- **Toll gates.** You can stop anywhere in the last 9 m before the barrier, as long as nobody is between you and it. Before, it had to be within 2.5 m, so a car stopped at the booth did not pay and was later fined for running the gate. The instruction bar now guides you through the gate.
+- **Ramps.** Ramps have posted limits: rest areas and exits 40 km/h, junctions 60 km/h, MBZ 80 km/h. The limit is shown on the HUD, and speeding there is a violation, so nobody arrives at the fuel queue at 110 km/h.
+
+### Performance
+- **Grafis setting.** A personal setting with four options: Otomatis, Hemat, Sedang and Tinggi. Hemat starts at the lightest level: no shadows or bloom, lower resolution and a shorter view.
+- **Phones and tablets.** At most one road section is built per frame.
+- **Shaders.** They are compiled up front, so new objects do not stutter the first time they appear.
+- **Mini map.** The island and its roads are cached and not redrawn every half second.
+

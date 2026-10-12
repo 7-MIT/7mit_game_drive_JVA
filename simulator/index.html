@@ -311,6 +311,11 @@
   .svc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}
   .svc-grid button{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:9px 10px;text-align:left;cursor:pointer;border:2px solid var(--color-text);background:var(--color-surface,#fff);font:inherit}
   .svc-grid button b{font-size:13px}.svc-grid button span{font-size:11px;opacity:.75}
+  #jobcard{position:fixed;left:50%;bottom:118px;transform:translateX(-50%);z-index:6;display:flex;flex-direction:column;gap:2px;max-width:min(380px,calc(100vw - 32px));
+    padding:8px 12px;background:var(--color-surface,#f4f1ea);color:var(--color-text,#201e1d);border:2px solid var(--color-text,#201e1d);font-size:13px;line-height:1.3;pointer-events:none}
+  #jobcard b{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--color-accent,#ec3013)} #jc-pay{font-size:11px;opacity:.75}
+  @media (max-width:700px){ #jobcard{bottom:198px;font-size:12px;padding:6px 10px} #jc-pay{display:none} }
+  @media (max-height:500px){ #jobcard{bottom:auto;top:8px;font-size:12px;padding:5px 10px} #jc-pay{display:none} }
   .svc-grid button:disabled{opacity:.4;cursor:default}
   /* dialogs */
   .dlg-back{position:fixed;inset:0;background:color-mix(in srgb,#201e1d 45%,transparent);display:grid;place-items:center;z-index:10;padding:16px}
@@ -505,6 +510,7 @@
       <button id="hornb" class="dbtn" title="Klakson (K, tahan)" aria-label="Klakson"><i data-lucide="megaphone"></i><span class="bl">Klakson</span></button>
       <button id="mirb" class="dbtn" aria-pressed="true" title="Spion (V)" aria-label="Spion"><i data-lucide="eye"></i><span class="bl">Spion</span></button>
       <button id="svcb" class="dbtn" hidden title="Layanan (L)" aria-label="Layanan"><i data-lucide="store"></i><span class="bl">Layanan</span></button>
+      <button id="jobb" class="dbtn" aria-label="Kerja" title="Mode pekerjaan (J)"><i data-lucide="briefcase"></i><span class="bl">Kerja</span></button>
       <button id="musb" class="dbtn" aria-label="Musik" title="Musik (U)"><i data-lucide="music"></i><span class="bl">Musik</span></button>
       <button id="peaceb" class="dbtn" hidden aria-label="Minta maaf &amp; ganti rugi" title="Minta maaf & bayar ganti rugi"><i data-lucide="handshake"></i><span class="bl">Minta maaf</span></button>
       <button id="towb" class="dbtn" hidden title="Panggil derek (T)" aria-label="Panggil derek"><i data-lucide="truck"></i><span class="bl">Panggil derek</span></button>
@@ -537,6 +543,8 @@
         <div class="modgrid">
           <label>Warna cat <span id="paintsel" class="swatches"></span><input type="color" id="m-paint" aria-label="Warna cat bebas"></label>
           <label>Warna pelek <span id="rimsel" class="swatches"></span></label>
+          <label>Motif / tekstur bodi <select id="m-livery" class="input"></select></label>
+          <label>Warna kedua (motif) <span id="paint2sel" class="swatches"></span></label>
           <label>Kaca film <select id="m-tint" class="input"><option value="0">Bening</option><option value="1">Sedang (40%)</option><option value="2">Gelap (80%)</option></select></label>
           <label>Plat nomor <input id="m-plate" class="input" maxlength="12" placeholder="B 1234 SIM"></label>
           <label>Jenis plat <select id="m-platecat" class="input"></select></label>
@@ -553,6 +561,17 @@
   </div>
 </div>
 
+<div id="jobdlg" class="dlg-back" hidden>
+  <div class="dlg panel" role="dialog" aria-labelledby="job-title">
+    <div class="dlg-head"><h2 id="job-title">Mode pekerjaan</h2><button id="job-close" class="x" aria-label="Tutup"><i data-lucide="x">×</i></button></div>
+    <div class="dlg-body">
+      <p id="job-stat" class="help" style="opacity:1;font-size:13px"></p>
+      <div id="job-list" class="svc-grid"></div>
+      <button id="job-stop" class="dbtn" hidden style="margin-top:10px">Berhenti bekerja</button>
+    </div>
+  </div>
+</div>
+<div id="jobcard" hidden><b id="jc-name"></b><span id="jc-goal"></span><span id="jc-pay"></span></div>
 <div id="svc" class="dlg-back" hidden>
   <div class="dlg panel" role="dialog" aria-labelledby="svc-title">
     <div class="dlg-head"><h2 id="svc-title">Layanan</h2><button id="svc-close" class="x" aria-label="Tutup"><i data-lucide="x">×</i></button></div>
