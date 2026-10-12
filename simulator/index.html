@@ -476,6 +476,7 @@
       <button id="hornb" class="dbtn" title="Klakson (K, tahan)" aria-label="Klakson"><i data-lucide="megaphone"></i><span class="bl">Klakson</span></button>
       <button id="mirb" class="dbtn" aria-pressed="true" title="Spion (V)" aria-label="Spion"><i data-lucide="eye"></i><span class="bl">Spion</span></button>
       <button id="svcb" class="dbtn" hidden title="Layanan (L)" aria-label="Layanan"><i data-lucide="store"></i><span class="bl">Layanan</span></button>
+      <button id="peaceb" class="dbtn" hidden aria-label="Minta maaf &amp; ganti rugi" title="Minta maaf & bayar ganti rugi"><i data-lucide="handshake"></i><span class="bl">Minta maaf</span></button>
       <button id="towb" class="dbtn" hidden title="Panggil derek (T)" aria-label="Panggil derek"><i data-lucide="truck"></i><span class="bl">Panggil derek</span></button>
       <button id="walkb" class="dbtn" title="Keluar / masuk mobil (E)" aria-label="Keluar mobil"><i data-lucide="footprints"></i><span class="bl">Keluar mobil</span></button>
       <button id="fsb" class="dbtn" aria-pressed="false" title="Layar penuh (F)" aria-label="Layar penuh"><i data-lucide="maximize"></i><span class="bl">Layar penuh</span></button>
@@ -529,6 +530,16 @@
       <p id="svc-stat" class="help" style="opacity:1;font-size:13px"></p>
       <div id="svc-list" class="svc-grid"></div>
     </div>
+  </div>
+</div>
+<div id="pin" class="dlg-back" hidden>
+  <div class="dlg panel" role="dialog" aria-labelledby="pin-title" style="width:min(360px,100%)">
+    <div class="dlg-head"><h2 id="pin-title">Admin server</h2><button id="pin-close" class="x" aria-label="Tutup"><i data-lucide="x">×</i></button></div>
+    <form id="pin-form" class="dlg-body" autocomplete="off">
+      <label class="field"><span style="font-size:12px">PIN admin</span><input id="pin-in" class="input" type="password" inputmode="numeric" maxlength="12" autocomplete="off"></label>
+      <button id="pin-go"><i data-lucide="key-round"></i><span class="bl">Masuk</span></button>
+      <p class="help" style="opacity:.75;font-size:12px">PIN diperiksa oleh server. Admin bisa mengatur cuaca, jam, lalu lintas dan kondisi jalan untuk semua pemain.</p>
+    </form>
   </div>
 </div>
 <div id="done" class="dlg-back" hidden>

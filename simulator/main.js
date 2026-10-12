@@ -2226,10 +2226,11 @@ async function mpConnect(){
   ch.on('broadcast', {event: 'st'}, ({payload}) => mpState(payload));
   ch.on('broadcast', {event: 'chat'}, ({payload}) => { if (payload && payload.id !== mp.id) mpLine(`${mpEsc(payload.name)}: ${mpEsc(payload.text)}`); });
   ch.on('broadcast', {event: 'rtc'}, ({payload}) => mpRtc(payload));
+  ch.on('broadcast', {event: 'srv'}, ({payload}) => srvApply(payload));
   ch.on('presence', {event: 'sync'}, () => mpSync());
   ch.on('presence', {event: 'join'}, ({key, newPresences}) => { if (key !== mp.id) mpLine(`${mpEsc((newPresences[0] || {}).name || 'Pemain')} bergabung`, 'sys'); });
   ch.on('presence', {event: 'leave'}, ({key, leftPresences}) => { if (key !== mp.id) { mpLine(`${mpEsc((leftPresences[0] || {}).name || 'Pemain')} keluar`, 'sys'); mpDrop(key); } });
-  ch.subscribe(async st => { if (st === 'SUBSCRIBED') { mp.ready = true; mpStatus('Online'); await ch.track(mpMe()); mpSync(); setTimeout(mpSlot, 600); }
+  ch.subscribe(async st => { if (st === 'SUBSCRIBED') { mp.ready = true; mpStatus('Online'); await ch.track(mpMe()); mpSync(); setTimeout(mpSlot, 600); srvPull(); renderUI(); }
     else if (st === 'CHANNEL_ERROR' || st === 'TIMED_OUT') { mp.ready = false; mpStatus('Koneksi terputus, mencoba lagi…'); } });
 }
 // multiplayer spawn: parked on the shoulder after GT Semanggi, spread a little so players do not start inside each other
@@ -2248,7 +2249,7 @@ function mpSlot(){
 }
 function mpLeave(){
   if (!mp.on) return; try { mp.ch && mp.ch.untrack && mp.ch.untrack(); mp.sb ? mp.sb.removeChannel(mp.ch) : mp.ch && mp.ch.unsubscribe && mp.ch.unsubscribe(); } catch (e) {}
-  for (const id of [...mp.peers.keys()]) mpDrop(id); mpMicOff(); mp.on = mp.ready = false; mp.ch = null; $('mpbox').hidden = true;
+  for (const id of [...mp.peers.keys()]) mpDrop(id); mpMicOff(); mp.on = mp.ready = mp.admin = false; mp.adminPin = null; mp.ch = null; $('mpbox').hidden = true; renderUI();
 }
 function mpPeer(id){ let p = mp.peers.get(id); if (!p) { p = {id, name: 'Pemain', type: 'car', mod: null, st: null, rt: 0, u: null}; mp.peers.set(id, p); } return p; }
 function mpSync(){
@@ -2263,7 +2264,8 @@ function mpSync(){
 function mpDrop(id){ const p = mp.peers.get(id); if (!p) return; mpModel(p, null); if (p.pc) { try { p.pc.close(); } catch (e) {} } if (p.audio) { p.audio.pause(); p.audio.srcObject = null; } mp.peers.delete(id); }
 // where is my car, in shared terms
 function mpTick(dt){
-  if (!mp.ready || !PLR || !EV.length) return; if ((mp.sendT -= dt) > 0) return; mp.sendT = 0.25;
+  if (!mp.ready || !PLR || !EV.length) return; if ((mp.srvT = (mp.srvT || 0) - dt) < 0) { mp.srvT = 60; if (!mp.admin) srvPull(); }
+  if ((mp.sendT -= dt) > 0) return; mp.sendT = 0.25;
   const u = foot ? foot.u : (PLR.rp ? PLR.rp.sd*PLR.p : uOfV(PLR)), i = clamp(evAt(u), 0, EV.length - 2), a = EV[i], b = EV[i + 1], ll = latLonAt(u);
   mp.ch.send({type: 'broadcast', event: 'st', payload: {id: mp.id, name: mpName(), type: PLR.type, c: a.cNext, km: +kmAt(u).toFixed(4), dir: (Math.sign(b.km - a.kmOut) || 1)*(PLR.sd || 1),
     lx: +(PLR.lx || 0).toFixed(2), v: +(foot ? 0 : PLR.vel).toFixed(1), lat: +ll.lat.toFixed(5), lon: +ll.lon.toFixed(5), em: sirenOn(PLR)}});
@@ -2356,6 +2358,93 @@ function placeBeams(){
   const P = PLR; if (P && !foot) { const p = P.g.position, ry = P.g.rotation.y, fx = Math.sin(ry), fz = Math.cos(ry);
     for (const L of plSpots) { const dx = L.userData.dx; L.position.set(p.x + fx*P.len*0.5 + fz*dx, 0.75 + (P.lift || 0), p.z + fz*P.len*0.5 - fx*dx); L.target.position.set(L.position.x + fx*40, 0, L.position.z + fz*40); L.intensity = 14*headK; } }
   else for (const L of plSpots) L.intensity = 0;
+}
+
+// ================================================================
+// ANGRY DRIVERS: after you hit a car, it pulls over onto the shoulder; the driver gets out and lets you know,
+// with a speech bubble. Stop nearby and apologise (pay for the damage) to settle it.
+// ================================================================
+const RANTS = ['Woi! Bisa nyetir gak sih?!', 'Mata ditaruh di mana?!', 'Mobil saya penyok nih!', 'Ganti rugi pokoknya!', 'Jangan kabur ya!', 'Astaga… baru keluar bengkel!',
+  'Turun! Tanggung jawab!', 'Saya foto plat nomornya!', 'Ngebut terus sih!', 'Lihat nih, lecet semua!', 'SIM-nya nembak ya?!', 'Pelan-pelan dong!'];
+const angry = [];
+function bubbleTex(text){ const c = document.createElement('canvas'); c.width = 512; c.height = 160; const x = c.getContext('2d');
+  x.fillStyle = '#ffffff'; x.strokeStyle = '#1b1b1b'; x.lineWidth = 6; x.beginPath(); x.roundRect(8, 8, 496, 112, 26); x.fill(); x.stroke();
+  x.beginPath(); x.moveTo(230, 118); x.lineTo(256, 154); x.lineTo(282, 118); x.closePath(); x.fill(); x.stroke(); x.fillRect(232, 108, 48, 12);
+  x.fillStyle = '#c4161c'; x.textAlign = 'center'; x.textBaseline = 'middle'; fit(x, text, 460, 44, 800); x.fillText(text, 256, 64);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }
+function startAngry(o, dv){
+  if (o.em || o.player || o.angry || angry.length >= 3 || o.type === 'moto' || o.type === 'derek') return;
+  const n = nAvail(o.sd, o.p); o.angry = {phase: 'pull', t: 0, dv, cost: Math.round((150000 + dv*30000)/10000)*10000}; o.esc = 'po'; o.escX = n - 0.2; o.crashT = clock + 600; angry.push(o);
+  setTimeout(() => horn(o.type, 20, panOf(o), 0.9), 600);
+}
+function endAngry(o){ const a = o.angry; if (!a) return; if (a.person) { scene.remove(a.person.g); a.person.g.traverse(m => { if (m.material && m.material.userData.own) { m.material.map && m.material.map.dispose(); m.material.dispose(); } }); }
+  o.angry = null; o.esc = null; o.crashT = clock; rm(angry, o); }
+function stepAngry(dt){
+  const P = PLR; let near = null;
+  for (const o of [...angry]) { const a = o.angry; if (!a || o.dead || !vehicles.includes(o)) { if (a) endAngry(o); else rm(angry, o); continue; } a.t += dt;
+    const ou = o.sd*o.p, pu = P ? (foot ? foot.u : uOfV(P)) : ou, px = P ? (foot ? foot.x : P.x) : 0, dist = Math.abs(pu - ou);
+    if (a.phase === 'pull') { if ((o.vel < 0.3 && Math.abs(o.lx - o.escX) < 0.12) || a.t > 8) {
+        const m = makePerson(), side = -o.sd;                      // out of the door on the shoulder side
+        a.person = {...m, u: ou + o.sd*0.6, x: o.x + side*((HW[o.type] || 1) + 0.7), hd: 0, ph: 0};
+        const bt = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.81), new THREE.MeshBasicMaterial({map: bubbleTex(pick(RANTS)), transparent: true, depthWrite: false}));
+        bt.material.userData.own = true; bt.position.y = 2.6; bt.renderOrder = 6; m.g.add(bt); a.bubble = bt; bendObj(bt); scene.add(m.g);
+        a.phase = 'rant'; a.t = 0; a.say = 0; } continue; }
+    const pr = a.person; if (!pr) continue;
+    if (a.phase === 'rant') {
+      if ((a.say += dt) > 2.6) { a.say = 0; const old = a.bubble.material.map; a.bubble.material.map = bubbleTex(a.calm ? a.calm : pick(RANTS)); old.dispose(); a.bubble.material.needsUpdate = true; }
+      // walk up to the player's car if it stopped close by, otherwise stand by the car and gesture
+      const stopped = P && Math.abs(P.vel) < 1 && dist < 45;
+      if (stopped && !a.calm) { const tu = pu - o.sd*((P.len || 4)/2 + 1.6), tx = px - o.sd*((HW[P.type] || 1) + 0.9), du = tu - pr.u, dx = tx - pr.x, d = Math.hypot(du, dx);
+        if (d > 0.5) { const sp = Math.min(1.5, d)*dt; pr.u += du/d*sp; pr.x += dx/d*sp; pr.ph += dt*6; } }
+      if (stopped && (dist < 14 || Math.hypot(pr.u - pu, pr.x - px) < 7)) near = o;
+      if (a.calm && a.t > 3.2) { a.phase = 'back'; a.t = 0; }
+      if (!stopped && dist > 260) a.away = (a.away || 0) + dt; else a.away = 0;
+      if (a.away > 4 || a.t > 70) { a.phase = 'back'; a.t = 0; } }
+    if (a.phase === 'back') { const du = (ou + o.sd*0.6) - pr.u, dx = (o.x - o.sd*((HW[o.type] || 1) + 0.7)) - pr.x, d = Math.hypot(du, dx);
+      if (d > 0.4 && a.t < 12) { const sp = 1.6*dt; pr.u += du/d*sp; pr.x += dx/d*sp; pr.ph += dt*6; } else { endAngry(o); continue; } }
+    // pose: arms up and waving while ranting, a walk cycle while walking
+    const wave = a.phase === 'rant' && !a.calm ? Math.sin(clock*9) : 0, sw = Math.sin(pr.ph)*0.5;
+    pr.arms[0].rotation.x = a.calm ? 0 : -2.4 + wave*0.5; pr.arms[1].rotation.x = a.calm ? 0 : -1.2 - wave*0.6; pr.legs[0].rotation.x = sw; pr.legs[1].rotation.x = -sw; }
+  $('peaceb').hidden = !near || !!near.angry.calm; peaceTarget = near;
+}
+let peaceTarget = null;
+function placeAngry(){ for (const o of angry) { const a = o.angry, pr = a && a.person; if (!pr) continue; const z = camU - pr.u, P = PLR;
+  pr.g.position.set(pr.x, 0, z); pr.g.visible = Math.abs(z) < 400 && o.g.visible;
+  const tx = P ? (foot ? foot.x : P.x) : pr.x, tz = P ? camU - (foot ? foot.u : uOfV(P)) : z - 1; pr.g.rotation.y = Math.atan2(tx - pr.x, tz - z);
+  if (a.bubble) a.bubble.rotation.y = Math.atan2(camera.position.x - pr.g.position.x, camera.position.z - pr.g.position.z) - pr.g.rotation.y; } }
+function makePeace(){ const o = peaceTarget; if (!o || !o.angry) return; const a = o.angry;
+  if (WAL.cash < a.cost) { toast(`Uang tunai kurang (perlu ${rp$(a.cost)}): tarik tunai di ATM`, 'warn'); return; }
+  WAL.cash -= a.cost; a.calm = pick(['Ya sudah, saya maafkan.', 'Oke, lain kali hati-hati!', 'Baik, kita damai saja.']); a.t = 0; a.say = 99;
+  toast(`Anda minta maaf dan membayar ganti rugi ${rp$(a.cost)}`); uiNeeds(); $('peaceb').hidden = true; }
+
+// ---------- multiplayer server settings: one set of weather / time / road settings for everyone, changed only by the admin ----------
+// Stored in server.7mit (table drive7_server); the admin PIN is checked by the server (function drive7_set_settings).
+const SRV_KEYS = ['den', 'weather', 'roadStyle', 'tod', 'tspd', 'lanes', 'close:1', 'close:-1', 'cf', 'cfk', 'ovl', 'scale'];
+const srvLocked = id => mp.on && SRV_KEYS.includes(id) && !mp.admin;
+function srvCollect(){ return {den: cfg.den, weather: cfg.weather, roadStyle: cfg.roadStyle, lanes: cfg.lanes, closed: cfg.closed, cf: cfg.cf, cfk: cfg.cfk, ovl: cfg.ovl, scale: cfg.scale,
+  clock: {h: +gameH.toFixed(3), t: Date.now(), spd: +cfg.tspd || 0}}; }
+let srvApplying = false;
+function srvApply(S){
+  if (!S || typeof S !== 'object') return; srvApplying = true;
+  try { for (const k of ['den', 'weather', 'roadStyle', 'cf', 'cfk', 'ovl', 'lanes', 'scale']) if (S[k] != null && String(cfg[k]) !== String(S[k])) apply(k, S[k], true);
+    if (S.closed && JSON.stringify(S.closed) !== JSON.stringify(cfg.closed)) { cfg.closed = S.closed; saveCfg(); applyTraffic(['rw']); updateWorld(); }
+    if (S.clock && typeof S.clock.h === 'number') { cfg.tspd = S.clock.spd; gameH = mod(S.clock.h + (Date.now() - S.clock.t)/60000*S.clock.spd, 24); todT = 0; lastSign = -1; tickClock(0); }
+    renderUI(); } finally { srvApplying = false; }
+}
+async function srvPull(){ if (!mp.sb) return; try { const {data} = await mp.sb.from('drive7_server').select('settings,updated_at').eq('id', 1).maybeSingle(); if (data && data.settings && Object.keys(data.settings).length) srvApply(data.settings); } catch (e) {} }
+async function srvPush(){
+  if (!mp.admin || !mp.sb) return; const S = srvCollect();
+  try { const {data, error} = await mp.sb.rpc('drive7_set_settings', {p_pin: mp.adminPin, p_settings: S});
+    if (error || !data) { toast('Gagal menyimpan pengaturan server (PIN ditolak?)', 'bad'); return; }
+    mp.ch.send({type: 'broadcast', event: 'srv', payload: S}); toast('Pengaturan server disimpan untuk semua pemain'); } catch (e) { toast('Gagal terhubung ke server', 'bad'); }
+}
+function srvAdminLogin(){ $('pin-in').value = ''; $('pin').hidden = false; setTimeout(() => $('pin-in').focus(), 50); }
+async function srvAdminCheck(pin){
+  pin = String(pin || '').trim(); if (!pin) return; $('pin').hidden = true;
+  if (!mp.sb) { toast('Belum terhubung ke server', 'warn'); return; }
+  try { const {data} = await mp.sb.rpc('drive7_check_pin', {p_pin: pin});
+    if (data === true) { mp.admin = true; mp.adminPin = pin; toast('Mode admin server aktif: perubahan berlaku untuk semua pemain'); mpLine('Anda masuk sebagai admin server', 'sys'); renderUI(); }
+    else toast('PIN salah (atau terlalu banyak percobaan, tunggu 10 menit)', 'bad'); } catch (e) { toast('Gagal memeriksa PIN', 'bad'); }
 }
 
 // ---------- crash effects: debris and glass, sparks, smoke and fire, dents, skid marks ----------
@@ -2460,7 +2549,7 @@ function sim(dt){
     if (!manual && bd < Infinity && !(v.esc && Math.abs(v.lx - v.lane) > 0.45)) v.acc = Math.min(v.acc, idm(v, STOP, bd - 1.5, v0));
     if (v.ngStop) v.acc = Math.min(v.acc, v.vel > 0.2 ? -2.5 : -v.vel/dt);
     if (pz && v.paid !== pz.s.id && pz.d < 2.5 && v.vel < 0.6) { v.payT = (v.payT || 0) + dt; if (v.payT > (v.player ? 0.9 : 1.2)) { v.paid = pz.s.id; v.payT = 0; if (v.player) payToll(pz.s); } }
-    if (!manual && v.crashT > clock) { v.acc = v.vel > 0.2 ? -6.5 : -v.vel/dt; continue; }
+    if (!manual && v.crashT > clock) { v.acc = v.angry && v.angry.phase === 'pull' ? (v.vel > 0.2 ? -3 : -v.vel/dt) : v.vel > 0.2 ? -6.5 : -v.vel/dt; continue; }
     if (manual || v.esc || v.ngStop || v.yieldT > clock) continue;
     if (pz && pz.d < 150) continue;   // no lane changes in front of the toll plaza
     { const la = lightAhead(v.sd, front); if (la && la.d < 40) continue; }
@@ -2699,7 +2788,7 @@ const HW = {taxi:0.92, derek:1.15, pickup:0.95, moto:0.4, car:0.92, suv:0.98, va
 const MASS = {taxi: 1300, derek: 8000, pickup: 1750, moto: 220, car: 1300, suv: 1850, van: 2100, police: 1500, bus: 11000, truck: 15000, angkot: 1150, ambulance: 2700, damkar: 13000};
 const RESTI = 0.04;
 function impact1D(v1, m1, v2, m2){ const P = m1*v1 + m2*v2, Mt = m1 + m2; return [(P + m2*RESTI*(v2 - v1))/Mt, (P + m1*RESTI*(v1 - v2))/Mt]; }
-function hitAI(o, dv, side){ o.crashT = clock + Math.min(25, 5 + dv*1.2); if (dv > 8) o.spinY = (side || (Math.random() < 0.5 ? 1 : -1))*Math.min(0.3, dv*0.015); }
+function hitAI(o, dv, side){ o.crashT = clock + Math.min(25, 5 + dv*1.2); if (dv > 3) startAngry(o, dv); if (dv > 8) o.spinY = (side || (Math.random() < 0.5 ? 1 : -1))*Math.min(0.3, dv*0.015); }
 function hitFx(dv, msg, where = 'front', o = null){
   if (dv > 1.5) crash(dv > 14 ? msg + ' (parah)' : msg);
   const v = PLR, u = v.rp ? v.rp.sd*v.p : uOfV(v), sd = v.rp ? v.rp.sd : v.sd, fw = Math.sign(v.vel || 1)*sd;
@@ -3408,14 +3497,19 @@ function renderUI(){
       const d = id.split(':')[1], sel = cfg.closed[d] || [];
       opts.forEach(([v, t]) => { const on = sel.includes(v), b = btn(t, on);
         b.disabled = !on && sel.length >= 4;
-        b.onclick = () => { cfg.closed[d] = on ? sel.filter(x => x !== v) : [...sel, v]; saveCfg(); renderUI();
+        b.onclick = () => { if (srvLocked(id)) return; cfg.closed[d] = on ? sel.filter(x => x !== v) : [...sel, v]; saveCfg(); renderUI(); if (mp.on && mp.admin) srvPush();
           const z = (cfg.closed[d] || []).length && PLR ? zoneAhead('rw') : null; applyTraffic(['rw']); updateWorld();
           toast(`Lajur ${v} ${on ? 'dibuka' : 'ditutup'} (${d === '1' ? 'arah saya' : 'arah lawan'})${z ? ` · pekerjaan jalan ${Math.round((z.u - uOfV(PLR))/10)*10} m di depan` : ''}`); };
         cell.append(b); });
       const h = document.createElement('div'); h.className = 'hint'; h.textContent = 'Lajur 1 = paling kiri. Lajur yang tidak ada di ruas itu diabaikan, dan minimal satu lajur tetap dibuka.'; cell.append(h);
     } else opts.forEach(([v, t]) => { const b = btn(t, String(cfg[id]) === String(v)); b.onclick = () => apply(id, v); cell.append(b); });
+    if (srvLocked(id)) { for (const b of cell.querySelectorAll('button')) b.disabled = true; const h = document.createElement('div'); h.className = 'hint'; h.textContent = 'Diatur oleh server (multiplayer)'; cell.append(h); }
+    else if (mp.on && mp.admin && SRV_KEYS.includes(id)) lbl.textContent = 'Server · ' + label;
     ctrl.append(lbl, cell);
   }
+  if (mp.on) { const l2 = document.createElement('div'); l2.className = 'lbl'; l2.textContent = 'Pengaturan server';
+    const c2 = document.createElement('div'); c2.className = 'cell'; const b2 = btn(mp.admin ? 'Admin aktif · keluar' : 'Masuk admin (PIN)', mp.admin);
+    b2.onclick = () => { if (mp.admin) { mp.admin = false; mp.adminPin = null; renderUI(); toast('Keluar dari mode admin'); } else srvAdminLogin(); }; c2.append(b2); ctrl.append(l2, c2); }
   const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = 'Rute';
   const cell = document.createElement('div'); cell.className = 'cell'; const b = btn('Ganti rute', false); b.onclick = () => openPlanner(); cell.append(b);
   ctrl.append(lbl, cell);
@@ -3447,8 +3541,10 @@ function dropZone(z){
   for (const o of OBJ.filter(o => o.z === z || (o.o && o.o.cf === z))) { const gs = built.get(o); if (gs) { freeObj(gs); built.delete(o); } }
   OBJ = OBJ.filter(o => o.z !== z && !(o.o && o.o.cf === z));
 }
-function apply(id, v){
+function apply(id, v, fromServer = false){
+  if (!fromServer && srvLocked(id)) { toast('Pengaturan ini diatur oleh server multiplayer', 'warn'); return; }
   cfg[id] = v; saveCfg();
+  if (!fromServer && mp.on && mp.admin && SRV_KEYS.includes(id)) setTimeout(srvPush, 50);
   const ahead = type => { if (!PLR) return ''; const z = zoneAhead(type); return z ? ` · ${type === 'cf' ? 'zona contraflow' : 'pekerjaan jalan'} ${Math.round((z.u - uOfV(PLR))/10)*10} m di depan` : ' · berlaku di zona berikutnya'; };
   const label = () => { const row = rowsSpec().find(r => r[0] === id), o = row && row[2].find(x => String(x[0]) === String(v)); return o ? o[1] : v; };
   if (id === 'cam') { setCam(v); toast(`Kamera: ${label()}`); }
@@ -3589,7 +3685,8 @@ $('mp-voice').onclick = () => mpVoice(!mp.voice); $('mp-mic').onclick = () => mp
 $('mp-min').onclick = () => { $('mpbox').classList.toggle('min'); $('mp-min').title = $('mpbox').classList.contains('min') ? 'Besarkan' : 'Kecilkan'; };
 addEventListener('beforeunload', () => mpLeave());
 try { window.lucide && window.lucide.createIcons(); } catch (e) {}
-$('svcb').onclick = openSvc; $('svc-close').onclick = () => { $('svc').hidden = true; }; $('towb').onclick = () => callTow();
+$('pin-form').onsubmit = e => { e.preventDefault(); srvAdminCheck($('pin-in').value); }; $('pin-close').onclick = () => { $('pin').hidden = true; };
+$('peaceb').onclick = makePeace; $('svcb').onclick = openSvc; $('svc-close').onclick = () => { $('svc').hidden = true; }; $('towb').onclick = () => callTow();
 $('mirb').onclick = () => { cfg.mirror = cfg.mirror === false; saveCfg(); $('mirb').setAttribute('aria-pressed', cfg.mirror !== false ? 'true' : 'false'); toast(cfg.mirror !== false ? 'Spion menyala (kokpit: spion kiri, tengah, kanan)' : 'Spion dimatikan'); };
 $('mirb').setAttribute('aria-pressed', cfg.mirror !== false ? 'true' : 'false');
 $('fsb').hidden = !fsOK; $('fsb').onclick = toggleFull; $('walkb').onclick = footToggle;
@@ -3849,13 +3946,13 @@ try { await Promise.race([document.fonts.load('700 64px Archivo'), new Promise(r
 setRoadStyle(); setView(); setClean(); setTod(null);
 if (cfg.trip === 'free' || cfg.trip === 'santai') startDrive({from: NODES.has(cfg.from) ? cfg.from : DEF.from}); else startTrip(NODES.has(cfg.from) ? cfg.from : DEF.from, NODES.has(cfg.to) ? cfg.to : DEF.to);
 if (!localStorage.getItem('tj_seen')) { try { localStorage.setItem('tj_seen', '1'); } catch(e) {} openPlanner(); }
-window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam, startDrive, setNav, clearNav, chooseAt, replanIdx, openAtlas, closeAtlas, atTap, AT, get chunks(){ return chunks; }, get OBJ(){ return OBJ; }, sutetTower, setHour: h => { gameH = h; todT = 0; lastSign = -1; tickClock(0); }, get gameH(){ return gameH; }, volcanoes, updateVolcanoes, regionAt, latLonAt, get ELV(){ return ELV; }, elU, elevAt, get LMS(){ return LMS; }, mp, mpConnect, mpSay, get render(){ return {...renderer.info.render}; }, get QUAL(){ return QUAL; }, get mem(){ return {...renderer.info.memory, veh: vehicles.length, ramp: rampers.length, loc: locals.length, chunks: chunks.size, built: built.size}; }, callTow, get tow(){ return tow; }, WAL, openSvc, updateLandmarks, updateRoadSigns, RSIGNS, FX, footToggle, get foot(){ return foot; }};
+window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam, startDrive, setNav, clearNav, chooseAt, replanIdx, openAtlas, closeAtlas, atTap, AT, get chunks(){ return chunks; }, get OBJ(){ return OBJ; }, sutetTower, setHour: h => { gameH = h; todT = 0; lastSign = -1; tickClock(0); }, get gameH(){ return gameH; }, volcanoes, updateVolcanoes, regionAt, latLonAt, get ELV(){ return ELV; }, elU, elevAt, get LMS(){ return LMS; }, angry, startAngry, mp, mpConnect, mpSay, get render(){ return {...renderer.info.render}; }, get QUAL(){ return QUAL; }, get mem(){ return {...renderer.info.memory, veh: vehicles.length, ramp: rampers.length, loc: locals.length, chunks: chunks.size, built: built.size}; }, callTow, get tow(){ return tow; }, WAL, openSvc, updateLandmarks, updateRoadSigns, RSIGNS, FX, footToggle, get foot(){ return foot; }};
 
 let last = performance.now(), mapT = 0, frames = 0;
 function tick(dt){
   clock += dt;
   if (PLR && PLR.wantU) { PLR.wantU = false; uTurn(PLR); }
-  stepFoot(dt); tickNeeds(dt); stepTow(dt); mpTick(dt); sim(dt); rampStep(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt); tickClock(dt);
+  stepFoot(dt); tickNeeds(dt); stepTow(dt); stepAngry(dt); mpTick(dt); sim(dt); rampStep(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt); tickClock(dt);
   if (PLR) camU = foot ? foot.u : uOfV(PLR);
   ensureAhead();
   setupBlocks(false); updateWorld(true); updateSignals(); animGhosts();
@@ -3883,7 +3980,7 @@ renderer.setAnimationLoop(now => {
   if (QUAL.level >= 1 && renderer.shadowMap.enabled) renderer.shadowMap.needsUpdate = (shadowFrame = (shadowFrame + 1) % 3) === 0;
   if ((!$('plan').hidden && trip && !stats.done) || !$('atlas').hidden) { composer.render(); return; }
   tick(dt);
-  placeGroups(); place(); placeFoot(); placeTow(); mpPlace(); placeBeams(); updateCam(dt); updateVolcanoes(dt); updateLandmarks(); updateRoadSigns(); updateFx(dt); updateSky(dt); updateSound(); flash(); updateBend(); updateHud(dt);
+  placeGroups(); place(); placeFoot(); placeTow(); mpPlace(); placeBeams(); placeAngry(); updateCam(dt); updateVolcanoes(dt); updateLandmarks(); updateRoadSigns(); updateFx(dt); updateSky(dt); updateSound(); flash(); updateBend(); updateHud(dt);
   mapT -= dt; if (mapT <= 0) { mapT = 0.5; drawMap(); }
   composer.render(); drawMirrors(dt);
 });

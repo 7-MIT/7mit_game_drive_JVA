@@ -95,6 +95,19 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
   - **Panel:** lists who is online and has a text chat (Enter to type). Drag it by its title bar to any place on the screen; the place is remembered.
   - **Voice chat:** goes over WebRTC (one link per player, signalled through the same channel). Press Suara to hear others and Mic to talk; others sound louder when they are close.
   - **Limits:** no TURN server, so a few strict networks may not connect for voice. The free Realtime plan suits small groups (about 20 players).
+- **Server settings (multiplayer).** One server has one set of conditions. In multiplayer the settings for traffic, weather, road style, time of day and clock speed, lanes, closed lanes, contraflow, overpasses and distance scale are locked; every player gets them from the server when joining, and the game clock is shared.
+  - **Admin:** in Pengaturan, "Masuk admin (PIN)" opens a PIN box. The PIN is checked by the server (table `drive7_server` and function `drive7_set_settings` in server.7mit; only a SHA-256 hash of the PIN is stored there). After 20 wrong attempts the PIN check is locked for 10 minutes.
+  - **Changes:** the admin's changes are saved on the server and sent to all players at once.
+- **Angry drivers.** Hit another car hard enough and it pulls over onto the shoulder.
+  - The driver gets out, waves their arms and shouts in a speech bubble ("Woi! Bisa nyetir gak sih?!", "Ganti rugi pokoknya!" …).
+  - If you stop nearby they walk up to your car. "Minta maaf" (handshake button) pays for the damage and settles it.
+  - If you drive off, they give up after a while, get back in and drive on.
+- **Headlights at night.** Headlights and tail lights come on automatically with the clock (off by day). At night every nearby vehicle throws a pool of light on the road, and your own car has real headlight beams that light the road and the cars ahead.
+- **Smooth on tablets and phones.**
+  - AI vehicles are merged into a few meshes each, cached per model. Small parts share one material; far-away wheels are not drawn; vehicles behind the camera are not drawn (except as far as the mirrors look).
+  - Mirrors are rendered every second or third frame.
+  - If the frame rate stays below about 38 fps, the graphics step down automatically: shadows less often, then lower resolution, no glow, no shadows.
+- **Icons.** All buttons have line icons; on narrow screens the small buttons show only their icon in one row.
 - **Vehicle mods.** In the planner under "Modifikasi kendaraan":
   - paint (swatches or any colour);
   - rim colour;
