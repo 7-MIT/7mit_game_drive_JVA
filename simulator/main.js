@@ -188,10 +188,12 @@ const MATC = new Map();
 function signMat(key, w, h, draw, px=256){ if (!MATC.has(key)) { const c = document.createElement('canvas'); c.width = px; c.height = Math.round(px*h/w);
   draw(c.getContext('2d'), c.width, c.height); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; t.userData.keep = true;
   const m = new THREE.MeshStandardMaterial({map:t, emissive:0xffffff, emissiveMap:t, emissiveIntensity:signI, roughness:0.6}); m.userData.sign = true; patchMat(m); MATC.set(key, m); } return MATC.get(key); }
-function fit(x, text, maxW, size, weight=700){ let s = size; do { x.font = `${weight} ${s}px Archivo, sans-serif`; s -= 4; } while (x.measureText(text).width > maxW && s > 20); }
+// road signs are lettered in the highway typeface (Overpass, the open version of Highway Gothic; the real one if the device has it)
+const SIGN_FONT = "'Highway Gothic', 'Overpass', Archivo, sans-serif";
+function fit(x, text, maxW, size, weight=700){ let s = size; do { x.font = `${weight} ${s}px ${SIGN_FONT}`; s -= 4; } while (x.measureText(text).width > maxW && s > 20); }
 const drawSpeed = (n, min) => (x, w) => { const r = w/2; x.beginPath(); x.arc(r,r,r-2,0,Math.PI*2); x.fillStyle = min ? '#1d4fa3' : '#fff'; x.fill();
   x.lineWidth = min ? 6 : w*0.11; x.strokeStyle = min ? '#fff' : '#d0202a'; x.beginPath(); x.arc(r,r, min ? r-12 : r-2-w*0.055, 0, Math.PI*2); x.stroke();
-  x.fillStyle = min ? '#fff' : '#111'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = `800 ${n >= 100 ? w*0.36 : w*0.44}px Archivo, sans-serif`; x.fillText(String(n), r, r + w*0.02); };
+  x.fillStyle = min ? '#fff' : '#111'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = `800 ${n >= 100 ? w*0.36 : w*0.44}px ${SIGN_FONT}`; x.fillText(String(n), r, r + w*0.02); };
 const drawNoU = (x, w) => { const r = w/2; x.beginPath(); x.arc(r,r,r-2,0,Math.PI*2); x.fillStyle = '#fff'; x.fill();
   x.lineWidth = w*0.07; x.strokeStyle = '#111'; x.beginPath(); x.moveTo(r+w*0.12, r+w*0.24); x.lineTo(r+w*0.12, r-w*0.02); x.arc(r, r-w*0.02, w*0.12, 0, Math.PI, true); x.lineTo(r-w*0.12, r+w*0.1); x.stroke();
   x.fillStyle = '#111'; x.beginPath(); x.moveTo(r-w*0.21, r+w*0.08); x.lineTo(r-w*0.03, r+w*0.08); x.lineTo(r-w*0.12, r+w*0.24); x.closePath(); x.fill();
@@ -226,8 +228,9 @@ const SIGN_GREEN = '#0c6a3c', SIGN_BLUE = '#0d3b7a';
 const PICTO = {fuel: 'Fuel', food: 'Utensils', mosque: 'MoonStar', wc: 'Toilet', parking: 'CircleParking', cart: 'ShoppingCart', wrench: 'Wrench', atm: 'Banknote', plug: 'PlugZap',
   coffee: 'Coffee', toll: 'CreditCard', split: 'Split', city: 'Building2', pin: 'MapPin', car: 'Car', bridge: 'Waves', left: 'ArrowUpLeft', route: 'Route', exit: 'LogOut'};
 const REST_ICONS = ['fuel', 'food', 'mosque', 'wc', 'cart'];
+const OWN_ICONS = {road: [['path', {d: 'M12 17v4'}], ['path', {d: 'M12 5V3'}], ['path', {d: 'M12 9v3'}], ['path', {d: 'M2.077 18.449A2 2 0 0 0 4 21h16a2 2 0 0 0 1.924-2.55l-4-14A2 2 0 0 0 16 3H8a2 2 0 0 0-1.924 1.45z'}]]};
 function drawIcon(x, key, cx, cy, size, col = '#1b1b1b'){
-  const L = window.lucide && window.lucide.icons, node = L && L[PICTO[key] || key]; if (!node) return false;
+  const L = window.lucide && window.lucide.icons, node = OWN_ICONS[key] ? [0, 0, OWN_ICONS[key]] : L && L[PICTO[key] || key]; if (!node) return false;
   x.save(); x.translate(cx - size/2, cy - size/2); x.scale(size/24, size/24); x.strokeStyle = col; x.lineWidth = 2.1; x.lineCap = x.lineJoin = 'round';
   for (const [tag, a] of node[2]) { if (tag === 'path') { x.stroke(new Path2D(a.d)); continue; }
     x.beginPath();
@@ -238,11 +241,11 @@ function drawIcon(x, key, cx, cy, size, col = '#1b1b1b'){
     else { const q = String(a.points).trim().split(/[\s,]+/).map(Number); for (let i = 0; i < q.length; i += 2) i ? x.lineTo(q[i], q[i + 1]) : x.moveTo(q[i], q[i + 1]); if (tag === 'polygon') x.closePath(); }
     x.stroke(); }
   x.restore(); return true; }
-function iconTile(x, key, x0, y0, S){ if (!(window.lucide && window.lucide.icons)) return 0; x.fillStyle = '#fff'; x.beginPath(); x.roundRect(x0, y0, S, S, S*0.14); x.fill(); drawIcon(x, key, x0 + S/2, y0 + S/2, S*0.7); return S; }
+function iconTile(x, key, x0, y0, S){ if (!OWN_ICONS[key] && !(window.lucide && window.lucide.icons)) return 0; x.fillStyle = '#fff'; x.beginPath(); x.roundRect(x0, y0, S, S, S*0.14); x.fill(); drawIcon(x, key, x0 + S/2, y0 + S/2, S*0.7); return S; }
 // a row of tiles ending at xr; returns its width
-function iconRow(x, keys, xr, y0, S){ if (!keys || !keys.length || !(window.lucide && window.lucide.icons)) return 0; const g = S*0.16, w = keys.length*S + (keys.length - 1)*g;
+function iconRow(x, keys, xr, y0, S){ if (!keys || !keys.length) return 0; const g = S*0.16, w = keys.length*S + (keys.length - 1)*g;
   keys.forEach((k, i) => iconTile(x, k, xr - w + i*(S + g), y0, S)); return w; }
-const iconFor = t => /rest|spbu/i.test(t) ? 'fuel' : /jct|simpang/i.test(t) ? 'split' : /tol\b|gt |gerbang|exit/i.test(t) ? 'toll' : 'city';
+const iconFor = t => /rest|spbu/i.test(t) ? 'fuel' : /jct|simpang/i.test(t) ? 'split' : /tol\b|gt |gerbang|exit|layang/i.test(t) ? 'road' : 'city';
 function canvasTex(w, h, draw){
   const c = document.createElement('canvas'); c.width = 1024; c.height = Math.round(1024*h/w);
   const x = c.getContext('2d'); draw(x, c.width, c.height);
@@ -258,8 +261,8 @@ function arrow(x, cx, cy, len, ang){
 function exitPanel(w, h, name, tag='EXIT', dist='', col=SIGN_GREEN, sub=''){ return canvasTex(w, h, (x, W2, H2) => {
   base(x, W2, H2, col);
   x.fillStyle = '#f2c230'; x.fillRect(48, 44, 190, 78); x.fillStyle = '#111'; fit(x, tag, 160, 56, 800); x.textBaseline = 'middle'; x.fillText(tag, 64, 85);
-  const iw = iconTile(x, tag === 'JCT' ? 'split' : 'toll', 254, 44, 78);
-  x.fillStyle = '#fff'; x.font = '700 56px Archivo, sans-serif'; if (dist) x.fillText(dist, iw ? 352 : 262, 85);
+  const iw = iconTile(x, tag === 'JCT' ? 'split' : 'road', 254, 44, 78);
+  x.fillStyle = '#fff'; x.font = `700 56px ${SIGN_FONT}`; if (dist) x.fillText(dist, iw ? 352 : 262, 85);
   arrow(x, 120, H2*0.66, 130, -Math.PI/4);
   if (sub) { fit(x, name, W2 - 270, 88); x.fillText(name, 220, H2*0.58); fit(x, sub, W2 - 270, 52, 600); x.fillText(sub, 220, H2*0.82); }
   else { fit(x, name, W2 - 270, 104); x.fillText(name, 220, H2*0.68); }
@@ -274,7 +277,7 @@ function destPanel(w, h, lines){ return canvasTex(w, h, (x, W2, H2) => {
 function boardPanel(w, h, rows, col=SIGN_GREEN){ return canvasTex(w, h, (x, W2, H2) => {
   base(x, W2, H2, col); x.fillStyle = '#fff'; x.textBaseline = 'middle';
   const lh = (H2 - 80) / rows.length;
-  rows.forEach(([t, d], i) => { const y = 40 + lh*(i+0.5); x.textAlign = 'right'; x.font = '700 84px Archivo, sans-serif'; x.fillText(d, W2 - 56, y);
+  rows.forEach(([t, d], i) => { const y = 40 + lh*(i+0.5); x.textAlign = 'right'; x.font = `700 84px ${SIGN_FONT}`; x.fillText(d, W2 - 56, y);
     const S = Math.min(lh*0.7, 86), iw = iconTile(x, iconFor(t), 52, y - S/2, S), tx = iw ? 52 + S + 22 : 56;
     x.fillStyle = '#fff'; x.textAlign = 'left'; fit(x, t, W2 - 344 - (tx - 56), 84); x.fillText(t, tx, y); });
 }); }
@@ -713,7 +716,7 @@ const gateGeo = new THREE.BoxGeometry(0.6, 0.85, 1.05); gateGeo.userData.keep = 
 const rampSiteNear = (u, r = 180) => RSITES.find(s => Math.abs(s.u - u) < r);
 
 function kmPostTex(txt){ return canvasTex(0.5, 0.7, (x, w, h) => { x.fillStyle = '#fff'; x.fillRect(0,0,w,h); x.strokeStyle = '#111'; x.lineWidth = 24; x.strokeRect(12,12,w-24,h-24);
-  x.fillStyle = '#111'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '800 200px Archivo, sans-serif'; x.fillText('KM', w/2, h*0.3); fit(x, txt, w - 80, 300, 800); x.fillText(txt, w/2, h*0.66); }); }
+  x.fillStyle = '#111'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = `800 200px ${SIGN_FONT}`; x.fillText('KM', w/2, h*0.3); fit(x, txt, w - 80, 300, 800); x.fillText(txt, w/2, h*0.66); }); }
 
 // ---------- national road (jalan nasional) chunk ----------
 const uPoleMat = M(0x9a948a), uBarMat = M(0x6b6660), curbMat = M(0xc9c4b8), shrubMat = M(0x4f7a3a, {flatShading:true}), shoulderMat = M(0x8f8a76), roofMat = M(0x8a4b35), roofMat2 = M(0x6b3b2a);
@@ -1094,13 +1097,13 @@ function layoutRoadSigns(){
     if (i === 0 || !cP || cP.cls !== 't' || a.c !== a.cNext) {
       const mbz = a.cNext === 'mbz', lines = [['SELAMAT DATANG DI', 0.15], ['JALAN TOL', 0.17], [cN.name.replace(/^Tol\s+/i, '').toUpperCase(), 0.26]];
       if (mbz) lines.push(['Khusus Gol I: sedan, SUV, pickup · Bus & truk dilarang', 0.12]);
-      if (!mbz) RSIGNS.push({u: a.u + (a.kind === 'j' ? 430 : 260), side: 1, lines, bg: SIGN_GREEN, w: 8.4, h: 3.6, icon: 'car'}); } }
+      if (!mbz) RSIGNS.push({u: a.u + (a.kind === 'j' ? 430 : 260), side: 1, lines, bg: SIGN_GREEN, w: 8.4, h: 3.6, icon: 'road'}); } }
   if (SEA) { RSIGNS.push({u: SEA[0] - 260, side: 1, lines: [['JEMBATAN SURAMADU', 0.24], ['Surabaya – Madura · 5,4 km', 0.16]], bg: SIGN_GREEN, w: 8, h: 3, icon: 'bridge'});
     RSIGNS.push({u: SEA[1] + 260, side: -1, lines: [['JEMBATAN SURAMADU', 0.24], ['Madura – Surabaya · 5,4 km', 0.16]], bg: SIGN_GREEN, w: 8, h: 3, icon: 'bridge'}); }
   // MBZ: an overhead sign over the two right lanes before the fork on Japek, a welcome gantry on the MBZ itself
   const G = MBZG; if (G && (G.si >= 0 || G.frame === 'mbz')) {
     RSIGNS.push({u: G.F - 350, side: 1, lines: [['TOL LAYANG MBZ', 0.28], ['← Lajur kiri · 350 m', 0.17], ['Khusus Gol I: sedan, SUV, pickup', 0.13]], bg: SIGN_GREEN, w: 8, h: 3.6, icon: 'left'});
-    if (G.frame === 'mbz') RSIGNS.push({u: G.uH + 80, side: 1, lines: [['SELAMAT DATANG DI', 0.15], ['TOL LAYANG MBZ', 0.28], ['Khusus Gol I: sedan, SUV, pickup', 0.14]], bg: SIGN_GREEN, icon: 'car', w: 6.6, h: 3.2}); }
+    if (G.frame === 'mbz') RSIGNS.push({u: G.uH + 80, side: 1, lines: [['SELAMAT DATANG DI', 0.15], ['TOL LAYANG MBZ', 0.28], ['Khusus Gol I: sedan, SUV, pickup', 0.14]], bg: SIGN_GREEN, icon: 'road', w: 6.6, h: 3.2}); }
 }
 function updateRoadSigns(){
   if (!EV.length) return; if (rsEV !== EV) layoutRoadSigns();
@@ -1528,7 +1531,7 @@ const boothMat = M(0xe4e9ec);
 function stemPlaza(g, e, name){ const x = e + GATE_O;
   g.add(flat(36, 17, asphaltDS, x, -0.004, 0), solid(8, 0.6, 17, M(0xf2f2f2), x, 5.8, 0), solid(8.2, 0.6, 17.2, M(0x0c6a3c), x, 6.4, 0));
   for (const du of [-7.9, -3.8, 0, 3.8, 7.9]) g.add(solid(3.2, 2.6, 1.3, boothMat, x, 1.3, du), solid(0.3, 4.4, 0.3, concrete, x, 3.8, du));
-  for (const sd of [1, -1]) { const p = panelMesh(7.6, 1.2, textPanel(7.6, 1.2, SIGN_GREEN, 'GT ' + name.toUpperCase(), '', ['toll'])); p.position.set(x + sd*4.15, 6.1, 0); p.rotation.y = sd*Math.PI/2; g.add(p); }
+  for (const sd of [1, -1]) { const p = panelMesh(7.6, 1.2, textPanel(7.6, 1.2, SIGN_GREEN, 'GT ' + name.toUpperCase(), '', ['road'])); p.position.set(x + sd*4.15, 6.1, 0); p.rotation.y = sd*Math.PI/2; g.add(p); }
   const et = [SP(20), PL(['Siapkan', 'kartu e-Toll'], '#fff', '#111', 1.3, 0.55)];
   signPost(g, e + GATE_O - 30, -5.6, -Math.PI/2, et); signPost(g, e + GATE_O + 30, 5.6, Math.PI/2, et); }
 function restArea(g, e){ const ex = o => e + o, th = Math.atan2(6, 7), z = u => u - SC;
@@ -1583,7 +1586,7 @@ function siteSigns(g, s, sd, e){
   const adv = kind === 'r' ? textPanel(5, 2.6, SIGN_BLUE, 'REST AREA', `${nodeLabel(s).replace('Rest Area ', '')} · 500 m`, ['fuel', 'food', 'wc'])
     : kind === 'j' ? exitPanel(5.6, 3.2, jctTargets(s, sd).name, 'JCT', '1 km', SIGN_GREEN, jctTargets(s, sd).sub)
     : kind === 'x' ? exitPanel(5.6, 3.2, s.name, 'EXIT', '500 m')
-    : textPanel(5.6, 2.6, SIGN_GREEN, nodeLabel(s).toUpperCase(), '500 m · Siapkan kartu e-Toll', ['toll']);
+    : textPanel(5.6, 2.6, SIGN_GREEN, nodeLabel(s).toUpperCase(), '500 m · Siapkan kartu e-Toll', ['road', 'toll']);
   const ab = panelMesh(kind === 'r' ? 5 : 5.6, kind === 'r' ? 2.6 : (kind === 'j' || kind === 'x') ? 3.2 : 2.6, adv);
   ab.position.set(roadW + 3, 4.4, -640); ab.rotation.y = rot; g.add(ab);
   for (const dx of [-2, 2]) g.add(solid(0.18, 4.6, 0.18, signBackMat, roadW + 3 + dx, 2.3, -639.85));
@@ -1746,7 +1749,7 @@ function flyover(s, e){ const g = worldGroup(s.u), H = DECK_H, dw = 25.2, W2 = 2
   for (const sx of [-1, 1]) for (const zz of [-7.5, 7.5]) { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.85,0.85,H - 1.7,12), concrete); c.position.set(sx*(e + 6.5), (H - 1.7)/2, zz); c.castShadow = true; g.add(c); }
   for (const sx of [-1, 1]) g.add(solid(2, 1.2, dw - 2, concrete, sx*(e + 6.5), H - 1.6, 0));
   const t = jctTargets(s);
-  for (const sd of [1, -1]) { const p = panelMesh((e - MED)*0.85, 2.4, textPanel((e - MED)*0.85, 2.4, SIGN_GREEN, nodeLabel(s), t.name !== nodeLabel(s) ? t.name : '', ['toll']));
+  for (const sd of [1, -1]) { const p = panelMesh((e - MED)*0.85, 2.4, textPanel((e - MED)*0.85, 2.4, SIGN_GREEN, nodeLabel(s), t.name !== nodeLabel(s) ? t.name : '', ['road']));
     p.position.set(-sd*(MED + (e - MED)/2), H - 0.2, sd*(dw/2 + 0.25)); p.rotation.y = sd > 0 ? 0 : Math.PI; g.add(p); }
   // through traffic on the crossing toll road
   g.userData.fly = [];
@@ -1756,7 +1759,7 @@ function flyover(s, e){ const g = worldGroup(s.u), H = DECK_H, dw = 25.2, W2 = 2
   return g; }
 function mainPlaza(s, e){ const g = worldGroup(s.u), wTot = 2*(e + 3);
   g.add(solid(wTot, 0.7, 14, M(0xf2f2f2), 0, 6.2, 0), solid(wTot + 0.2, 0.6, 14.2, M(0x0c6a3c), 0, 6.85, 0));
-  for (const sd of [1, -1]) { const p = panelMesh(Math.min(wTot*0.6, 22), 1.5, textPanel(Math.min(wTot*0.6, 22), 1.5, SIGN_GREEN, nodeLabel(s).toUpperCase(), '', ['toll']));
+  for (const sd of [1, -1]) { const p = panelMesh(Math.min(wTot*0.6, 22), 1.5, textPanel(Math.min(wTot*0.6, 22), 1.5, SIGN_GREEN, nodeLabel(s).toUpperCase(), '', ['road']));
     p.position.set(0, 6.6, sd*7.2); p.rotation.y = sd > 0 ? 0 : Math.PI; g.add(p); }
   const n = Math.round((e - MED)/LW);
   for (const s2 of [-1, 1]) {
@@ -1832,7 +1835,7 @@ function warnTex(l1, l2, dist){ return canvasTex(3, 2.4, (x, w, h) => {
   x.fillStyle = '#111'; x.textBaseline = 'middle';
   fit(x, l1, w-120, 110, 800); x.fillText(l1, 60, h*0.28);
   fit(x, l2, w-120, 70, 600); x.fillText(l2, 60, h*0.5);
-  x.font = '800 130px Archivo, sans-serif'; x.fillText(dist, 60, h*0.76); }); }
+  x.font = `800 130px ${SIGN_FONT}`; x.fillText(dist, 60, h*0.76); }); }
 function cones(g, pts){ for (const [geo, mat] of [[coneGeo, orange], [bandGeo, bandMat], [coneBaseGeo, orange]]) { const m = instanced(geo, mat, pts); m.castShadow = true; g.add(m); }
   g.add(instanced(lampGeo, amberMat, pts.filter((_, i) => i % 3 === 0))); }
 function barriers(g, x, z0, z1){ const a = [], b = []; for (let z = z0, i = 0; z < z1; z += 2, i++) (i % 2 ? b : a).push([x, z]);
@@ -2286,7 +2289,7 @@ function tankOf(){ return TANK[PLR ? PLR.type : cfg.veh] || 42; }
 function tickNeeds(dt){
   if (!PLR || !trip) return; if (WAL.fuel == null || WAL.fuel > tankOf()) WAL.fuel = tankOf();
   if (!foot && !tow) { const km = Math.abs(PLR.vel)*dt*cfg.scale/1000; WAL.fuel = Math.max(0, WAL.fuel - km/(KM_L[PLR.type] || 12)*(input.gas || cfg.auto ? 1 : 0.6));
-    if (Math.abs(PLR.vel) > 1) WAL.sleep = Math.min(100, WAL.sleep + dt*(100/9000)*(gameH < 5 || gameH > 22 ? 1.6 : 1)); }
+    if (Math.abs(PLR.vel) > 1) { WAL.sleep = Math.min(100, WAL.sleep + dt*(100/9000)*(gameH < 5 || gameH > 22 ? 1.6 : 1)); driveEarn(dt, km); } }
   const f = WAL.fuel/tankOf();
   if (f < 0.15 && !lowFuelSaid) { lowFuelSaid = true; toast('BBM menipis: isi di SPBU rest area atau kota berikutnya', 'warn'); } if (f > 0.3) lowFuelSaid = false;
   if (WAL.fuel <= 0 && !PLR.noFuel) { PLR.noFuel = true; toast('BBM habis! Panggil derek untuk mengantar BBM', 'bad'); }
@@ -2297,6 +2300,15 @@ function tickNeeds(dt){
   if (WAL.sleep >= 100 && !cfg.auto && !foot && (msT -= dt) < 0) { msT = rnd(15, 30); PLR.steer = (PLR.steer || 0) + (Math.random() - 0.5)*0.12; toast('Microsleep! Anda tertidur sesaat', 'bad'); shake = 0.3; }
   if ((walT -= dt) < 0) { walT = 0.5; cfg.wal = {...WAL}; saveCfgSoon(); uiNeeds(); }
 }
+// money for driving (only while the car is moving): Rp 30.000 every 1–2 minutes, Rp 50.000 every 5 minutes, Rp 100.000 every 2 km
+function driveEarn(dt, km){
+  const E = WAL.earn || (WAL.earn = {a: 0, aT: rnd(60, 120), b: 0, km: 0});
+  E.a += dt; E.b += dt; E.km += km;
+  if (E.a >= E.aT) { E.a = 0; E.aT = rnd(60, 120); earn(30000, 'berkendara 1–2 menit'); }
+  if (E.b >= 300) { E.b -= 300; earn(50000, 'berkendara 5 menit'); }
+  if (E.km >= 2) { E.km -= 2; earn(100000, 'menempuh 2 km'); }
+}
+function earn(n, why){ WAL.cash += n; stats.earned = (stats.earned || 0) + n; toast(`+${rp$(n)} · ${why}`); uiNeeds(); sfxCoin(); }
 function uiNeeds(){
   if (WAL.fuel == null || WAL.fuel > tankOf()) WAL.fuel = tankOf();
   const f = Math.round(WAL.fuel/tankOf()*100), fb = $('fuelb'), sb = $('sleepb');
@@ -3377,6 +3389,10 @@ function setClean(){ document.body.classList.toggle('clean', !!cfg.clean); $('hu
 // (city hum, birds by day, crickets at night), horns that react to jams, sirens with Doppler, crashes and toll beeps.
 // Everything starts on the first tap or key press (browsers block audio before that).
 let AC = null, snd = null, sndT = 0, hornCd = 0, thunderT = 18, chirpT = 0;
+// a short coin chime when money comes in
+function sfxCoin(){ if (!AC || !snd) return; const t = AC.currentTime;
+  for (const [f, d] of [[988, 0], [1319, 0.09]]) { const o = AC.createOscillator(), g = AC.createGain(); o.type = 'triangle'; o.frequency.value = f; g.gain.setValueAtTime(0.0001, t + d);
+    g.gain.exponentialRampToValueAtTime(0.25, t + d + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.35); o.connect(g); g.connect(snd.master); o.start(t + d); o.stop(t + d + 0.4); } }
 function audioStart(){
   if (AC || !cfg.sound) return; try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
   const master = AC.createGain(); master.gain.value = 0.5; master.connect(AC.destination);
@@ -4350,7 +4366,7 @@ function updateChoice(u){
   el.hidden = false;
 }
 
-try { await Promise.race([document.fonts.load('700 64px Archivo'), new Promise(r => setTimeout(r, 2500))]); } catch(e) {}
+try { await Promise.race([Promise.all(['700 64px Archivo', '600 64px Overpass', '700 64px Overpass', '800 64px Overpass'].map(f => document.fonts.load(f))), new Promise(r => setTimeout(r, 2500))]); } catch(e) {}
 setRoadStyle(); setView(); setClean(); setTod(null);
 if (cfg.trip === 'free' || cfg.trip === 'santai') startDrive({from: NODES.has(cfg.from) ? cfg.from : DEF.from}); else startTrip(NODES.has(cfg.from) ? cfg.from : DEF.from, NODES.has(cfg.to) ? cfg.to : DEF.to);
 if (!localStorage.getItem('tj_seen')) { try { localStorage.setItem('tj_seen', '1'); } catch(e) {} openPlanner(); }
