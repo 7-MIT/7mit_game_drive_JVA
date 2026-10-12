@@ -2494,6 +2494,63 @@ async function admLoad(){
 }
 function admOpen(){ $('adm').hidden = false; admLoad(); }
 
+// ================================================================
+// MUSIC: paste a link (YouTube, YouTube Music, Spotify, SoundCloud, Apple Music, Deezer, an audio file) or search a song
+// ================================================================
+const music = {on: false, recent: Array.isArray(cfg.musRecent) ? cfg.musRecent : []};
+function parseMusic(raw){
+  const s = String(raw || '').trim(); let u; try { u = new URL(/^https?:\/\//i.test(s) ? s : 'https://' + s); } catch (e) { return null; }
+  if (!/\./.test(u.hostname) || /\s/.test(s)) return null; const h = u.hostname.replace(/^www\.|^m\./, ''), P = u.pathname;
+  if (/(^|\.)youtube\.com$|^youtu\.be$|^music\.youtube\.com$/.test(h)) {
+    const id = h === 'youtu.be' ? P.slice(1, 12) : (u.searchParams.get('v') || (P.match(/\/(?:shorts|embed|live)\/([\w-]{11})/) || [])[1]), list = u.searchParams.get('list');
+    if (id) return {kind: 'iframe', h: 186, src: `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&playsinline=1${list ? '&list=' + encodeURIComponent(list) : ''}`, title: 'YouTube'};
+    if (list) return {kind: 'iframe', h: 186, src: `https://www.youtube-nocookie.com/embed/videoseries?list=${encodeURIComponent(list)}&autoplay=1&playsinline=1`, title: 'YouTube · playlist'}; }
+  if (h === 'open.spotify.com' || h === 'spotify.link') { const m = P.match(/(track|album|playlist|episode|show|artist)\/([A-Za-z0-9]+)/);
+    if (m) return {kind: 'iframe', h: m[1] === 'track' || m[1] === 'episode' ? 152 : 352, src: `https://open.spotify.com/embed/${m[1]}/${m[2]}?utm_source=generator`, title: 'Spotify · ' + m[1]}; }
+  if (/soundcloud\.com$/.test(h)) return {kind: 'iframe', h: 140, src: `https://w.soundcloud.com/player/?url=${encodeURIComponent(u.href)}&auto_play=true&visual=false`, title: 'SoundCloud'};
+  if (h === 'music.apple.com') return {kind: 'iframe', h: 175, src: 'https://embed.music.apple.com' + P + u.search, title: 'Apple Music'};
+  if (/deezer\.com$/.test(h)) { const m = P.match(/(track|album|playlist)\/(\d+)/); if (m) return {kind: 'iframe', h: 152, src: `https://widget.deezer.com/widget/auto/${m[1]}/${m[2]}`, title: 'Deezer'}; }
+  if (/\.(mp3|m4a|aac|ogg|oga|opus|wav|flac)$/i.test(P)) return {kind: 'audio', src: u.href, title: decodeURIComponent(P.split('/').pop())};
+  return null;
+}
+function musPlay(item, label){
+  const box = $('mus-player'); box.textContent = '';
+  if (item.kind === 'iframe') { const f = document.createElement('iframe'); f.src = item.src; f.height = item.h; f.allow = 'autoplay; encrypted-media; clipboard-write; picture-in-picture; fullscreen';
+    f.referrerPolicy = 'strict-origin-when-cross-origin'; f.loading = 'eager'; f.title = label || item.title; box.append(f); }
+  else { const a = document.createElement('audio'); a.src = item.src; a.controls = true; a.autoplay = true; box.append(a); a.play().catch(() => {}); }
+  music.on = true; $('mus-now').textContent = label || item.title; $('musb').setAttribute('aria-pressed', 'true');
+  const rec = {label: label || item.title, item}; music.recent = [rec, ...music.recent.filter(r => r.item.src !== item.src)].slice(0, 4); cfg.musRecent = music.recent; saveCfg(); musRecentUI();
+}
+function musStop(){ $('mus-player').textContent = ''; music.on = false; $('mus-now').textContent = ''; $('musb').setAttribute('aria-pressed', 'false'); }
+function musRow(img, title, sub, actions){ const r = document.createElement('div'); r.className = 'mus-item'; const im = document.createElement('img'); if (img) im.src = img; im.alt = '';
+  const t = document.createElement('div'), b = document.createElement('b'), sm = document.createElement('small'); b.textContent = title; sm.textContent = sub || ''; t.append(b, sm);
+  const acts = document.createElement('div'); for (const [lbl, fn] of actions) { const x = document.createElement('button'); x.textContent = lbl; x.onclick = fn; acts.append(x); } r.append(im, t, acts); return r; }
+function musRecentUI(){ const el = $('mus-recent'); el.textContent = ''; if (!music.recent.length) return; const h = document.createElement('div'); h.className = 'mus-note'; h.textContent = 'Terakhir diputar'; el.append(h);
+  for (const r of music.recent) el.append(musRow('', r.label, r.item.title, [['Putar', () => musPlay(r.item, r.label)]])); }
+const fetchT = (url, ms = 5000) => { const c = new AbortController(), t = setTimeout(() => c.abort(), ms); return fetch(url, {signal: c.signal}).finally(() => clearTimeout(t)); };
+const fmtDur = s => s ? `${Math.floor(s/60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : '';
+// search: full songs from YouTube through public no-key mirrors; if none answers, 30-second previews from the iTunes catalogue
+const YT_MIRRORS = [q => `https://inv.nadeko.net/api/v1/search?type=video&q=${q}`, q => `https://invidious.nerdvpn.de/api/v1/search?type=video&q=${q}`, q => `https://pipedapi.kavin.rocks/search?filter=music_songs&q=${q}`, q => `https://api.piped.private.coffee/search?filter=videos&q=${q}`];
+async function musSearch(q){
+  const res = $('mus-results'), tok = music.tok = (music.tok || 0) + 1, stale = () => tok !== music.tok; res.textContent = 'Mencari…'; const enc = encodeURIComponent(q);
+  for (const m of YT_MIRRORS) { try { const r = await fetchT(m(enc)); if (!r.ok) continue; const j = await r.json(); const arr = Array.isArray(j) ? j : j.items || [];
+      const items = arr.map(v => ({id: v.videoId || (v.url || '').split('v=')[1], title: v.title, by: v.author || v.uploaderName || '', dur: v.lengthSeconds || v.duration, img: (v.videoThumbnails && v.videoThumbnails[0] && v.videoThumbnails[0].url) || v.thumbnail}))
+        .filter(v => v.id && /^[\w-]{11}$/.test(v.id)).slice(0, 10);
+      if (!items.length) continue; if (stale()) return; res.textContent = '';
+      for (const v of items) res.append(musRow(v.img && !/^\//.test(v.img) ? v.img : `https://i.ytimg.com/vi/${v.id}/default.jpg`, v.title, `${v.by}${v.dur ? ' · ' + fmtDur(v.dur) : ''}`,
+        [['Putar', () => musPlay({kind: 'iframe', h: 186, src: `https://www.youtube-nocookie.com/embed/${v.id}?autoplay=1&playsinline=1`, title: 'YouTube'}, v.title)]]));
+      return; } catch (e) {} }
+  if (stale()) return;
+  try { const r = await fetchT(`https://itunes.apple.com/search?media=music&entity=song&limit=10&term=${enc}`, 7000), j = await r.json(); if (stale()) return; res.textContent = '';
+    const note = document.createElement('div'); note.className = 'mus-note'; note.textContent = 'Pencarian YouTube sedang tidak tersedia: ini cuplikan 30 detik. Untuk lagu penuh, tempel link YouTube/Spotify.'; res.append(note);
+    for (const t of (j.results || []).filter(t => t.previewUrl)) res.append(musRow(t.artworkUrl60, t.trackName, `${t.artistName} · cuplikan`, [
+      ['Cuplikan', () => musPlay({kind: 'audio', src: t.previewUrl, title: 'Cuplikan 30 detik'}, `${t.trackName} · ${t.artistName}`)],
+      ['YouTube', () => window.open(`https://www.youtube.com/results?search_query=${encodeURIComponent(t.artistName + ' ' + t.trackName)}`, '_blank', 'noopener')]]));
+    if (!(j.results || []).length) res.append(Object.assign(document.createElement('div'), {className: 'mus-note', textContent: 'Lagu tidak ditemukan.'}));
+  } catch (e) { if (!stale()) res.textContent = 'Pencarian gagal (periksa internet). Tempel link lagu langsung.'; }
+}
+function musSubmit(){ const v = $('mus-in').value.trim(); if (!v) return; const it = parseMusic(v); if (it) { music.tok = (music.tok || 0) + 1; musPlay(it); $('mus-results').textContent = ''; } else musSearch(v); $('mus-in').blur(); }
+
 // ---------- crash effects: debris and glass, sparks, smoke and fire, dents, skid marks ----------
 // Particles live in road coordinates (u, x, y) so they stay put as the world scrolls; drawn with instanced meshes.
 const FXN = 420, fxDummy = new THREE.Object3D(), fxCol = new THREE.Color();
@@ -3087,7 +3144,7 @@ function thunder(){ const far = Math.random(); noise({gain: 0.5 - far*0.3, lp: 1
 function updateSound(){
   if (!snd) return; const t = AC.currentTime, v = PLR ? Math.abs(PLR.vel) : 0, hv = PLR && heavy(PLR) ? 0.6 : 1;
   const dt = Math.min(0.1, clock - sndT); sndT = clock;
-  snd.master.gain.setTargetAtTime(cfg.sound && $('plan').hidden ? 0.5 : 0, t, 0.1);
+  snd.master.gain.setTargetAtTime(cfg.sound && $('plan').hidden ? (music.on ? 0.22 : 0.5) : 0, t, 0.1);   // game sound ducks under the music
   const g = gearOf(v/hv), lo = g > 1 ? GEAR_UP[g - 2]*hv : 0, hi = (GEAR_UP[g - 1] || 45)*hv, rpm = 850 + clamp((v - lo)/(hi - lo), 0, 1)*4200*(g === 1 ? 1 : 0.75) + (input.gas ? 300 : 0);
   const f = rpm/60*(heavy(PLR || {}) ? 1.5 : 2);
   snd.eng.frequency.setTargetAtTime(f, t, 0.05); snd.eng2.frequency.setTargetAtTime(f*0.5, t, 0.05); snd.lp.frequency.setTargetAtTime(400 + rpm*0.25 + (input.gas ? 500 : 0), t, 0.08);
@@ -3736,6 +3793,14 @@ addEventListener('beforeunload', () => mpLeave());
 try { window.lucide && window.lucide.createIcons(); } catch (e) {}
 $('pin-form').onsubmit = e => { e.preventDefault(); srvAdminCheck($('pin-in').value); }; $('pin-close').onclick = () => { $('pin').hidden = true; };
 $('adm-close').onclick = () => { $('adm').hidden = true; }; $('adm-refresh').onclick = admLoad;
+$('musb').onclick = () => { const m = $('music'); m.hidden = !m.hidden; m.classList.remove('min'); if (!m.hidden) { musRecentUI(); setTimeout(() => $('mus-in').focus(), 30); } };
+$('mus-form').onsubmit = e => { e.preventDefault(); musSubmit(); };
+$('mus-min').onclick = () => $('music').classList.toggle('min'); $('mus-close').onclick = () => { musStop(); $('music').hidden = true; };
+$('mus-in').addEventListener('keydown', e => { if (e.key === 'Escape' || (!e.target.value && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key))) { e.target.blur(); e.preventDefault(); } });
+{ const box = $('music'), grip = $('mus-grip'); let d = null;
+  grip.addEventListener('pointerdown', e => { const r = box.getBoundingClientRect(); d = {dx: e.clientX - r.left, dy: e.clientY - r.top}; grip.setPointerCapture(e.pointerId); e.preventDefault(); });
+  grip.addEventListener('pointermove', e => { if (!d) return; const r = box.getBoundingClientRect(); Object.assign(box.style, {left: clamp(e.clientX - d.dx, 4, innerWidth - r.width - 4) + 'px', top: clamp(e.clientY - d.dy, 4, innerHeight - 40) + 'px', right: 'auto'}); });
+  for (const ev of ['pointerup', 'pointercancel']) grip.addEventListener(ev, () => { d = null; }); }
 $('peaceb').onclick = makePeace; $('svcb').onclick = openSvc; $('svc-close').onclick = () => { $('svc').hidden = true; }; $('towb').onclick = () => callTow();
 $('mirb').onclick = () => { cfg.mirror = cfg.mirror === false; saveCfg(); $('mirb').setAttribute('aria-pressed', cfg.mirror !== false ? 'true' : 'false'); toast(cfg.mirror !== false ? 'Spion menyala (kokpit: spion kiri, tengah, kanan)' : 'Spion dimatikan'); };
 $('mirb').setAttribute('aria-pressed', cfg.mirror !== false ? 'true' : 'false');
@@ -3757,6 +3822,7 @@ addEventListener('keydown', e => { if (e.key === 'Escape' && !$('atlas').hidden)
   else if (k === 'h' && !e.repeat) $('hudb').click();
   else if (k === 'c' && !e.repeat) $('camb').click();
   else if (k === 'v' && !e.repeat) $('mirb').click();
+  else if (k === 'u' && !e.repeat) $('musb').click();
   else if (k === 'l' && !e.repeat && !$('svcb').hidden) openSvc();
   else if (k === 't' && !e.repeat && !$('towb').hidden) callTow();
   else if (k === 'k' && !e.repeat) playerHorn(true);

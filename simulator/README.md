@@ -98,6 +98,11 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
 - **Server settings (multiplayer).** One server has one set of conditions. In multiplayer an ordinary player cannot change any setting; only personal settings stay free (kept on the device, never sent to the server): camera, sound, HUD, steering assist (Asisten setir) and auto steering (Setir otomatis). Traffic, weather, road style, time of day and clock speed, lanes, closed lanes, contraflow, overpasses and distance scale come from the server when joining, and the game clock is shared.
   - **Admin:** in Pengaturan, "Masuk admin (PIN)" opens a PIN box. The PIN is checked by the server (table `drive7_server` and function `drive7_set_settings` in server.7mit; only a SHA-256 hash of the PIN is stored there). After 20 wrong attempts the PIN check is locked for 10 minutes.
   - **Changes:** the admin's changes are saved on the server and sent to all players at once.
+- **Music.** The Musik button (or U) opens a small player you can drag and minimise; the music keeps playing while you drive, and the game sound is turned down while it plays.
+  - **Paste a link:** YouTube or YouTube Music (single songs and playlists), Spotify (track, album, playlist, podcast), SoundCloud, Apple Music, Deezer, or a direct audio file (.mp3, .m4a, .ogg, …).
+  - **Type a song title to search:** full songs come from YouTube through public no-key search mirrors. If none of them answers, the search falls back to the iTunes catalogue with 30-second previews and a link to YouTube.
+  - **Limits:** Spotify plays full songs only for logged-in Spotify users (otherwise 30-second previews).
+  - **Recent:** the last four played are listed for a quick replay.
 - **Kick and ban (admin).**
   - **What is recorded:** when a player joins, the server (edge function `drive7-presence` in server.7mit) records their username, IP address, device type, OS and browser. Each device keeps a stable player id.
   - **Kelola pemain:** in admin mode, "Kelola pemain" lists the players of the last 3 hours with these details, with Kick, Ban 1 jam and Ban permanen. Banned players (by IP and player id) are listed with "Buka blokir".

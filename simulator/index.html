@@ -406,6 +406,19 @@
   .adm-row small{display:block;opacity:.75;overflow-wrap:anywhere} .adm-row .acts{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
   .adm-row .acts button{font-size:11px;padding:4px 7px;cursor:pointer;border:2px solid var(--color-text);background:var(--color-bg)}
   .adm-row .acts button.bad{background:var(--color-accent);color:#fff;border-color:var(--color-accent)}
+  #music{position:fixed;right:12px;top:30%;width:min(330px,calc(100vw - 24px));z-index:5;font-size:12px;padding:8px;display:grid;gap:6px;max-height:70vh;overflow:auto}
+  #music[hidden]{display:none} #music.min #mus-body{display:none}
+  .mus-head{display:flex;gap:6px;align-items:center} .mus-head .dbtn{min-height:26px;padding:3px 6px}
+  #mus-now{flex:1;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px}
+  #mus-grip{cursor:grab;touch-action:none;user-select:none}
+  #mus-form{display:flex;gap:6px} #mus-form .input{flex:1;min-width:0;padding:6px 8px}
+  #mus-player iframe{width:100%;border:0;display:block} #mus-player audio{width:100%}
+  #mus-results,#mus-recent{display:grid;gap:4px}
+  .mus-item{display:grid;grid-template-columns:42px minmax(0,1fr) auto;gap:6px;align-items:center;border:2px solid var(--color-text);padding:4px}
+  .mus-item img{width:42px;height:42px;object-fit:cover;background:#ccc} .mus-item small{display:block;opacity:.7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mus-item b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} .mus-item button{font-size:11px;padding:4px 7px;cursor:pointer;border:2px solid var(--color-text);background:var(--color-bg)}
+  .mus-note{opacity:.7;font-size:11px}
+  .mus-item img:not([src]){visibility:hidden} #music{max-height:62vh}
 </style>
 <script type="importmap">
 {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
@@ -462,6 +475,16 @@
   </div>
   <div id="toast" class="panel" role="status" aria-live="polite"></div>
   <button id="resume" hidden><i data-lucide="play"></i><span class="bl">Lanjut perjalanan</span></button>
+  <div id="music" class="panel" hidden aria-label="Musik">
+    <div class="mus-head"><span id="mus-grip" aria-hidden="true"><i data-lucide="grip-vertical">⠿</i></span><b>Musik</b><span id="mus-now"></span>
+      <button id="mus-min" class="dbtn" title="Kecilkan"><i data-lucide="minus">–</i></button><button id="mus-close" class="dbtn" title="Tutup & hentikan"><i data-lucide="x">×</i></button></div>
+    <div id="mus-body">
+      <form id="mus-form" autocomplete="off"><input id="mus-in" class="input" placeholder="Tempel link YouTube / Spotify / SoundCloud… atau ketik judul lagu"><button class="dbtn" aria-label="Putar atau cari"><i data-lucide="search"></i><span class="bl">Putar</span></button></form>
+      <div id="mus-player"></div>
+      <div id="mus-results"></div>
+      <div id="mus-recent"></div>
+    </div>
+  </div>
   <div id="mpbox" class="panel" hidden aria-label="Multiplayer">
     <div class="mp-head"><span id="mp-grip" title="Tarik untuk memindahkan" aria-hidden="true"><i data-lucide="grip-vertical">⠿</i></span><b>Multiplayer</b> <span id="mp-stat">—</span>
       <button id="mp-voice" class="dbtn" aria-pressed="false" title="Dengar suara pemain lain" aria-label="Suara"><i data-lucide="headphones"></i><span class="bl">Suara</span></button>
@@ -481,6 +504,7 @@
       <button id="hornb" class="dbtn" title="Klakson (K, tahan)" aria-label="Klakson"><i data-lucide="megaphone"></i><span class="bl">Klakson</span></button>
       <button id="mirb" class="dbtn" aria-pressed="true" title="Spion (V)" aria-label="Spion"><i data-lucide="eye"></i><span class="bl">Spion</span></button>
       <button id="svcb" class="dbtn" hidden title="Layanan (L)" aria-label="Layanan"><i data-lucide="store"></i><span class="bl">Layanan</span></button>
+      <button id="musb" class="dbtn" aria-label="Musik" title="Musik (U)"><i data-lucide="music"></i><span class="bl">Musik</span></button>
       <button id="peaceb" class="dbtn" hidden aria-label="Minta maaf &amp; ganti rugi" title="Minta maaf & bayar ganti rugi"><i data-lucide="handshake"></i><span class="bl">Minta maaf</span></button>
       <button id="towb" class="dbtn" hidden title="Panggil derek (T)" aria-label="Panggil derek"><i data-lucide="truck"></i><span class="bl">Panggil derek</span></button>
       <button id="walkb" class="dbtn" title="Keluar / masuk mobil (E)" aria-label="Keluar mobil"><i data-lucide="footprints"></i><span class="bl">Keluar mobil</span></button>
@@ -490,7 +514,7 @@
     <button id="rgt" class="dbtn" aria-label="Setir ke kanan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"><path d="M9 5l7 7-7 7"/></svg></button>
     <button id="brake" class="dbtn">REM</button>
     <button id="gas" class="dbtn">GAS</button>
-    <div class="keys">↑/W gas · ↓/S rem (tahan saat berhenti = mundur) · tahan ←/→ setir · P autopilot · C kamera · M peta · H HUD ringkas · K klakson · N sirene · F layar penuh · E keluar/masuk mobil · V spion · L layanan · T derek</div>
+    <div class="keys">↑/W gas · ↓/S rem (tahan saat berhenti = mundur) · tahan ←/→ setir · P autopilot · C kamera · M peta · H HUD ringkas · K klakson · N sirene · F layar penuh · E keluar/masuk mobil · V spion · L layanan · T derek · U musik</div>
   </div>
 </div>
 
