@@ -72,6 +72,11 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
   - The plains (Pantura, Cipali, Trans-Jawa) have rice fields (young, ripening, flooded) with villages.
   - Cipularang, Bawen–Salatiga, Bocimi, Cisumdawu, Pandaan–Malang and the mountain roads run between green hills.
   - About thirty volcanoes (Salak, Gede-Pangrango, Ciremai, Slamet, Merbabu, Merapi, Lawu, Arjuno, Semeru …) stand on the horizon at their real bearing.
+- **Stacked and elevated roads.**
+  - Waru–Juanda, Layang MBZ, Becakayu and Cawang–Priok run on viaducts, with piers and the land, buildings and trees below.
+  - From Jakarta–Cikampek you see the MBZ deck above the median, rising after JCT Cikunir and coming down before Karawang Barat, with its own traffic; from MBZ you see Japek and its traffic below.
+  - Becakayu stands over the Kalimalang canal with Jalan Kalimalang on both banks, and Jalan Kalimalang (Jl. KH Noer Ali) is also in the network.
+  - Lanes per direction: JORR 1 and all of JORR 2 have 3, Padaleunyi 4, Semarang ABC 3, Waru–Juanda 2, and the Trans-Jawa toll roads 3.
 - **U-turns.** Steer all the way round where the road allows it (anywhere on a national road, through a median opening on a toll road) and the trip carries on the other way.
 - **Relaxed driving, inspired by slowroads.io.**
   - The trip type "Santai (ala Slow Roads)" starts an endless drive with autopilot, a compact HUD, winding and hilly roads, a long view, light traffic and a late afternoon sun.

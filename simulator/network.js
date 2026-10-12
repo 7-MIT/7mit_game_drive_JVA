@@ -59,7 +59,7 @@ export const CORRIDORS = [
   C('cipularang', 'Tol Cipularang', 'Cipularang', 2, 100, [
     ['JCT Dawuan', 66, 'j'], ['GT Kalihurip Utama', 67, 'g', -6.400, 107.440], ['Sadang', 76, 'x', -6.500, 107.440],
     ['Jatiluhur', 84, 'x', -6.560, 107.400], ['Rest Area KM 88', 88, 'r'], ['Rest Area KM 97', 97, 'r'], ['JCT Padalarang', 121, 'j', -6.845, 107.480]]),
-  C('padaleunyi', 'Tol Padaleunyi', 'Padaleunyi', 3, 80, [
+  C('padaleunyi', 'Tol Padaleunyi', 'Padaleunyi', 4, 80, [
     ['JCT Padalarang', 121, 'j'], ['Padalarang', 122, 'x', -6.850, 107.492], ['Baros', 125, 'x', -6.890, 107.535],
     ['Pasteur', 128, 'x', -6.890, 107.575], ['JCT Pasir Koja', 131, 'j', -6.925, 107.578], ['Kopo', 134, 'x', -6.950, 107.575],
     ['Mohammad Toha', 138, 'x', -6.960, 107.610], ['Buahbatu', 142, 'x', -6.960, 107.645], ['Rest Area KM 147', 147, 'r'],
@@ -218,6 +218,9 @@ export const CORRIDORS = [
     ['Kudus', 0], ['Jepara', 35, -6.590, 110.670]]),
   N('cilacap', 'Jalan Nasional Purwokerto–Cilacap', 'Purwokerto–Cilacap', 1, 60, [
     ['Purwokerto', 0], ['Rawalo', 20, -7.550, 109.110], ['Cilacap', 50]]),
+  // Jalan Kalimalang (Jl. KH Noer Ali) along the Kalimalang canal, under the Becakayu elevated toll road
+  N('kalimalang', 'Jalan Kalimalang (Jl. KH Noer Ali)', 'Kalimalang', 2, 50, [
+    ['Jakarta', 0], ['Cawang', 6, -6.245, 106.870], ['Kalimalang', 12, -6.247, 106.925], ['Pondok Kelapa', 15, -6.243, 106.940], ['Bekasi', 22]]),
   N('puncak', 'Jalan Nasional Jakarta–Bogor–Puncak–Bandung', 'Jakarta–Puncak–Bandung', 1, 60, [
     ['Jakarta', 0], ['Cibinong', 35, -6.480, 106.850], ['Bogor', 50, -6.597, 106.800], ['Ciawi', 57, -6.650, 106.845],
     ['Puncak', 80, -6.700, 107.000], ['Cianjur', 105, -6.820, 107.140], ['Padalarang', 150, -6.843, 107.495], ['Cimahi', 155, -6.872, 107.540],

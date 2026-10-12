@@ -741,8 +741,26 @@ function viaduct(g, u0, u1, Z){
 const MBZ_K = [10, 46], MBZ_H = 15.5, MBZ_HW = MED + 2*LW + 1.2;
 const mbzRise = km => MBZ_H*sstep(MBZ_K[0] + 0.4, MBZ_K[0] + 3, km)*(1 - sstep(MBZ_K[1] - 3, MBZ_K[1] - 0.4, km));
 const ghosts = new Set();   // chunk groups carrying "ghost" traffic lanes (other levels of a stacked road)
+const canalMat = M(0x4f7f86, {roughness: 0.25, metalness: 0.1}), bankMat = M(0x8f8f86); canalMat.userData.terrain = bankMat.userData.terrain = true;
+// Becakayu stands on piers in the Kalimalang canal, with Jalan Kalimalang (Jl. KH Noer Ali) one-way on each bank
+function kalimalangUnder(g, u0, u1, Z){
+  if (Math.max(elevAt(u0), elevAt(u1)) < 1) return;
+  const us = []; for (let u = u0; u <= u1 + 0.01; u += 10) us.push(u);
+  const W = 11, R0 = W + 1.8;   // canal half width, start of the road on each bank
+  g.add(strip(us, u => -W, u => W, -0.6, canalMat, Z));
+  for (const sx of [-1, 1]) { g.add(strip(us, u => sx*W, u => sx*R0, 0.02, bankMat, Z), strip(us, u => sx*R0, u => sx*(R0 + 2*LW + 1), 0.01, prAsphalt, Z));
+    g.add(strip(us, u => sx*(R0 + LW - 0.07), u => sx*(R0 + LW + 0.07), 0.02, prWhite, Z)); }
+  const lanes = []; for (let l = 0; l < 2; l++) for (const d of [1, -1]) lanes.push({x: -d*(R0 + (l + 0.5)*LW), y: u => -elevAt(u) + 0.02, dir: d, vel: 11 + l*3, gap: (55 + l*20)*(MOBILE ? 1.6 : 1), ph: l*19 + (d > 0 ? 0 : 9)});
+  ghostTraffic(g, u0, u1, Z, lanes);
+}
+function ghostTraffic(g, u0, u1, Z, lanes){
+  const pool = []; for (const L of lanes) for (let k = 0; k < Math.ceil(CH/L.gap) + 1; k++) { const t = Math.random(), v = makeVehicle(t < 0.25 ? 'van' : t < 0.4 ? 'suv' : t < 0.5 ? 'bus' : 'car');
+    v.g.rotation.y = L.dir > 0 ? Math.PI : 0; bendObj(v.g); g.add(v.g); pool.push({L, v, k}); }
+  g.userData.ghost = {u0, u1, Z, pool}; ghosts.add(g);
+}
 function mbzStack(g, u0, u1, Z){
-  const c = corrAt(u0 + CH/2); if (c !== 'japek' && c !== 'mbz') return;
+  const c = corrAt(u0 + CH/2); if (c === 'becakayu') return kalimalangUnder(g, u0, u1, Z);
+  if (c !== 'japek' && c !== 'mbz') return;
   const km = u => kmAt(u), hAt = u => mbzRise(km(u)); if (Math.max(hAt(u0), hAt(u1)) < 0.3) return;
   const lanes = [];
   if (c === 'japek') {
