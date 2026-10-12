@@ -3894,7 +3894,9 @@ function updateHud(dt){
 function replay(el, cls){ el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
 
 // ---------- lane guidance: which lanes to be in for the next manoeuvre (exit, closed lanes, lane drop, heavy vehicles) ----------
-const ARROW = {up: 'M12 21V5M6 11l6-6 6 6', exit: 'M15 21v-6c0-4-2-6-7-8M6 2.5 8 7l-4.6 1.4', mergeR: 'M9 21v-6c0-4 2-6 7-8M18 2.5 16 7l4.6 1.4', mergeL: 'M15 21v-6c0-4-2-6-7-8M6 2.5 8 7l-4.6 1.4', x: 'M6 6l12 12M18 6 6 18'};
+// lane arrows: the arrow icons of the button icon set (straight on, left out to the exit, a slanting shift into the lane beside, closed)
+const ARROW = {up: ['m5 12 7-7 7 7', 'M12 19V5'], exit: ['m12 19-7-7 7-7', 'M19 12H5'], mergeR: ['M7 7h10v10', 'M7 17 17 7'], mergeL: ['M17 7H7v10', 'M17 17 7 7'], x: ['M18 6 6 18', 'm6 6 12 12']};
+const arrowSvg = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${ARROW[k].map(d => `<path d="${d}"/>`).join('')}</svg>`;
 let lgSig = '';
 function guideFor(v){
   if (!v || v.rp || !trip || stats.done) return null;
@@ -3923,7 +3925,7 @@ function laneGuide(v){
     for (let l = g.n - 1; l >= 0; l--) { const x = g.info[l], b = document.createElement('button');
       b.className = 'ln' + (g.rec.has(l) ? ' rec' : ' dim') + (x.st ? ' ' + x.st : '') + (v.prefLane === l ? ' pick' : '');
       b.dataset.l = l; b.setAttribute('aria-label', `Lajur ${g.n - l}${g.rec.has(l) ? ' (disarankan)' : x.st === 'closed' ? ' (ditutup)' : x.st === 'end' ? ' (berakhir)' : ''}`);
-      b.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="square"><path d="${ARROW[x.st === 'closed' ? 'x' : x.a]}"/></svg><small>${g.n - l}</small>`;
+      b.innerHTML = `${arrowSvg(x.st === 'closed' ? 'x' : x.a)}<small>${g.n - l}</small>`;
       box.append(b); }
     const me = document.createElement('i'); me.className = 'me'; box.append(me);
     $('lg-title').textContent = g.title; if (el.hidden) { el.hidden = false; } }
