@@ -95,7 +95,7 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
   - **Panel:** lists who is online and has a text chat (Enter to type). Drag it by its title bar to any place on the screen; the place is remembered.
   - **Voice chat:** goes over WebRTC (one link per player, signalled through the same channel). Press Suara to hear others and Mic to talk; others sound louder when they are close.
   - **Limits:** no TURN server, so a few strict networks may not connect for voice. The free Realtime plan suits small groups (about 20 players).
-- **Server settings (multiplayer).** One server has one set of conditions. In multiplayer the settings for traffic, weather, road style, time of day and clock speed, lanes, closed lanes, contraflow, overpasses and distance scale are locked; every player gets them from the server when joining, and the game clock is shared.
+- **Server settings (multiplayer).** One server has one set of conditions. In multiplayer an ordinary player cannot change any setting; only the personal view settings stay free: camera, sound and HUD. Traffic, weather, road style, time of day and clock speed, lanes, closed lanes, contraflow, overpasses and distance scale come from the server when joining, and the game clock is shared.
   - **Admin:** in Pengaturan, "Masuk admin (PIN)" opens a PIN box. The PIN is checked by the server (table `drive7_server` and function `drive7_set_settings` in server.7mit; only a SHA-256 hash of the PIN is stored there). After 20 wrong attempts the PIN check is locked for 10 minutes.
   - **Changes:** the admin's changes are saved on the server and sent to all players at once.
 - **Angry drivers.** Hit another car hard enough and it pulls over onto the shoulder.

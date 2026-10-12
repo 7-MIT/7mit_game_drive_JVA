@@ -2420,7 +2420,9 @@ function makePeace(){ const o = peaceTarget; if (!o || !o.angry) return; const a
 // ---------- multiplayer server settings: one set of weather / time / road settings for everyone, changed only by the admin ----------
 // Stored in server.7mit (table drive7_server); the admin PIN is checked by the server (function drive7_set_settings).
 const SRV_KEYS = ['den', 'weather', 'roadStyle', 'tod', 'tspd', 'lanes', 'close:1', 'close:-1', 'cf', 'cfk', 'ovl', 'scale'];
-const srvLocked = id => mp.on && SRV_KEYS.includes(id) && !mp.admin;
+// in multiplayer an ordinary player cannot change any setting; only the personal view settings (camera, sound, HUD) stay free
+const MP_FREE = ['cam', 'sound', 'clean'];
+const srvLocked = id => mp.on && !mp.admin && !MP_FREE.includes(id);
 function srvCollect(){ return {den: cfg.den, weather: cfg.weather, roadStyle: cfg.roadStyle, lanes: cfg.lanes, closed: cfg.closed, cf: cfg.cf, cfk: cfg.cfk, ovl: cfg.ovl, scale: cfg.scale,
   clock: {h: +gameH.toFixed(3), t: Date.now(), spd: +cfg.tspd || 0}}; }
 let srvApplying = false;
@@ -3503,7 +3505,7 @@ function renderUI(){
         cell.append(b); });
       const h = document.createElement('div'); h.className = 'hint'; h.textContent = 'Lajur 1 = paling kiri. Lajur yang tidak ada di ruas itu diabaikan, dan minimal satu lajur tetap dibuka.'; cell.append(h);
     } else opts.forEach(([v, t]) => { const b = btn(t, String(cfg[id]) === String(v)); b.onclick = () => apply(id, v); cell.append(b); });
-    if (srvLocked(id)) { for (const b of cell.querySelectorAll('button')) b.disabled = true; const h = document.createElement('div'); h.className = 'hint'; h.textContent = 'Diatur oleh server (multiplayer)'; cell.append(h); }
+    if (srvLocked(id)) { for (const b of cell.querySelectorAll('button')) b.disabled = true; const h = document.createElement('div'); h.className = 'hint'; h.textContent = 'Terkunci di multiplayer (hanya admin server)'; cell.append(h); }
     else if (mp.on && mp.admin && SRV_KEYS.includes(id)) lbl.textContent = 'Server · ' + label;
     ctrl.append(lbl, cell);
   }
@@ -3542,7 +3544,7 @@ function dropZone(z){
   OBJ = OBJ.filter(o => o.z !== z && !(o.o && o.o.cf === z));
 }
 function apply(id, v, fromServer = false){
-  if (!fromServer && srvLocked(id)) { toast('Pengaturan ini diatur oleh server multiplayer', 'warn'); return; }
+  if (!fromServer && srvLocked(id)) { toast('Di multiplayer pengaturan hanya bisa diubah admin server', 'warn'); return; }
   cfg[id] = v; saveCfg();
   if (!fromServer && mp.on && mp.admin && SRV_KEYS.includes(id)) setTimeout(srvPush, 50);
   const ahead = type => { if (!PLR) return ''; const z = zoneAhead(type); return z ? ` · ${type === 'cf' ? 'zona contraflow' : 'pekerjaan jalan'} ${Math.round((z.u - uOfV(PLR))/10)*10} m di depan` : ' · berlaku di zona berikutnya'; };
