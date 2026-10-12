@@ -11,7 +11,7 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
   - Every toll exit links to the nearest town by an access road.
   - Routes are found with Dijkstra on travel time. You choose the road type: toll + national roads (fastest), toll preferred, or national roads only.
 - **Keliling bebas (free driving).** There is no fixed route. The road ahead is planned as you go: at each junction, exit or town intersection a panel ("Arah di …") lists the roads you can take, for example *Kiri: Tol JORR → Tj. Priok* or *Keluar: Keluar tol → Bekasi*. Tap one and the road ahead is re-planned from that point; the choice closes about 1 km (world distance) before the place. If you choose nothing, you keep going straight. The world keeps extending as you drive, so you can tour the whole island.
-- **Maps (Peta).** The Peta button, the mini-map or the M key opens a full-screen map of every road in the network: toll roads, national roads and access roads, with every exit, junction, rest area and town.
+- **Maps (Peta).** The Peta button, the mini-map or the M key opens a full-screen map of every road in the network: toll roads, national roads and access roads, with every exit, junction, rest area and town. Both maps show your car live: the mini-map is centred on the car (about 15 km across, 60 km when enlarged) with an arrow pointing the way you drive, and the full map follows the car while the drive carries on underneath (drag to look around, "Ikuti" to follow again).
   - Drag to pan. Zoom with the mouse wheel, a pinch or the +/− buttons. "Saya" centres the map on your car.
   - Labels appear as you zoom in.
   - Search for any place by name.
@@ -152,6 +152,8 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
   - Ramps reach deck height before they pass under the deck.
   - Low ramp sections sit on grassed embankments with 1:1.5 slopes; high sections are viaducts with piers, crossbeams and concrete parapets.
   - Overpasses have earth fills with side slopes and abutment walls. No lamp post stands under a bridge deck or a toll-plaza canopy.
+  - **Info Tol 133.** Blue "Info Tol" boards with a phone icon and the number 133 stand beside both carriageways every few kilometres, clear of exits, gates and junctions.
+  - **Billboards.** Two-sided billboards on a single pole stand beside toll roads (about every kilometre, alternating sides) and national roads outside towns, with made-up brands and road-safety notices, lit at night.
   - **Street lights everywhere on the toll road.** Median lamps light the main road; where the MBZ deck covers Japek's median, lamps stand on both verges instead (also seen from the deck). Exit, junction and rest-area ramps have lamps along their edge, the rest-area car park has its own, and every toll gate has lights under the canopy and lamp posts on the approaches.
   - A geometry check run during development reports no clashes between ramps, decks, the main road, the parallel road or signs.
 - **Interchanges.** Ordinary exits are trumpets with a toll gate on the stem road that connects to the Jalan Nasional. Junctions are Cikunir-style cloverleafs: two loops and two direct ramps per side, with the crossing toll road on a flyover. Mainline toll plazas (Cikupa, Kalihurip, Palimanan, Kalikangkung, Banyumanik, Warugunung, …) have booths across every lane.

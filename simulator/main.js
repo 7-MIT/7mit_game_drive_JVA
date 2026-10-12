@@ -226,7 +226,7 @@ function signPost(parent, x, z, rot, items, y0=0, sc=1){
 const SIGN_GREEN = '#0c6a3c', SIGN_BLUE = '#0d3b7a';
 // pictograms on the road signs: vector icons drawn straight into the sign texture (white tiles with a dark symbol, as on real signs)
 const PICTO = {fuel: 'Fuel', food: 'Utensils', mosque: 'MoonStar', wc: 'Toilet', parking: 'CircleParking', cart: 'ShoppingCart', wrench: 'Wrench', atm: 'Banknote', plug: 'PlugZap',
-  coffee: 'Coffee', toll: 'CreditCard', split: 'Split', city: 'Building2', pin: 'MapPin', car: 'Car', bridge: 'Waves', left: 'ArrowUpLeft', route: 'Route', exit: 'LogOut'};
+  coffee: 'Coffee', toll: 'CreditCard', split: 'Split', city: 'Building2', pin: 'MapPin', car: 'Car', bridge: 'Waves', left: 'ArrowUpLeft', route: 'Route', exit: 'LogOut', phone: 'Phone'};
 const REST_ICONS = ['fuel', 'food', 'mosque', 'wc', 'cart'];
 const OWN_ICONS = {road: [['path', {d: 'M12 17v4'}], ['path', {d: 'M12 5V3'}], ['path', {d: 'M12 9v3'}], ['path', {d: 'M2.077 18.449A2 2 0 0 0 4 21h16a2 2 0 0 0 1.924-2.55l-4-14A2 2 0 0 0 16 3H8a2 2 0 0 0-1.924 1.45z'}]]};
 function drawIcon(x, key, cx, cy, size, col = '#1b1b1b'){
@@ -294,6 +294,40 @@ function panelMesh(w, h, tex){
   mat.userData.sign = true; mat.userData.own = true;
   const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat); g.add(face); g.face = face; return g;
 }
+
+// ---------- billboards: unipole advertising boards beside the road (made-up brands and road-safety notices) ----------
+const ADS = [
+  {bg: '#5a3620', ac: '#f2c230', t: 'KOPI NUSANTARA', s: 'Seduh hangat sepanjang perjalanan', i: 'Coffee'},
+  {bg: '#e8571e', ac: '#201e1d', t: 'NGANTUK? ISTIRAHAT!', s: 'Mampir di rest area terdekat · Keselamatan nomor satu', i: 'BedDouble'},
+  {bg: '#0d5a8a', ac: '#f2c230', t: 'BANK SEJAHTERA RAYA', s: 'Tabungan Mudik · Setoran mulai Rp 50.000', i: 'Landmark'},
+  {bg: '#c8201e', ac: '#f2c230', t: 'MIE JOS PEDAS', s: 'Pedasnya bikin melek di jalan', i: 'Soup'},
+  {bg: '#2f7a55', ac: '#f4f1ea', t: 'GRIYA ASRI RESIDENCE', s: 'Rumah dekat gerbang tol · Cicilan Rp 2 jt/bulan', i: 'House'},
+  {bg: '#1f5fbf', ac: '#f2c230', t: 'JAGA JARAK AMAN', s: 'Minimal 3 detik dari kendaraan di depan', i: 'Car'},
+  {bg: '#3f6b2a', ac: '#f2c230', t: 'TEH MELATI SEGAR', s: 'Dingin, wangi, asli dari kebun Jawa', i: 'Leaf'},
+  {bg: '#201e1d', ac: '#ec3013', t: 'SIMULATOR TOL TRANS-JAWA', s: 'Main sekarang di driving.7mit.org', i: 'Gamepad2'},
+  {bg: '#7a2e8a', ac: '#f2c230', t: 'BATIK LESTARI', s: 'Pusat batik tulis & cap · Buka setiap hari', i: 'Shirt'},
+  {bg: '#0c6a3c', ac: '#fff', t: 'PAKAI SABUK PENGAMAN', s: 'Depan dan belakang · Setiap perjalanan', i: 'ShieldCheck'},
+  {bg: '#0f7c8a', ac: '#f2c230', t: 'PANTAI INDAH CERIA', s: 'Wisata keluarga · Keluar di exit berikutnya', i: 'TreePalm'},
+  {bg: '#9a3b2a', ac: '#f2c230', t: 'BENGKEL SINAR JAYA', s: 'Servis mobil & motor · Derek 24 jam', i: 'Wrench'}];
+const adMats = [];
+function adMat(k){ if (adMats[k]) return adMats[k]; const a = ADS[k], icons = !!(window.lucide && window.lucide.icons);
+  const tex = canvasTex(10, 4.5, (x, W, H) => { x.fillStyle = a.bg; x.fillRect(0, 0, W, H); x.fillStyle = a.ac; x.fillRect(0, H - 30, W, 30);
+    const S = Math.round(H*0.5), y0 = (H - 30 - S)/2; let tx = 44;
+    if (icons) { x.fillStyle = '#fff'; x.beginPath(); x.roundRect(44, y0, S, S, S*0.16); x.fill(); drawIcon(x, a.i, 44 + S/2, y0 + S/2, S*0.66, a.bg); tx = 44 + S + 40; }
+    const room = W - tx - 40; x.fillStyle = '#fff'; x.textBaseline = 'middle'; x.textAlign = 'left';
+    fit(x, a.t, room, Math.round(H*0.2), 800); x.fillText(a.t, tx, H*0.34); fit(x, a.s, room, Math.round(H*0.095), 600); x.fillText(a.s, tx, H*0.6); });
+  const m = new THREE.MeshStandardMaterial({roughness: 0.6, emissive: 0xffffff, emissiveIntensity: signI, map: tex, emissiveMap: tex}); m.userData.sign = true;
+  if (icons) { tex.userData.keep = true; adMats[k] = m; } else m.userData.own = true;     // drawn again once the icons have loaded
+  return m; }
+const bbPoleGeo = new THREE.CylinderGeometry(0.35, 0.45, 9, 10); bbPoleGeo.translate(0, 4.5, 0); bbPoleGeo.userData.keep = true;
+const bbFaceGeo = new THREE.PlaneGeometry(10, 4.5); bbFaceGeo.userData.keep = true;
+// a two-sided billboard on one pole at (x, z), its front turned to the traffic coming towards it (rot), lit from below at night
+function billboard(g, x, z, rot, k){ const b = new THREE.Group(); b.position.set(x, 0, z); b.rotation.y = rot;
+  const pole = new THREE.Mesh(bbPoleGeo, lampMat), face = new THREE.Mesh(bbFaceGeo, adMat(mod(k, ADS.length))); pole.castShadow = true; face.position.set(0, 11.25, 0);
+  const back = new THREE.Mesh(bbFaceGeo, adMat(mod(k + 5, ADS.length))); back.position.set(0, 11.25, -0.41); back.rotation.y = Math.PI;    // two-sided: an ad for each carriageway
+  b.add(pole, face, back, solid(10.3, 4.8, 0.35, signBackMat, 0, 11.25, -0.22), solid(10, 0.12, 0.9, lampMat, 0, 8.9, 0.35));
+  for (const dx of [-3.4, 0, 3.4]) b.add(solid(0.5, 0.18, 0.3, lampHeadMat, dx, 9.05, 0.75));
+  g.add(b); }
 
 // ---------- vehicles ----------
 const headMat = new THREE.MeshStandardMaterial({color:0xf2f2ee, emissive:0xfff6e0, emissiveIntensity:0.2});
@@ -810,6 +844,10 @@ function buildChunkNat(i){
         const rf = new THREE.Mesh(roofGeo, R() < 0.5 ? roofMat : roofMat2); rf.position.set(x, 4.4, Z(u)); rf.scale.set(1, 1, 1.2); rf.castShadow = true; g.add(rf); }
     }
     if (!town && s > 0) roadside(g, u0, u1, Z, R, false);
+    // a billboard now and then outside towns, alternating sides
+    if (!town && mod(i, 11) === 6 && s === (mod(Math.floor(i/11), 2) ? 1 : -1)) { const u = u0 + 50, o = 12;
+      if (!xGap(u) && !rampFoot(o, u, 11) && elevAt(u) < 1 && !OVS.some(ov => Math.abs(ov.u - u) < 60)) { billboard(g, s*(eAt(u) + o), Z(u), (s < 0 ? 0 : Math.PI) + 0.3, Math.floor(i/11)*5 + 3);
+        addSolid(g, 'Menabrak tiang billboard', u - 0.5, u + 0.5, s*(eAt(u) + o) - 0.5, s*(eAt(u) + o) + 0.5); } }
     // PLN distribution poles (tiang listrik) with their wires, in towns and outside
     const pp = [], wires = [];
     for (let u2 = Math.ceil(u0/40)*40; u2 < u1; u2 += 40) { if (!plnPole(u2)) continue; const x = s*plnX(u2);
@@ -906,6 +944,10 @@ function buildChunk(i){
   pts.forEach((p, j) => { pv.set(p.x, 0, p.z); sc.set(p.k, p.k*p.h, p.k); q.setFromAxisAngle(upv, p.r); tm.compose(pv, q, sc); trunks.setMatrixAt(j, tm); (j % 2 ? crowns : blobs).setMatrixAt(j >> 1, tm); });
   crowns.count = pts.filter((_, j) => j % 2).length; blobs.count = pts.length - crowns.count;
   for (const m of [trunks, crowns, blobs]) { m.castShadow = true; g.add(m); }
+  // a billboard about every 1 km, on alternating sides
+  if (mod(i, 9) === 4) { const s = mod(Math.floor(i/9), 2) ? 1 : -1, u = u0 + 60, o = 10;
+    if (inVis(u) && !rampSiteNear(u, 450) && !OVS.some(ov => Math.abs(ov.u - u) < 60) && !PLAZAS.some(p => Math.abs(p.u - u) < 250) && elevAt(u) < 1 && !mbzRampAt(u) && eAt(u) + o - 6 > mbzClear(u) + 3) {
+      billboard(g, s*(eAt(u) + o), Z(u), (s < 0 ? 0 : Math.PI) + 0.3, Math.floor(i/9)*7); addSolid(g, 'Menabrak tiang billboard', u - 0.5, u + 0.5, s*(eAt(u) + o) - 0.5, s*(eAt(u) + o) + 0.5); } }
   roadside(g, u0, u1, Z, R, true);
   viaduct(g, u0, u1, Z);
   mbzStack(g, u0, u1, Z);
@@ -1116,6 +1158,10 @@ function layoutRoadSigns(){
       const mbz = a.cNext === 'mbz', lines = [['SELAMAT DATANG DI', 0.15], ['JALAN TOL', 0.17], [cN.name.replace(/^Tol\s+/i, '').toUpperCase(), 0.26]];
       if (mbz) lines.push(['Khusus Gol I: sedan, SUV, pickup · Bus & truk dilarang', 0.12]);
       if (!mbz) RSIGNS.push({u: a.u + (a.kind === 'j' ? 430 : 260), side: 1, lines, bg: SIGN_GREEN, w: 8.4, h: 3.6, icon: 'road'}); } }
+  // "Info Tol 133": the toll road's call number, every ~3 km of game road on both carriageways, clear of exits, gates and junctions
+  if (EV.length > 1) for (let u = EV[0].u + 1800; u < EV[EV.length - 1].u - 600; u += 3000) { const c = CORR[EV[Math.max(0, evAt(u))].cNext];
+    if (!c || c.cls !== 't' || SITES.some(t => Math.abs(t.u - u) < 500) || OVS.some(o => Math.abs(o.u - u) < 60) || mbzRampAt(u) || mbzRampAt(u + 300)) continue;
+    for (const [du, side] of [[0, 1], [300, -1]]) RSIGNS.push({u: u + du, side, lines: [['INFO TOL', 0.22], ['133', 0.44]], bg: SIGN_BLUE, w: 4.6, h: 3.2, icon: 'phone'}); }
   if (SEA) { RSIGNS.push({u: SEA[0] - 260, side: 1, lines: [['JEMBATAN SURAMADU', 0.24], ['Surabaya – Madura · 5,4 km', 0.16]], bg: SIGN_GREEN, w: 8, h: 3, icon: 'bridge'});
     RSIGNS.push({u: SEA[1] + 260, side: -1, lines: [['JEMBATAN SURAMADU', 0.24], ['Madura – Surabaya · 5,4 km', 0.16]], bg: SIGN_GREEN, w: 8, h: 3, icon: 'bridge'}); }
   // MBZ: an overhead sign over the two right lanes before the fork on Japek, a welcome gantry on the MBZ itself
@@ -3957,25 +4003,34 @@ function drawMap(){
   const x = mctx; x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, W, H);
   const cs = getComputedStyle(document.body), ink = cs.getPropertyValue('--color-text').trim() || '#201e1d', acc = cs.getPropertyValue('--color-accent').trim() || '#ec3013';
   let lon0 = 105.2, lon1 = 114.7, lat0 = -5.7, lat1 = -8.9;
-  if (mapBig && PLR) { const u = uOfV(PLR), p = latLonAt(u); lon0 = p.lon - 0.9; lon1 = p.lon + 0.9; const h = 1.8*H/W; lat0 = p.lat + h/2; lat1 = p.lat - h/2; }
+  // live map: centred on the car and moving with it (about 15 km across, 60 km when enlarged)
+  const follow = !!(PLR && trip && EV.length);
+  if (follow) { const u = uOfV(PLR), p = latLonAt(u), span = mapBig ? 0.55 : 0.14; lon0 = p.lon - span/2; lon1 = p.lon + span/2; const h = span*H/W; lat0 = p.lat + h/2; lat1 = p.lat - h/2; }
   const sx = Math.min(W/(lon1 - lon0), H/Math.abs(lat1 - lat0)), ox = (W - sx*(lon1 - lon0))/2, oy = (H - sx*Math.abs(lat1 - lat0))/2;
   const P = (lat, lon) => [ox + (lon - lon0)*sx, oy + (lat0 - lat)*sx];
   // the island and its roads: drawn once into a cached layer for the whole-island view, every time when zoomed in on the car
   const base = y => { y.fillStyle = 'rgba(32,30,29,0.06)'; for (const isl of [JAVA, MADURA]) { y.beginPath(); isl.forEach(([lo, la], i) => { const [a, b] = P(la, lo); i ? y.lineTo(a, b) : y.moveTo(a, b); }); y.closePath(); y.fill(); }
     y.lineJoin = 'round';
-    for (const c of CORRIDORS) { if (c.cls === 'a' || !roadInView(c.id, P, W, H)) continue; y.lineWidth = c.prov ? 0.7 : c.cls === 'n' ? 1 : 1.5; y.strokeStyle = c.prov ? 'rgba(160,120,70,0.45)' : c.cls === 'n' ? 'rgba(138,90,40,0.55)' : 'rgba(32,30,29,0.45)'; y.setLineDash(c.planned ? [3, 3] : []); strokeRoad(y, P, c.id); }
+    const zk = follow ? 2 : 1;
+    for (const c of CORRIDORS) { if ((c.cls === 'a' && !follow) || !roadInView(c.id, P, W, H)) continue; y.lineWidth = zk*(c.cls === 'a' ? 0.6 : c.prov ? 0.7 : c.cls === 'n' ? 1 : 1.5); y.strokeStyle = c.prov ? 'rgba(160,120,70,0.45)' : c.cls === 'n' ? 'rgba(138,90,40,0.55)' : 'rgba(32,30,29,0.45)'; y.setLineDash(c.planned ? [3, 3] : []); strokeRoad(y, P, c.id); }
     y.setLineDash([]); };
-  if (mapBig) base(x);
+  if (follow) base(x);
   else { const k = `${W}x${H}x${dpr}`; if (!drawMap.cache || drawMap.key !== k) { const c = document.createElement('canvas'); c.width = Math.round(W*dpr); c.height = Math.round(H*dpr);
       const y = c.getContext('2d'); y.setTransform(dpr, 0, 0, dpr, 0, 0); base(y); drawMap.cache = c; drawMap.key = k; }
     x.drawImage(drawMap.cache, 0, 0, W, H); }
   if (trip) { const u0 = PLR ? uOfV(PLR) : 0, i0 = Math.max(0, evAt(u0)), i1 = trip.destIdx >= 0 ? trip.destIdx : Math.min(EV.length - 1, i0 + 60);
     x.lineWidth = 3; x.strokeStyle = acc; x.beginPath(); routeLL(u0, i1).forEach((e, i) => { const [a, b] = P(e.lat, e.lon); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke();
     const d = EV[trip.destIdx]; if (d) { const [dx, dy] = P(d.lat, d.lon); x.fillStyle = ink; x.fillRect(dx - 3, dy - 3, 6, 6); }
-    if (PLR) { const p = latLonAt(uOfV(PLR)), [px, py] = P(p.lat, p.lon); x.fillStyle = acc; x.strokeStyle = '#fff'; x.lineWidth = 2; x.beginPath(); x.arc(px, py, 5, 0, Math.PI*2); x.fill(); x.stroke(); } }
+    if (PLR) { const u = uOfV(PLR), p = latLonAt(u), [px, py] = P(p.lat, p.lon), fw = (PLR.rp ? PLR.rp.sd : PLR.sd)*(PLR.vel < -0.5 ? -1 : 1), q = latLonAt(u + fw*250), [qx, qy] = P(q.lat, q.lon);
+      if (Math.hypot(qx - px, qy - py) > 0.3) drawMap.hd = Math.atan2(qx - px, py - qy);
+      // the car: an arrow pointing the way it is driving
+      x.save(); x.translate(px, py); x.rotate(drawMap.hd || 0); x.fillStyle = acc; x.strokeStyle = '#fff'; x.lineWidth = 2; x.lineJoin = 'round';
+      x.beginPath(); x.moveTo(0, -8); x.lineTo(6, 7); x.lineTo(0, 3); x.lineTo(-6, 7); x.closePath(); x.stroke(); x.fill(); x.restore(); } }
   x.fillStyle = ink; x.font = '600 9px Archivo, sans-serif';
-  const labels = mapBig ? [...new Set(EV.filter(e => e.city && e.kind !== 'n0').map(e => e.key))].map(k => NODES.get(k)) : ['JCT Cawang','GT Banyumanik','JCT Waru','Merak','JCT Pasir Koja','GT Palimanan','Colomadu','Malang','Ketapang'].map(k => NODES.get(k));
-  for (const n of labels) { if (!n) continue; const [a, b] = P(n.lat, n.lon); if (a < 0 || b < 0 || a > W || b > H) continue; x.fillText(n.city || n.name, a + 4, b - 3); }
+  const labels = follow ? [...new Set(EV.filter(e => e.kind !== 'n0' && e.lat != null).map(e => e.key))].map(k => NODES.get(k)) : ['JCT Cawang','GT Banyumanik','JCT Waru','Merak','JCT Pasir Koja','GT Palimanan','Colomadu','Malang','Ketapang'].map(k => NODES.get(k));
+  for (const n of labels) { if (!n) continue; const [a, b] = P(n.lat, n.lon); if (a < 0 || b < 0 || a > W || b > H) continue;
+    if (follow) { x.fillRect(a - 2, b - 2, 4, 4); x.lineWidth = 3; x.strokeStyle = 'rgba(255,255,255,0.85)'; x.strokeText(n.name, a + 5, b - 3); }
+    x.fillText(follow ? n.name : n.city || n.name, a + 5, b - 3); }
   mpDrawMap(x, P);
 }
 // where u is on the map: along the curve of the road it is on
@@ -4014,9 +4069,11 @@ function atSize(){ const W = acv.clientWidth, H = acv.clientHeight, dpr = Math.m
   AT.W = W; AT.H = H; AT.kMin = Math.min(W/(10.5*COSL), H/4.5); return dpr; }
 function playerLL(){ if (!PLR || !trip) return null; const u = uOfV(PLR), p = latLonAt(u), i = Math.max(0, evAt(u)), nx = EV[Math.min(EV.length - 1, i + 1)];
   return {...p, hd: Math.atan2((nx.lon - p.lon)*COSL, nx.lat - p.lat)}; }
+let atT = 0;
+function atFollow(){ if (!AT.follow) return; const p = playerLL(); if (p) { AT.lon = p.lon; AT.lat = p.lat; } }
 function openAtlas(){
-  atlas.hidden = false; atSize();
-  if (!AT.opened) { AT.opened = true; const p = playerLL(); if (p) { AT.lon = p.lon; AT.lat = p.lat; } AT.k = clamp(AT.W/(2.6*COSL), AT.kMin, AT.kMax); }
+  atlas.hidden = false; atSize(); AT.follow = true; $('at-me').setAttribute('aria-pressed', 'true');
+  if (!AT.opened) { AT.opened = true; AT.k = clamp(AT.W/(0.6*COSL), AT.kMin, AT.kMax); } atFollow();
   legendText(); drawAtlas();
 }
 function closeAtlas(){ atlas.hidden = true; $('at-res').hidden = true; $('at-q').blur(); }
@@ -4025,7 +4082,7 @@ function legendText(){
   const d = trip && EV[trip.destIdx];
   $('at-nav').textContent = d ? `Navigasi ke ${d.name} · ${fmtKm(Math.max(0, d.rk - rkAt(uOfV(PLR))))}` : 'Rute di depan (keliling bebas)';
 }
-function zoomAt(x, y, f){ const p = atInv(x, y); AT.k = clamp(AT.k*f, AT.kMin, AT.kMax); const q = atInv(x, y); AT.lon += p.lon - q.lon; AT.lat += p.lat - q.lat; reqAtlas(); }
+function zoomAt(x, y, f){ if (AT.follow) { x = AT.W/2; y = AT.H/2; } const p = atInv(x, y); AT.k = clamp(AT.k*f, AT.kMin, AT.kMax); const q = atInv(x, y); AT.lon += p.lon - q.lon; AT.lat += p.lat - q.lat; reqAtlas(); }
 function drawAtlas(){
   if (atlas.hidden) return;
   const dpr = atSize(), x = actx, W = AT.W, H = AT.H, k = AT.k; x.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -4116,7 +4173,7 @@ const ptrs = new Map(); let moved = 0, pinch = null;
 acv.addEventListener('pointerdown', e => { acv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, {x: e.offsetX, y: e.offsetY}); if (ptrs.size === 1) moved = 0; acv.classList.add('drag');
   if (ptrs.size === 2) { const [p, q] = [...ptrs.values()]; pinch = {d: Math.hypot(p.x - q.x, p.y - q.y), mx: (p.x + q.x)/2, my: (p.y + q.y)/2}; } });
 acv.addEventListener('pointermove', e => { const o = ptrs.get(e.pointerId); if (!o) return; const dx = e.offsetX - o.x, dy = e.offsetY - o.y; o.x = e.offsetX; o.y = e.offsetY;
-  if (ptrs.size === 1) { moved += Math.abs(dx) + Math.abs(dy); AT.lon -= dx/(AT.k*COSL); AT.lat += dy/AT.k; reqAtlas(); }
+  if (ptrs.size === 1) { moved += Math.abs(dx) + Math.abs(dy); if (moved > 6) { AT.follow = false; $('at-me').setAttribute('aria-pressed', 'false'); } AT.lon -= dx/(AT.k*COSL); AT.lat += dy/AT.k; reqAtlas(); }
   else if (ptrs.size === 2 && pinch) { moved = 99; const [p, q] = [...ptrs.values()], d = Math.hypot(p.x - q.x, p.y - q.y), mx = (p.x + q.x)/2, my = (p.y + q.y)/2;
     AT.lon -= (mx - pinch.mx)/(AT.k*COSL); AT.lat += (my - pinch.my)/AT.k; zoomAt(mx, my, d/(pinch.d || d)); pinch = {d, mx, my}; } });
 const ptrUp = e => { if (!ptrs.has(e.pointerId)) return; ptrs.delete(e.pointerId); if (ptrs.size < 2) pinch = null;
@@ -4124,7 +4181,7 @@ const ptrUp = e => { if (!ptrs.has(e.pointerId)) return; ptrs.delete(e.pointerId
 for (const t of ['pointerup', 'pointercancel']) acv.addEventListener(t, ptrUp);
 acv.addEventListener('wheel', e => { e.preventDefault(); zoomAt(e.offsetX, e.offsetY, Math.exp(-e.deltaY*(e.deltaMode ? 0.05 : 0.0018))); }, {passive: false});
 $('at-in').onclick = () => zoomAt(AT.W/2, AT.H/2, 1.6); $('at-out').onclick = () => zoomAt(AT.W/2, AT.H/2, 1/1.6);
-$('at-me').onclick = () => { const p = playerLL(); if (p) { AT.lon = p.lon; AT.lat = p.lat; AT.k = Math.max(AT.k, 400); reqAtlas(); } };
+$('at-me').onclick = () => { AT.follow = true; $('at-me').setAttribute('aria-pressed', 'true'); AT.k = Math.max(AT.k, 400); atFollow(); reqAtlas(); };
 $('at-close').onclick = closeAtlas;
 // search every place of the network
 const norm = t => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
@@ -4686,10 +4743,12 @@ let shadowFrame = 0;
 renderer.setAnimationLoop(now => {
   const rawDt = (now - last)/1000, dt = Math.min(0.05, rawDt); last = now; frames++; if (rawDt > 0 && rawDt < 1) govern(rawDt);
   if (QUAL.level >= 1 && renderer.shadowMap.enabled) renderer.shadowMap.needsUpdate = (shadowFrame = (shadowFrame + 1) % 3) === 0;
-  if ((!$('plan').hidden && trip && !stats.done) || !$('atlas').hidden) { composer.render(); return; }
+  if (!$('plan').hidden && trip && !stats.done) { composer.render(); return; }
   tick(dt);
+  // the full map is open: the drive goes on underneath (autopilot keeps driving), the map follows the car live
+  if (!atlas.hidden) { placeGroups(); place(); updateCam(dt); updateHud(dt); atT -= dt; if (atT <= 0) { atT = 0.15; atFollow(); drawAtlas(); } return; }
   placeGroups(); place(); placeFoot(); placeTow(); placeJob(); mpPlace(); placeBeams(); placeAngry(); updateCam(dt); updateVolcanoes(dt); updateLandmarks(); updateRoadSigns(); updateFx(dt); updateSky(dt); updateSound(); flash(); updateBend(); updateHud(dt);
-  mapT -= dt; if (mapT <= 0) { mapT = 0.5; drawMap(); if (mp.on && !atlas.hidden) reqAtlas(); }
+  mapT -= dt; if (mapT <= 0) { mapT = 0.2; drawMap(); }
   composer.render(); drawMirrors(dt);
 });
 addEventListener('resize', () => { camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); composer.setSize(innerWidth,innerHeight); drawMap(); reqAtlas(); });
