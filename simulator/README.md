@@ -152,6 +152,7 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
   - Ramps reach deck height before they pass under the deck.
   - Low ramp sections sit on grassed embankments with 1:1.5 slopes; high sections are viaducts with piers, crossbeams and concrete parapets.
   - Overpasses have earth fills with side slopes and abutment walls. No lamp post stands under a bridge deck or a toll-plaza canopy.
+  - **Street lights everywhere on the toll road.** Median lamps light the main road; where the MBZ deck covers Japek's median, lamps stand on both verges instead (also seen from the deck). Exit, junction and rest-area ramps have lamps along their edge, the rest-area car park has its own, and every toll gate has lights under the canopy and lamp posts on the approaches.
   - A geometry check run during development reports no clashes between ramps, decks, the main road, the parallel road or signs.
 - **Interchanges.** Ordinary exits are trumpets with a toll gate on the stem road that connects to the Jalan Nasional. Junctions are Cikunir-style cloverleafs: two loops and two direct ramps per side, with the crossing toll road on a flyover. Mainline toll plazas (Cikupa, Kalihurip, Palimanan, Kalikangkung, Banyumanik, Warugunung, …) have booths across every lane.
 - **Roadworks and contraflow.**

@@ -711,6 +711,20 @@ const prDashGeo = new THREE.PlaneGeometry(0.12, 3); prDashGeo.rotateX(-Math.PI/2
 const poleGeo = new THREE.CylinderGeometry(0.12,0.16,11,8); poleGeo.translate(0,5.5,0); poleGeo.userData.keep = true;
 const armGeo = new THREE.BoxGeometry(6, 0.14, 0.14); armGeo.translate(0,10.9,0); armGeo.userData.keep = true;
 const headGeo = new THREE.BoxGeometry(0.9,0.18,0.4); headGeo.userData.keep = true;
+// verge street lamp: a pole with one arm reaching along +x and its lamp head; instanced from [x, y, z, rotY]
+const slGeo = (() => { const p = new THREE.CylinderGeometry(0.1, 0.15, 10, 6), a = new THREE.BoxGeometry(2.6, 0.12, 0.12); p.translate(0, 5, 0); a.translate(1.3, 9.9, 0);
+  for (const q of [p, a]) q.deleteAttribute('uv'); const m = mergeGeometries([p, a]); m.userData.keep = true; return m; })();
+const slHeadGeo = new THREE.BoxGeometry(0.8, 0.16, 0.36); slHeadGeo.translate(2.5, 9.78, 0); slHeadGeo.userData.keep = true;
+function streetLamps(g, pts){ if (!pts.length) return;
+  const a = new THREE.InstancedMesh(slGeo, lampMat, pts.length), b = new THREE.InstancedMesh(slHeadGeo, lampHeadMat, pts.length), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), one = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3();
+  pts.forEach(([x, y, z, r], i) => { q.setFromAxisAngle(up, r); tm.compose(v.set(x, y, z), q, one); a.setMatrixAt(i, tm); b.setMatrixAt(i, tm); });
+  a.castShadow = true; g.add(a, b); }
+// lamps every ~38 m along a ramp path (local frame), standing on its left edge (lat > 0) with the arm over the lanes
+function pathLamps(g, p, e, lat, zs = SC, latOf = null){ const out = []; let acc = 30;
+  for (let i = 1; i < p.length; i++) { acc += Math.hypot(p[i][0] - p[i-1][0], p[i][1] - p[i-1][1]); if (acc < 38) continue; acc = 0;
+    const a = p[i-1], b = p[Math.min(p.length - 1, i + 1)]; let dO = b[0] - a[0], dU = b[1] - a[1]; const l = Math.hypot(dO, dU) || 1; dO /= l; dU /= l;
+    const k = latOf ? latOf(p[i]) : lat; out.push([e + p[i][0] + k*dU, Hh(p[i]), p[i][1] - k*dO - zs, Math.atan2(-dO, -dU)]); }
+  streetLamps(g, out); }
 const postGeo = new THREE.BoxGeometry(0.12,0.8,0.12); postGeo.userData.keep = true;
 const gateGeo = new THREE.BoxGeometry(0.6, 0.85, 1.05); gateGeo.userData.keep = true;
 const rampSiteNear = (u, r = 180) => RSITES.find(s => Math.abs(s.u - u) < r);
@@ -874,6 +888,10 @@ function buildChunk(i){
   const poles = instanced(poleGeo, lampMat, lz.map(u => [0, Z(u)])), arms = instanced(armGeo, lampMat, lz.map(u => [0, Z(u)]));
   const heads = instanced(headGeo, lampHeadMat, lz.flatMap(u => [[-2.8, Z(u)], [2.8, Z(u)]]), 10.8);
   poles.castShadow = true; g.add(poles, arms, heads);
+  // Japek under the MBZ: the deck covers the median, so the lamps stand on both verges with their arms over the carriageway
+  { const sl = []; for (let u = Math.ceil(u0/45)*45 + 22; u < u1; u += 45) if (inVis(u) && mbzUnder(u) && !mbzRampAt(u) && !rampSiteNear(u, 330) && !OVS.some(o => Math.abs(o.u - u) < 16))
+      for (const sx of [-1, 1]) sl.push([sx*(eAt(u) + 3.6), 0, Z(u), sx > 0 ? Math.PI : 0]);
+    streetLamps(g, sl); }
   // trees
   const per = MOBILE ? 9 : 16, pts = [];
   for (let k = 0; k < per*2; k++) { const s = k % 2 ? 1 : -1, u = u0 + R()*CH, near = rampSiteNear(u, 430);
@@ -1145,7 +1163,7 @@ function drawMirrors(dt){
   const v = PLR, want = cfg.mirror !== false && QUAL.level < 4 && v && !foot && (camMode === 'chase' || camMode === 'cockpit') && $('plan').hidden && $('atlas').hidden;
   if (!want) return; if (!mirBox) layoutMirrors();
   if ((mirT -= dt) < 0) { mirT = 1; layoutMirrors(); }
-  const g = v.g, fwd = headV, up = 1.25 + (v.q ? v.q.h || 0 : 0) + (heavy(v) ? 1.3 : v.type === 'suv' || v.type === 'van' || v.type === 'angkot' ? 0.35 : 0);
+  const g = v.g, fwd = headV, up = 1.25 + (v.rp && v.q ? v.q.h || 0 : 0) + (heavy(v) ? 1.3 : v.type === 'suv' || v.type === 'van' || v.type === 'angkot' ? 0.35 : 0);
   const right = tmpV2.set(-fwd.z, 0, fwd.x);
   const W = innerWidth, H = innerHeight, redraw = (mirN = (mirN + 1) % (QUAL.level >= 2 || MOBILE ? 3 : 2)) === 0;
   for (const m of MIRRORS) { m.on = m.k === 'c' || camMode === 'cockpit'; m.frame.visible = m.face.visible = m.on; if (!m.on) continue;
@@ -1300,6 +1318,8 @@ function mbzStack(g, u0, u1, Z){
       const dp = []; for (let u = Math.ceil(a/9)*9; u < b - 3; u += 9) for (let l = 1; l < NJ; l++) dp.push([sx*X(l), Z(u + 1.5)]);
       g.add(instanced(prDashGeo, prWhite, dp, 0.02)); }
     g.add(strip(us, u => -MED, u => MED, 0.008, prVerge, Z), solid(0.6, 0.9, b - a, prBar, 0, 0.45, Z((a + b)/2)));
+    { const sl = []; for (let u = Math.ceil(a/45)*45 + 22; u < b; u += 45) if (!mbzRampAt(u) && !rampSiteNear(u, 330)) for (const sx of [-1, 1]) sl.push([sx*(X(NJ) + 3.6), -elevAt(u), Z(u), sx > 0 ? Math.PI : 0]);
+      streetLamps(g, sl); }
     for (let l = 0; l < NJ; l++) for (const d of [1, -1]) lanes.push({x: -d*(MED + (l + 0.5)*LW), y: u => -elevAt(u) + 0.02, dir: d, vel: 18 + l*4, gap: (80 + l*15)*gp, ph: l*13 + (d > 0 ? 0 : 7)});
   }
   // moving traffic: car positions follow one global pattern (u = phase + n·gap + v·t), so they flow seamlessly from chunk to chunk
@@ -1518,6 +1538,7 @@ function ramp3(g, raw, e, keep = () => true, zs = SC, two = null, twoL = null){
     for (const r of runsOf(p, W)) for (const q of r) if (Hh(q) > 0.6) { g.add(sideStrip(r.filter(q => Hh(q) > 0.6), e, 2.35, -0.05, 2.35, 0.9, parapetMat, zs), sideStrip(r.filter(q => Hh(q) > 0.6), e, 2.1, 0.9, 2.35, 0.9, parapetMat, zs)); break; }
     for (const r of runsOf(p, q => Hh(q) > 0.05 && Hh(q) <= 5.6)) g.add(sideStrip(r, e, 2.35, -0.05, h => 2.35 + 1.5*h, 0, slopeMat, zs, true, false));
     for (const r of runsOf(p, q => Hh(q) > 5.2)) g.add(sideStrip(r, e, 2.35, -1.0, 2.35, -0.05, fasciaMat, zs));
+    pathLamps(g, p, e, 0, zs, q => WL(q) ? 5.5 : 2.2);
     let acc = 0; for (let i=1; i<p.length; i++) { acc += Math.hypot(p[i][0]-p[i-1][0], p[i][1]-p[i-1][1]); if (acc > 24 && Hh(p[i]) > 5.6) { acc = 0; const a2 = p[i-1], b2 = p[Math.min(p.length-1, i+1)]; piers.push([p[i], Math.atan2(b2[0]-a2[0], b2[1]-a2[1])]); } }
   }
   const pm = new THREE.InstancedMesh(pierGeo, concrete, Math.max(1, piers.length)), cm = new THREE.InstancedMesh(capGeo, concrete, Math.max(1, piers.length)); pm.count = cm.count = piers.length;
@@ -1525,13 +1546,16 @@ function ramp3(g, raw, e, keep = () => true, zs = SC, two = null, twoL = null){
     tm.compose(p3.set(e + q[0], Hh(q) - 1.5, q[1] - zs), new THREE.Quaternion().setFromAxisAngle(upv, th), s3.set(1, 1, 1)); cm.setMatrixAt(i, tm); });
   pm.castShadow = cm.castShadow = true; g.add(pm, cm);
 }
-function road(g, raw, e){ const p = smooth(raw); g.add(ribbon(p, e, 4.2, asphaltDS, -0.006));
+function road(g, raw, e){ const p = smooth(raw); g.add(ribbon(p, e, 4.2, asphaltDS, -0.006)); pathLamps(g, p, e, 2.6);
   for (const lat of [1.95, -1.95]) { let run = []; const flush = () => { if (run.length > 1) g.add(ribbon(run, e, 0.15, whiteDS, 0.012, lat)); run = []; };
     for (const q of p) { if (lat > 0 ? q[0] > 1 : q[0] > 4.2) run.push(q); else flush(); } flush(); } }
 const boothMat = M(0xe4e9ec);
 function stemPlaza(g, e, name){ const x = e + GATE_O;
   g.add(flat(36, 17, asphaltDS, x, -0.004, 0), solid(8, 0.6, 17, M(0xf2f2f2), x, 5.8, 0), solid(8.2, 0.6, 17.2, M(0x0c6a3c), x, 6.4, 0));
   for (const du of [-7.9, -3.8, 0, 3.8, 7.9]) g.add(solid(3.2, 2.6, 1.3, boothMat, x, 1.3, du), solid(0.3, 4.4, 0.3, concrete, x, 3.8, du));
+  // lights under the canopy over every gate lane, and lamp posts on the approaches
+  for (const du of [-5.85, -1.9, 1.9, 5.85]) g.add(solid(5.2, 0.08, 1.0, lampHeadMat, x, 5.46, du));
+  streetLamps(g, [[x - 26, 0, -10.5, -Math.PI/2], [x + 26, 0, -10.5, -Math.PI/2], [x - 26, 0, 10.5, Math.PI/2], [x + 26, 0, 10.5, Math.PI/2]]);
   for (const sd of [1, -1]) { const p = panelMesh(7.6, 1.2, textPanel(7.6, 1.2, SIGN_GREEN, 'GT ' + name.toUpperCase(), '', ['road'])); p.position.set(x + sd*4.15, 6.1, 0); p.rotation.y = sd*Math.PI/2; g.add(p); }
   const et = [SP(20), PL(['Siapkan', 'kartu e-Toll'], '#fff', '#111', 1.3, 0.55)];
   signPost(g, e + GATE_O - 30, -5.6, -Math.PI/2, et); signPost(g, e + GATE_O + 30, 5.6, Math.PI/2, et); }
@@ -1539,6 +1563,7 @@ function restArea(g, e){ const ex = o => e + o, th = Math.atan2(6, 7), z = u => 
   g.add(flat(34, 128, lotMat, ex(39), -0.003, z(176)), flat(18, 36, lotMat, ex(65), -0.003, z(222)), flat(3.5, 40, M(0xb5b0a5), ex(58), -0.001, z(168)));
   const bl = new THREE.PlaneGeometry(0.12, 8); bl.rotateX(-Math.PI/2); bl.rotateY(th);
   g.add(instanced(bl, white, [...BAYS.map(b => [ex(40), z(b-2)]), [ex(40), z(BAYS[BAYS.length-1]+2)]], 0.01));
+  streetLamps(g, [118, 148, 178, 208, 238].map(u => [ex(56.6), 0, z(u), Math.PI]).concat([[ex(21.5), 0, z(150), 0], [ex(21.5), 0, z(210), 0]]));
   STATIC.forEach((st, i) => { if (!st) return; const v = makeVehicle(pick(['car','car','suv','van'])); v.g.position.set(ex(40), 0, z(BAYS[i])); v.g.rotation.y = th; g.add(v.g); });
   for (const u of [150, 172, 194]) { const v = makeVehicle('truck'); v.g.position.set(ex(52.5), 0, z(u)); g.add(v.g); }
   g.add(solid(12, 4.2, 34, M(0xe9e2d4), ex(66), 2.1, z(168)), solid(13.6, 0.5, 36, M(0x9a3b2a), ex(66), 4.45, z(168)), solid(0.1, 2, 30, glassMat, ex(59.95), 1.6, z(168)));
@@ -1766,7 +1791,10 @@ function mainPlaza(s, e){ const g = worldGroup(s.u), wTot = 2*(e + 3);
   for (const s2 of [-1, 1]) {
     for (let l = 0; l <= n; l++) { const x = s2*(MED + l*LW) + (l === 0 ? s2*0.2 : l === n ? -s2*0.2 : 0), hw2 = l === 0 || l === n ? 0.3 : 0.45;
       g.add(solid(hw2*2, 0.25, 18, concrete, x, 0.12, 0)); addSolid(g, 'Menabrak pulau gerbang tol', s.u - 9, s.u + 9, x - hw2, x + hw2);
-      if (l > 0 && l < n) { g.add(solid(0.8, 2.4, 2.2, M(0xe4e9ec), x, 1.45, s2*1.4), solid(0.25, 6, 0.25, concrete, x, 3, s2*-5)); } }
+      if (l > 0 && l < n) { g.add(solid(0.8, 2.4, 2.2, M(0xe4e9ec), x, 1.45, s2*1.4), solid(0.25, 6, 0.25, concrete, x, 3, s2*-5)); }
+      if (l < n) g.add(solid(LW - 1.2, 0.08, 4, lampHeadMat, s2*(MED + (l + 0.5)*LW), 5.81, 0)); }
+    // lamp posts on both verges before and after the gate
+    streetLamps(g, [-34, -70, 34, 70].map(z => [s2*(e + 4), 0, z, s2 > 0 ? Math.PI : 0]));
     g.add(flat(n*LW, 0.45, white, s2*(MED + n*LW/2), 0.014, s2 > 0 ? -0.6 : 0.6)); }
   return g; }
 
@@ -3275,7 +3303,7 @@ function mbzRampEnd(v, rp){
   if (v.player && !rp.up) v.onMbz = false;
   const n = nAvail(sd, p), lx = clamp((x - (MED + LW/2))/LW, 0, n - 1);
   if (!v.player && !spanFree(sd, Math.round(lx), p - v.len/2 - 3, p + v.len/2 + 3)) { killVehicle(v); return; }
-  Object.assign(v, {sd, p, lane: Math.round(lx), lx, rp: null, siteId: null, yaw: 0, hd: 0, steer: 0}); v.x = posX(-sd, v.lx);
+  Object.assign(v, {sd, p, lane: Math.round(lx), lx, rp: null, q: null, siteId: null, yaw: 0, hd: 0, steer: 0}); v.x = posX(-sd, v.lx);
   if (v.player) for (const o of [...vehicles]) if (o.sd === sd && o.lane === v.lane && Math.abs(o.p - p) < 30) { rm(vehicles, o); killVehicle(o); }
   vehicles.push(v);
   if (v.player) { camU = uOfV(v); blink(); hudLane(); toast(rp.up ? 'Tol Layang Mohammed bin Zayed' : 'Kembali ke Tol Jakarta–Cikampek'); }
@@ -3756,16 +3784,17 @@ function updateCam(dt){
     const want = new THREE.Vector3().copy(pPos).addScaledVector(headV, -4.2); want.y = 2.3; camera.position.lerp(want, Math.min(1, dt*6));
     camera.lookAt(pPos.x + headV.x*6, 1.4, pPos.z + headV.z*6); camera.fov = fovFor(62); camera.updateProjectionMatrix();
     camera.getWorldDirection(tmpV); focus.copy(camera.position).addScaledVector(tmpV, 50); focus.y = 0; sun.target.position.copy(focus); sun.position.copy(focus).add(sunOff); return; }
+  const qh = v.rp && v.q ? v.q.h || 0 : 0;   // only on a ramp: a path left over from one must not lift the camera
   const hy = v.g.rotation.y, hd = tmpV.set(Math.sin(hy), 0, Math.cos(hy));
   headV.lerp(hd, Math.min(1, dt*3)).normalize();
   const shk = shake > 0 ? (shake -= dt, (Math.random() - 0.5)*shake) : 0;
   if (camMode === 'chase') {
-    const want = new THREE.Vector3().copy(pPos).addScaledVector(headV, -13); want.y = (v.q ? v.q.h || 0 : 0) + 4.4;
+    const want = new THREE.Vector3().copy(pPos).addScaledVector(headV, -13); want.y = qh + 4.4;
     camera.position.lerp(want, Math.min(1, dt*5)); camera.position.x += shk;
-    camera.lookAt(pPos.x + headV.x*20, 1.4 + (v.q ? v.q.h || 0 : 0), pPos.z + headV.z*20); camera.fov = fovFor(58);
+    camera.lookAt(pPos.x + headV.x*20, 1.4 + qh, pPos.z + headV.z*20); camera.fov = fovFor(58);
   } else if (camMode === 'cockpit') {
     const h = (v.type === 'bus' || v.type === 'truck') ? 2.6 : v.type === 'suv' ? 1.6 : 1.3;
-    camera.position.copy(pPos).addScaledVector(headV, v.len*0.05); camera.position.y = h + (v.q ? v.q.h || 0 : 0); camera.position.x += v.sd*0.36 + shk;   // the driver sits on the right
+    camera.position.copy(pPos).addScaledVector(headV, v.len*0.05); camera.position.y = h + qh; camera.position.x += v.sd*0.36 + shk;   // the driver sits on the right
     camera.lookAt(camera.position.x + headV.x*30, camera.position.y - 0.6, camera.position.z + headV.z*30); camera.fov = fovFor(66);
   } else if (camMode === 'drone') {
     const pt = camera.aspect < 1, want = new THREE.Vector3().copy(pPos).addScaledVector(headV, pt ? -38 : -48); want.y = (pt ? 24 : 32) + Math.sin(clock*0.2)*3; want.x += Math.sin(clock*0.15)*(pt ? 8 : 18);
@@ -4626,7 +4655,7 @@ function tick(dt){
   ensureAhead();
   setupBlocks(false); updateWorld(true); updateSignals(); animGhosts();
 }
-window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
+window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering
 window.__tj.step = (n, dt = 1/20) => { for (let i = 0; i < n; i++) tick(dt); updateSegs(); placeGroups(); place(); for (let k = 0; k < 40; k++) updateCam(dt); updateBend(); hudT = 0; updateHud(dt); drawMap(); };
