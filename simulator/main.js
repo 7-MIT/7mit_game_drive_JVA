@@ -777,6 +777,7 @@ function buildChunk(i){
     let o = near ? 345 + R()*90 : 14 + R()*310;
     if (o > PRC - 13 && o < PRC + 13) o += 26;
     if (OVS.some(ov => Math.abs(ov.u - u) < 24)) continue;
+    if (eAt(u) + o < mbzClear(u) + 3) continue;
     if (PLAZAS.some(p => Math.abs(p.u - u) < 60) && o < 30) continue;
     pts.push({x: s*(eAt(u) + o), z: Z(u), k: 0.7 + R()*0.8, h: 0.85 + R()*0.4, r: R()*6.28}); }
   const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, pts.length), crowns = new THREE.InstancedMesh(crownGeo, crownMat, Math.ceil(pts.length/2)), blobs = new THREE.InstancedMesh(blobGeo, blobMat, Math.ceil(pts.length/2));
@@ -817,7 +818,8 @@ const hillMat = M(0x5f7d45, {flatShading: true});
 // buildings / fields / hills on both sides of a chunk; toll = keep clear of ramps, the parallel road and plazas
 function roadside(g, u0, u1, Z, R, toll){
   const reg = regionAt(u0 + CH/2), boxes = [], roofs = [], fields = [];
-  const free = (o, u, w) => { if (!toll) return o > 9 && !KSITES.some(t => Math.abs(t.u - u) < TOWN_R + 60);
+  const free = (o, u, w) => { if (eAt(u) + o - w/2 < mbzClear(u) + 3) return false;    // never build on Japek under/beside the MBZ
+    if (!toll) return o > 9 && !KSITES.some(t => Math.abs(t.u - u) < TOWN_R + 60);
     if (Math.abs(o - PRC) < 16 + w/2) return false;
     // keep only the real footprint of each interchange clear: trumpet + stem, cloverleaf loops, rest area
     for (const st of RSITES) { const du = Math.abs(st.u - u) - w/2; if (du > 460) continue;
@@ -1050,7 +1052,10 @@ function viaduct(g, u0, u1, Z){
   const e = eAt(u0 + CH/2);
   g.add(solid(2*(e + 3.2), 0.9, CH, concrete, 0, -0.75, -CH/2));
   for (const s of [-1, 1]) g.add(solid(0.35, 1.3, CH, fasciaMat, s*(e + 3.3), -0.4, -CH/2));
+  const single = corrAt(u0 + CH/2) === 'mbz';   // MBZ stands on one central column per pier with a wide hammerhead cap
   for (let u = Math.ceil(u0/32)*32; u < u1; u += 32) { const h = elevAt(u); if (h < 1.2) continue;
+    if (single) { const c = new THREE.Mesh(viaPierGeo, concrete); c.position.set(0, -h/2 - 0.6, Z(u)); c.scale.set(1.6, h, 1.6); c.castShadow = true; g.add(c);
+      g.add(solid(2*e + 2, 1.4, 2.6, concrete, 0, -1.8, Z(u)), solid(5, 1.2, 3.2, concrete, 0, -3, Z(u))); continue; }
     for (const s of [-1, 1]) { const x = s*(MED + (e - MED)/2), c = new THREE.Mesh(viaPierGeo, concrete); c.position.set(x, -h/2 - 0.6, Z(u)); c.scale.set(1, h, 1); c.castShadow = true; g.add(c);
       g.add(solid(e - MED + 1, 1.0, 2.2, concrete, x, -1.6, Z(u))); } }
 }
@@ -1062,6 +1067,9 @@ const MBZ_K = [10, 46], MBZ_H = 15.5, MBZ_HW = MED + 2*LW + 1.2;
 const mbzT = km => Math.min(clamp((km - MBZ_K[0] - 0.4)/2.6, 0, 1), clamp((MBZ_K[1] - 0.4 - km)/2.6, 0, 1));
 const mbzRise = km => { const t = mbzT(km); return t <= 0 ? 0 : t < 0.5 ? 7.6*sstep(0, 0.5, t) : 7.6 + (MBZ_H - 7.6)*sstep(0.5, 1, t); };
 const mbzSplit = u => (1 - sstep(0.5, 0.95, mbzT(kmAt(u))))*(eAt(u) + 6);
+// Japek's lanes under the MBZ (drawn while on the MBZ): median edge and the outer edge measured from the centre line
+const mbzJM = u => 5 + mbzSplit(u)*1.6;
+const mbzClear = u => corrAt(u) === 'mbz' && mbzRise(kmAt(u)) >= 0.3 ? mbzJM(u) + 4*LW + 3 : 0;
 const ghosts = new Set();   // chunk groups carrying "ghost" traffic lanes (other levels of a stacked road)
 const canalMat = M(0x4f7f86, {roughness: 0.25, metalness: 0.1}), bankMat = M(0x8f8f86); canalMat.userData.terrain = bankMat.userData.terrain = true;
 // Becakayu stands on piers in the Kalimalang canal, with Jalan Kalimalang (Jl. KH Noer Ali) one-way on each bank
@@ -1105,7 +1113,7 @@ function mbzStack(g, u0, u1, Z){
     // Jakarta–Cikampek underneath: carriageways, markings, barrier and its traffic, on the land below the deck
     const us = []; for (let u = u0; u <= u1 + 0.01; u += 10) us.push(u);
     // Japek's wide median under the MBZ piers; near the ramps (MBZ still low) Japek runs beside the MBZ, never under a low deck
-    const JM = u => 5 + mbzSplit(u)*1.6;
+    const JM = mbzJM;
     for (const sx of [-1, 1]) { g.add(strip(us, u => sx*(JM(u) - 0.6), u => sx*(JM(u) + 4*LW + 2.6), 0.01, prAsphalt, Z));
       for (let l = 1; l < 4; l++) g.add(strip(us, u => sx*(JM(u) + l*LW - 0.07), u => sx*(JM(u) + l*LW + 0.07), 0.02, prWhite, Z));
       g.add(strip(us, u => sx*(JM(u) + 4*LW - 0.08), u => sx*(JM(u) + 4*LW + 0.08), 0.02, prWhite, Z)); }
