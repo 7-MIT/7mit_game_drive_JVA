@@ -90,9 +90,9 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
   Each shows its price.
 - **Siren button.** When you drive an ambulance, fire engine or police car, the Sirene button (or N) switches the siren and lights on and traffic gives way.
 - **Multiplayer (real time).** Choose "Multiplayer" in the planner and pick a username (no login).
-  - **Spawn:** every player starts at GT Semanggi (Tol Dalam Kota).
+  - **Spawn:** every player starts parked on the shoulder at Semanggi (Tol Dalam Kota). Players line up one behind the other, 9 m apart, in the order they join.
   - **Connection:** the game connects to server.7mit (the 7MIT Supabase project, Realtime over WebSocket). Players are exchanged as road + km + direction + lane, so you see the others on your own copy of the road, in their vehicle, colours and plates, with a name tag. Everyone also shows on the mini-map.
-  - **Panel:** lists who is online and has a text chat (Enter to type).
+  - **Panel:** lists who is online and has a text chat (Enter to type). Drag it by its title bar to any place on the screen; the place is remembered.
   - **Voice chat:** goes over WebRTC (one link per player, signalled through the same channel). Press Suara to hear others and Mic to talk; others sound louder when they are close.
   - **Limits:** no TURN server, so a few strict networks may not connect for voice. The free Realtime plan suits small groups (about 20 players).
 - **Vehicle mods.** In the planner under "Modifikasi kendaraan":

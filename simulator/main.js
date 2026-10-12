@@ -2195,8 +2195,22 @@ async function mpConnect(){
   ch.on('presence', {event: 'sync'}, () => mpSync());
   ch.on('presence', {event: 'join'}, ({key, newPresences}) => { if (key !== mp.id) mpLine(`${mpEsc((newPresences[0] || {}).name || 'Pemain')} bergabung`, 'sys'); });
   ch.on('presence', {event: 'leave'}, ({key, leftPresences}) => { if (key !== mp.id) { mpLine(`${mpEsc((leftPresences[0] || {}).name || 'Pemain')} keluar`, 'sys'); mpDrop(key); } });
-  ch.subscribe(async st => { if (st === 'SUBSCRIBED') { mp.ready = true; mpStatus('Online'); await ch.track(mpMe()); mpSync(); }
+  ch.subscribe(async st => { if (st === 'SUBSCRIBED') { mp.ready = true; mpStatus('Online'); await ch.track(mpMe()); mpSync(); setTimeout(mpSlot, 600); }
     else if (st === 'CHANNEL_ERROR' || st === 'TIMED_OUT') { mp.ready = false; mpStatus('Koneksi terputus, mencoba lagi…'); } });
+}
+// multiplayer spawn: parked on the shoulder after GT Semanggi, spread a little so players do not start inside each other
+function mpSpawnShoulder(){
+  const v = PLR; if (!v) return; mp.spawnP = v.p; mp.slotDone = false; const n = nAvail(v.sd, v.p);
+  Object.assign(v, {lane: n - 1, lx: n - 0.2, vel: 0, hd: 0, steer: 0, thr: 0}); v.x = posX(-v.sd, v.lx); camU = uOfV(v);
+  for (const o of [...vehicles]) if (o !== v && o.sd === v.sd && Math.abs(o.p - v.p) < 25 && o.lane >= n - 1) { rm(vehicles, o); killVehicle(o); }
+  toast('Multiplayer: Anda di bahu jalan Semanggi. Nyalakan sein, lalu masuk lajur saat aman');
+}
+// players line up on the shoulder: each newcomer takes the next slot behind the ones already online (9 m apart)
+function mpSlot(){
+  const v = PLR; if (!v || mp.slotDone || mp.spawnP == null || Math.abs(v.vel) > 0.5 || Math.abs(v.p - mp.spawnP) > 2) return; mp.slotDone = true;
+  const slot = mp.peers.size % 30; v.p = mp.spawnP + 120 - slot*9; camU = uOfV(v);
+  for (const o of [...vehicles]) if (o !== v && o.sd === v.sd && Math.abs(o.p - v.p) < 25 && o.lane >= nAvail(v.sd, v.p) - 1) { rm(vehicles, o); killVehicle(o); }
+  if (slot) mpLine(`Anda di barisan ke-${slot + 1} di bahu jalan`, 'sys');
 }
 function mpLeave(){
   if (!mp.on) return; try { mp.ch && mp.ch.untrack && mp.ch.untrack(); mp.sb ? mp.sb.removeChannel(mp.ch) : mp.ch && mp.ch.unsubscribe && mp.ch.unsubscribe(); } catch (e) {}
@@ -3455,7 +3469,7 @@ $('from').onchange = () => { firstPick = null; planPreview(); }; $('to').onchang
 $('swap').onclick = () => { const a = $('from').value; $('from').value = $('to').value; $('to').value = a; planPreview(); };
 $('go').onclick = () => { $('plan').hidden = true; cfg.from = $('from').value; if (cfg.trip !== 'free') cfg.to = $('to').value; saveCfg();
   if (cfg.trip === 'santai') { Object.assign(cfg, {auto: true, clean: true, roadStyle: 'kelok', view: 'jauh', den: 0.6}); gameH = 16.4; saveCfg(); setRoadStyle(); setView(); setClean(); hudAuto(); setTod(null); }
-  if (cfg.trip === 'mp') { cfg.auto = false; hudAuto(); startDrive({from: MP_SPAWN}); mpConnect(); if (mp.ready) mp.ch.track(mpMe()); return; }
+  if (cfg.trip === 'mp') { cfg.auto = false; hudAuto(); startDrive({from: MP_SPAWN}); mpSpawnShoulder(); mpConnect(); if (mp.ready) mp.ch.track(mpMe()); return; }
   mpLeave();
   if (cfg.trip === 'free' || cfg.trip === 'santai') startDrive({from: cfg.from, first: firstPick}); else startTrip(cfg.from, cfg.to); };
 $('plan-close').onclick = () => { if (trip) $('plan').hidden = true; };
@@ -3497,6 +3511,16 @@ $('mapb').onclick = () => openAtlas();
   for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) hb.addEventListener(ev, () => playerHorn(false)); }
 $('mp-form').onsubmit = e => { e.preventDefault(); mpSay($('mp-in').value); $('mp-in').value = ''; $('mp-in').blur(); };
 $('mp-voice').onclick = () => mpVoice(!mp.voice); $('mp-mic').onclick = () => mp.mic ? (mpMicOff(), mpLine('Mikrofon dimatikan', 'sys')) : mpMicOn();
+// the chat / voice panel can be dragged by its title bar (mouse or touch); the place is remembered
+{ const box = $('mpbox'), place = (x, y) => { const r = box.getBoundingClientRect(), W = innerWidth, H = innerHeight;
+    x = clamp(x, 4, Math.max(4, W - r.width - 4)); y = clamp(y, 4, Math.max(4, H - r.height - 4)); Object.assign(box.style, {left: x + 'px', top: y + 'px', right: 'auto', bottom: 'auto'}); return [x, y]; };
+  let d = null;
+  const start = e => { if (e.button > 0) return; const r = box.getBoundingClientRect(); d = {dx: e.clientX - r.left, dy: e.clientY - r.top, id: e.pointerId}; box.classList.add('drag'); e.target.setPointerCapture && e.target.setPointerCapture(e.pointerId); e.preventDefault(); };
+  for (const el of [$('mp-grip'), box.querySelector('.mp-head b')]) { el.addEventListener('pointerdown', start);
+    el.addEventListener('pointermove', e => { if (d && e.pointerId === d.id) place(e.clientX - d.dx, e.clientY - d.dy); });
+    for (const ev of ['pointerup', 'pointercancel']) el.addEventListener(ev, () => { if (!d) return; d = null; box.classList.remove('drag'); const r = box.getBoundingClientRect(); cfg.mpPos = [Math.round(r.left), Math.round(r.top)]; saveCfg(); }); }
+  const restore = () => { if (cfg.mpPos && !box.hidden) place(cfg.mpPos[0], cfg.mpPos[1]); };
+  addEventListener('resize', restore); new MutationObserver(restore).observe(box, {attributes: true, attributeFilter: ['hidden']}); }
 $('mp-min').onclick = () => { $('mpbox').classList.toggle('min'); $('mp-min').textContent = $('mpbox').classList.contains('min') ? '+' : '–'; };
 addEventListener('beforeunload', () => mpLeave());
 $('svcb').onclick = openSvc; $('svc-close').onclick = () => { $('svc').hidden = true; }; $('towb').onclick = () => callTow();

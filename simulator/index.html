@@ -384,6 +384,11 @@
   #mpbox.min #mp-body{display:none}
   @media (max-width:600px) and (orientation:portrait){ #mpbox{top:auto;bottom:250px} #mp-log{max-height:70px} }
   @media (max-height:500px) and (orientation:landscape){ #mpbox{top:8px;left:auto;right:12px;width:240px} #mp-log{max-height:60px} #mp-list{display:none} }
+  #mp-grip{cursor:grab;touch-action:none;user-select:none;font-size:16px;line-height:1;padding:2px 4px;opacity:.7}
+  #mpbox.drag{cursor:grabbing;opacity:.92} #mpbox.drag #mp-grip{cursor:grabbing}
+  #mpbox .mp-head b{cursor:grab;touch-action:none;user-select:none}
+  @media (max-width:1180px){ .keys{display:none} }
+  @media (max-height:720px){ #mpbox{top:30%} #mp-log{max-height:72px} #mp-list{max-height:28px} }
 </style>
 <script type="importmap">
 {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
@@ -441,7 +446,7 @@
   <div id="toast" class="panel" role="status" aria-live="polite"></div>
   <button id="resume" hidden>Lanjut perjalanan →</button>
   <div id="mpbox" class="panel" hidden aria-label="Multiplayer">
-    <div class="mp-head"><b>Multiplayer</b> <span id="mp-stat">—</span>
+    <div class="mp-head"><span id="mp-grip" title="Tarik untuk memindahkan" aria-hidden="true">⠿</span><b>Multiplayer</b> <span id="mp-stat">—</span>
       <button id="mp-voice" class="dbtn" aria-pressed="false" title="Dengar suara pemain lain">Suara</button>
       <button id="mp-mic" class="dbtn" aria-pressed="false" title="Mikrofon (bicara)">Mic</button>
       <button id="mp-min" class="dbtn" title="Kecilkan">–</button></div>
