@@ -880,6 +880,44 @@ function updateRoadSigns(){
     const e = eAt(r.u), off = elevAt(r.u) > 1 ? 2.2 : r.small ? 3.4 : 6.5, x = r.side > 0 ? -(e + off) : e + off; r.g.position.set(x, 0, z); r.g.rotation.y = r.side > 0 ? 0 : Math.PI; }
 }
 
+// ---------- mirrors (spion): rear-facing cameras rendered to small textures and shown flipped, like real mirrors ----------
+// chase view: the interior mirror at the top centre; cockpit view: interior mirror plus the left and right door mirrors
+const MIR_Q = MOBILE ? 0.75 : 1, mirScene = new THREE.Scene(), mirCam2 = new THREE.OrthographicCamera(0, 1, 1, 0, -1, 1);
+const MIRRORS = ['c', 'l', 'r'].map(k => {
+  const rt = new THREE.WebGLRenderTarget(Math.round((k === 'c' ? 512 : 256)*MIR_Q), Math.round((k === 'c' ? 150 : 170)*MIR_Q)); rt.texture.colorSpace = THREE.SRGBColorSpace;
+  const cam = new THREE.PerspectiveCamera(k === 'c' ? 34 : 30, k === 'c' ? 512/150 : 256/170, 0.4, 900);
+  const geo = new THREE.PlaneGeometry(1, 1); const uv = geo.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setX(i, 1 - uv.getX(i));   // mirror image
+  const frame = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({color: 0x111111, toneMapped: false}));
+  const face = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({map: rt.texture, toneMapped: false})); face.position.z = 0.1;
+  mirScene.add(frame, face); return {k, rt, cam, frame, face, on: false};
+});
+let mirT = 0, mirBox = null;
+function layoutMirrors(){
+  const W = innerWidth, H = innerHeight, top = $('top').getBoundingClientRect(), mp = $('map').getBoundingClientRect();
+  const midL = top.right < W*0.6 ? top.right : 0, midR = mp.left > W*0.4 ? mp.left : W, cw = Math.min(380, (midR - midL)*0.6, W*0.5), ch = cw*150/512;
+  const y0 = top.right >= W*0.6 || top.left <= W/2 && top.right >= W/2 ? top.bottom + 8 : 10;
+  const sw = Math.min(170, W*0.18), sh = sw*170/256, sy = H*0.5;
+  mirBox = {c: [midL + (midR - midL - cw)/2, y0, cw, ch], l: [Math.max(8, midL + 8), sy, sw, sh], r: [Math.min(W - sw - 8, midR - sw - 8), sy, sw, sh]};
+  mirCam2.right = W; mirCam2.top = H; mirCam2.updateProjectionMatrix();
+}
+addEventListener('resize', () => setTimeout(layoutMirrors, 150));
+function drawMirrors(dt){
+  const v = PLR, want = cfg.mirror !== false && v && !foot && (camMode === 'chase' || camMode === 'cockpit') && $('plan').hidden && $('atlas').hidden;
+  if (!want) return; if (!mirBox) layoutMirrors();
+  if ((mirT -= dt) < 0) { mirT = 1; layoutMirrors(); }
+  const g = v.g, fwd = headV, up = 1.25 + (v.q ? v.q.h || 0 : 0) + (heavy(v) ? 1.3 : v.type === 'suv' || v.type === 'van' || v.type === 'angkot' ? 0.35 : 0);
+  const right = tmpV2.set(-fwd.z, 0, fwd.x);
+  const W = innerWidth, H = innerHeight;
+  for (const m of MIRRORS) { m.on = m.k === 'c' || camMode === 'cockpit'; m.frame.visible = m.face.visible = m.on; if (!m.on) continue;
+    const side = m.k === 'l' ? -1 : m.k === 'r' ? 1 : 0, hw = (HW[v.type] || 0.92) + 0.15;
+    m.cam.position.set(g.position.x + right.x*side*hw + fwd.x*(m.k === 'c' ? -0.2 : 0.6), up + (side ? -0.25 : 0.2), g.position.z + right.z*side*hw + fwd.z*(m.k === 'c' ? -0.2 : 0.6));
+    m.cam.lookAt(m.cam.position.x - fwd.x*40 + right.x*side*6, up - (side ? 1.2 : 0.5), m.cam.position.z - fwd.z*40 + right.z*side*6);
+    g.visible = m.k !== 'c'; renderer.setRenderTarget(m.rt); renderer.render(scene, m.cam); g.visible = true;    // the interior mirror looks out through the rear window
+    const [x, y, w, h] = mirBox[m.k]; m.face.scale.set(w, h, 1); m.face.position.set(x + w/2, H - y - h/2, 0.1); m.frame.scale.set(w + 6, h + 6, 1); m.frame.position.set(x + w/2, H - y - h/2, 0); }
+  renderer.setRenderTarget(null); const ac = renderer.autoClear; renderer.autoClear = false; renderer.clearDepth(); renderer.render(mirScene, mirCam2); renderer.autoClear = ac;
+}
+const tmpV2 = new THREE.Vector3();
+
 function viaduct(g, u0, u1, Z){
   const hm = Math.max(elevAt(u0), elevAt(u1), elevAt(u0 + CH/2)); if (hm < 0.4) return;
   const e = eAt(u0 + CH/2);
@@ -2032,7 +2070,7 @@ function sim(dt){
   }
   if (PLR && !cfg.auto && !foot && vehicles.includes(PLR)) { const P = PLR, [lo, hi] = lxBounds(P), hd0 = P.hd || 0; playerCollide(P);
     // a hit never throws the car through the median barrier or the guard rail, and does not spin it right round
-    P.lx = clamp(P.lx, lo, hi); P.lane = Math.round(P.lx); P.x = posX(-P.sd, P.lx); P.hd = clamp(P.hd || 0, hd0 - 0.6, hd0 + 0.6); }
+    P.lx = clamp(P.lx, lo, hi); P.lane = Math.round(P.lx); P.x = posX(-P.sd, P.lx); P.hd = clamp(P.hd || 0, hd0 - 0.15, hd0 + 0.15); }
   for (let i = vehicles.length-1; i >= 0; i--) { const v = vehicles[i];
     if (v.player && !(cfg.auto && (v.exitWant || v.detour))) continue;
     if (v.detour && !v.player && v.p - v.detour.bStart > -420 && Math.abs(v.sd*v.p - camU) > 330) { rm(vehicles, v); killVehicle(v); continue; }
@@ -2187,7 +2225,7 @@ function steerPlayer(v, dt){
   v.vel -= Math.sign(v.vel)*Math.abs(v.steer)*spd*0.05*dt;                 // tyre scrub in turns
   let lx = v.lx + v.vel*Math.sin(v.hd)/LW*dt;
   const [lo, hi] = lxBounds(v), side = Math.abs(v.vel*Math.sin(v.hd)), fast = Math.abs(v.vel) > 6 && side > 1.2;
-  const wallHit = msg => { const a = Math.abs(Math.sin(v.hd)); hitFx(side*1.4, msg, 'side'); v.vel *= 1 - Math.min(0.75, a*1.6); v.hd = -v.hd*0.3; v.steer *= 0.4; };
+  const wallHit = msg => { const a = Math.abs(Math.sin(v.hd)); hitFx(side*1.4, msg, 'side'); v.vel *= 1 - Math.min(0.85, a*1.8); v.hd *= 0.15; v.steer *= 0.3; };
   if (lx > hi) { lx = hi; if (v.hd*Math.sign(v.vel) > 0) wallHit(isToll(uOfV(v)) ? 'Menyerempet pagar pengaman' : townNear(uOfV(v)) ? 'Menabrak bangunan di tepi jalan' : 'Masuk parit di tepi jalan'); }
   if (lx < lo) { lx = lo; if (v.hd*Math.sign(v.vel) < 0) wallHit(isToll(uOfV(v)) ? 'Menyerempet median beton' : 'Keluar badan jalan'); }
   v.lx = lx; v.lane = Math.round(lx);
@@ -2212,9 +2250,9 @@ function steerPlayer(v, dt){
 const HW = {pickup:0.95, moto:0.4, car:0.92, suv:0.98, van:1.0, police:0.92, truck:1.25, bus:1.25, angkot:0.85, ambulance:1.0, damkar:1.25};
 // masses (kg) for collisions: momentum is shared, a small restitution bounces the cars apart
 const MASS = {pickup: 1750, moto: 220, car: 1300, suv: 1850, van: 2100, police: 1500, bus: 11000, truck: 15000, angkot: 1150, ambulance: 2700, damkar: 13000};
-const RESTI = 0.18;
+const RESTI = 0.04;
 function impact1D(v1, m1, v2, m2){ const P = m1*v1 + m2*v2, Mt = m1 + m2; return [(P + m2*RESTI*(v2 - v1))/Mt, (P + m1*RESTI*(v1 - v2))/Mt]; }
-function hitAI(o, dv, side){ o.crashT = clock + Math.min(25, 5 + dv*1.2); if (dv > 4) o.spinY = (side || (Math.random() < 0.5 ? 1 : -1))*Math.min(0.9, dv*0.05); }
+function hitAI(o, dv, side){ o.crashT = clock + Math.min(25, 5 + dv*1.2); if (dv > 8) o.spinY = (side || (Math.random() < 0.5 ? 1 : -1))*Math.min(0.3, dv*0.015); }
 function hitFx(dv, msg, where = 'front', o = null){
   if (dv > 1.5) crash(dv > 14 ? msg + ' (parah)' : msg);
   const v = PLR, u = v.rp ? v.rp.sd*v.p : uOfV(v), sd = v.rp ? v.rp.sd : v.sd, fw = Math.sign(v.vel || 1)*sd;
@@ -2253,15 +2291,15 @@ function playerCollide(v){
       // side swipe: separate, trade sideways momentum, both lose speed by friction, the lighter car is knocked off line
       const side = Math.sign(-dx || 1); v.lx += side*(px + 0.05)/(-v.sd*LW); v.lane = Math.round(v.lx); v.x = posX(-v.sd, v.lx);
       const latV = Math.abs(v.vel*Math.sin(v.hd || 0)) + Math.abs(v.vel - (osd === vsd ? o.vel : -o.vel))*0.15, share = mO/(mP + mO);
-      v.hd = (v.hd || 0)*(1 - share) - side*0.12*share*Math.min(1, latV/4); v.vel *= 1 - 0.08*share - 0.02;
-      if (!o.player && !o.rp) { o.lx = clamp(o.lx - side*(mP/(mP + mO))*0.35, -1, 6); o.vel *= 0.92; if (latV > 2) hitAI(o, latV*2, -side); }
+      v.hd = (v.hd || 0)*(1 - 0.6*share); v.vel *= 1 - 0.05*share - 0.01;
+      if (!o.player && !o.rp) { o.vel *= 0.95; if (latV > 2) hitAI(o, latV*2, -side); }
       hitFx(latV*1.5, 'Tabrakan samping', 'side', o);
     } else {
       // frontal / rear-end / head-on: 1D impact along the road with both masses
       const vo = osd === vsd ? o.vel : -o.vel, ahead = du*vsd > 0, closing = ahead ? v.vel - vo : vo - v.vel;
       if (ahead) pushBack(pu + 0.05); else if (!onRamp) v.p += pu + 0.05;
       if (closing > 0) { const [a0, b] = impact1D(v.vel, mP, vo, mO), a = closing < 3 ? Math.min(v.vel, vo + 0.0) : a0, dv = Math.abs(a - v.vel);
-        v.vel = ahead ? a : Math.max(v.vel, a); const off = clamp(dx/(hwP + (HW[o.type] || 1)), -1, 1); if (dv > 4) v.hd = (v.hd || 0) - off*Math.min(0.4, dv*0.025);
+        v.vel = ahead ? a : Math.max(v.vel, a); const off = clamp(dx/(hwP + (HW[o.type] || 1)), -1, 1); if (dv > 10) v.hd = (v.hd || 0) - off*Math.min(0.12, dv*0.006);
         if (!o.player && !o.rp) { o.vel = Math.max(0, osd === vsd ? b : -b); hitAI(o, Math.abs(b - vo)*1.2 + dv*0.3, off > 0 ? 1 : -1); }
         hitFx(dv, osd !== vsd ? 'Tabrakan adu banteng!' : ahead ? 'Tabrakan dari belakang' : 'Ditabrak dari belakang', ahead ? 'front' : 'back', o); } } }
   if (onRamp) return;
@@ -2270,7 +2308,7 @@ function playerCollide(v){
     for (const g of gs) if (g.userData.cross) for (const c of g.userData.cross) {
       const cu = s2.u - c.g.position.z, cx = c.g.position.x, px = hwP + c.len/2 - Math.abs(cx - v.x), pu = v.len/2 + (HW[c.type] || 1) - Math.abs(cu - uP);
       if (px > 0 && pu > 0) { const [a] = impact1D(v.vel, MASS[v.type] || 1300, 0, MASS[c.type] || 1300), dv = Math.abs(a - v.vel); hitFx(dv + c.vel*0.5, 'Tabrakan di persimpangan', 'front', c.g ? c : null);
-        pushBack(pu + 0.05); v.vel = a*0.5; v.hd = (v.hd || 0) + (Math.random() - 0.5)*Math.min(0.6, dv*0.04); c.vel = 0; c.hold = 4; } } }
+        pushBack(pu + 0.05); v.vel = Math.max(0, a*0.5); c.vel = 0; c.hold = 4; } } }
   // solid objects: plaza islands, works vehicles and barriers, poles
   for (const so of SOLIDS) { if (so.u1 < uP - 30 || so.u0 > uP + 30) continue;
     const pu = Math.min(uP + v.len/2, so.u1) - Math.max(uP - v.len/2, so.u0), px = Math.min(v.x + hwP, so.x1) - Math.max(v.x - hwP, so.x0);
@@ -2278,9 +2316,8 @@ function playerCollide(v){
     if (px < pu*0.5) { const dirx = v.x > (so.x0 + so.x1)/2 ? 1 : -1, latV = Math.abs(v.vel*Math.sin(v.hd || 0));
       // scraping along it: pushed clear, a little friction, the nose turned away; only a real hit counts as a crash
       v.lx += dirx*(px + 0.05)/(-v.sd*LW); v.lane = Math.round(v.lx); v.x = posX(-v.sd, v.lx);
-      if (latV > 0.3) { v.vel *= 1 - Math.min(0.3, latV*0.06); v.hd = -(v.hd || 0)*0.3; } hitFx(latV*1.3, so.name, 'side'); }
-    else { const sp = Math.abs(v.vel), e = sp > 3 ? RESTI : 0, dv = sp*(1 + e); pushBack(pu + 0.05); v.vel = -v.vel*e;
-      if (dv > 5) v.hd = (v.hd || 0) + (Math.random() - 0.5)*Math.min(0.4, dv*0.015); hitFx(dv, so.name); } }
+      if (latV > 0.3) { v.vel *= 1 - Math.min(0.3, latV*0.06); v.hd = (v.hd || 0)*0.15; } hitFx(latV*1.3, so.name, 'side'); }
+    else { const dv = Math.abs(v.vel); pushBack(pu + 0.05); v.vel = 0; hitFx(dv, so.name); } }
 }
 function crash(msg){ if (crashCd > 0) return; crashCd = 3; stats.crashes++; shake = 0.6; toast(msg, 'bad'); stats.log.push(msg); }
 const violAt = new Map();
@@ -3081,6 +3118,8 @@ $('auto').onclick = () => { cfg.auto = !cfg.auto; saveCfg(); hudAuto();
 $('mapb').onclick = () => openAtlas();
 { const hb = $('hornb'); hb.addEventListener('pointerdown', e => { e.preventDefault(); playerHorn(true); hb.setPointerCapture && hb.setPointerCapture(e.pointerId); });
   for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) hb.addEventListener(ev, () => playerHorn(false)); }
+$('mirb').onclick = () => { cfg.mirror = cfg.mirror === false; saveCfg(); $('mirb').setAttribute('aria-pressed', cfg.mirror !== false ? 'true' : 'false'); toast(cfg.mirror !== false ? 'Spion menyala (kokpit: spion kiri, tengah, kanan)' : 'Spion dimatikan'); };
+$('mirb').setAttribute('aria-pressed', cfg.mirror !== false ? 'true' : 'false');
 $('fsb').hidden = !fsOK; $('fsb').onclick = toggleFull; $('walkb').onclick = footToggle;
 for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEventListener(ev, () => { const on = !!(document.fullscreenElement || document.webkitFullscreenElement); $('fsb').setAttribute('aria-pressed', on ? 'true' : 'false'); $('fsb').textContent = on ? 'Keluar layar penuh' : 'Layar penuh'; setTimeout(() => dispatchEvent(new Event('resize')), 120); });
 $('sirb').onclick = () => { cfg.siren = !cfg.siren; saveCfg(); sirenUI(); toast(cfg.siren ? 'Sirene & rotator menyala — kendaraan lain memberi jalan' : 'Sirene dimatikan'); };
@@ -3097,6 +3136,7 @@ addEventListener('keydown', e => { if (e.key === 'Escape' && !$('atlas').hidden)
   else if (k === 'p' && !e.repeat) $('auto').click();
   else if (k === 'h' && !e.repeat) $('hudb').click();
   else if (k === 'c' && !e.repeat) $('camb').click();
+  else if (k === 'v' && !e.repeat) $('mirb').click();
   else if (k === 'k' && !e.repeat) playerHorn(true);
   else if (k === 'e' && !e.repeat) footToggle();
   else if (k === 'shift') input.run = true;
@@ -3355,6 +3395,6 @@ renderer.setAnimationLoop(now => {
   tick(dt);
   placeGroups(); place(); placeFoot(); updateCam(dt); updateVolcanoes(dt); updateLandmarks(); updateRoadSigns(); updateFx(dt); updateSky(dt); updateSound(); flash(); updateBend(); updateHud(dt);
   mapT -= dt; if (mapT <= 0) { mapT = 0.5; drawMap(); }
-  composer.render();
+  composer.render(); drawMirrors(dt);
 });
 addEventListener('resize', () => { camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); composer.setSize(innerWidth,innerHeight); drawMap(); reqAtlas(); });
