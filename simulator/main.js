@@ -265,6 +265,7 @@ const bgeo = (w,h,d) => { const k = `${w}|${h}|${d}`; if (!geoCache.has(k)) { co
 function box(w,h,d,mat,x,y,z,g){ const m = new THREE.Mesh(bgeo(w,h,d),mat); m.position.set(x,y,z); m.castShadow = true; g.add(m); return m; }
 
 // ---------- realistic low-poly vehicles: side profiles extruded across the width (shared, cached geometry) ----------
+const busSignMat = M(0x111111, {emissive: 0xffa000, emissiveIntensity: 0.6}), bedMat = M(0x8a8f93, {metalness: 0.6}); SHARED.add(busSignMat); SHARED.add(bedMat);
 const extCache = new Map(), rimMat = M(0xc9ccd0, {metalness: 0.85, roughness: 0.25}), trimMat = M(0x1c1d1f, {roughness: 0.7}), plateMat = M(0xf4f4f0, {roughness: 0.5}),
   grilleMat = M(0x121314, {roughness: 0.5, metalness: 0.4}), chromeMat = M(0xd9dcdf, {metalness: 0.9, roughness: 0.2});
 [rimMat, trimMat, plateMat, grilleMat, chromeMat].forEach(m => SHARED.add(m));
@@ -284,7 +285,59 @@ function carDetails(g, {w, len, yL, yT, yB, zF = len/2, zR = -len/2, mirY, mirZ,
     box(0.08, 0.1, 0.2, trimMat, s2*(w/2 + 0.07), mirY, mirZ, g); }
   box(w*grille, 0.2, 0.06, grilleMat, 0, yL - 0.12, zF - 0.01, g);
   box(w + 0.04, 0.2, 0.22, trimMat, 0, yB, zF - 0.08, g); box(w + 0.04, 0.2, 0.22, trimMat, 0, yB, zR + 0.08, g);
-  box(0.52, 0.12, 0.03, plateMat, 0, yB + 0.02, zF + 0.04, g); box(0.52, 0.12, 0.03, plateMat, 0, yB + 0.16, zR - 0.04, g); }
+  box(0.46, 0.14, 0.03, plateMat, 0, yB + 0.02, zF + 0.04, g); box(0.46, 0.14, 0.03, plateMat, 0, yB + 0.17, zR - 0.04, g); }
+
+// ---------- Indonesian number plates: region code + number + letters, expiry month · year; colour by category ----------
+const PLATE_STYLE = {pribadi: ['#f6f6f2', '#111111'], umum: ['#f2c21b', '#111111'], dinas: ['#c4161c', '#ffffff'], polri: ['#1b1b1b', '#ffffff'],
+  diplomatik: ['#1f4fa8', '#ffffff'], fta: ['#1e8a4a', '#111111'], listrik: ['#f6f6f2', '#111111']};
+const PLATE_NAME = {pribadi: 'Pribadi (putih)', umum: 'Umum / angkutan (kuning)', dinas: 'Dinas pemerintah (merah)', polri: 'Polri (hitam)', diplomatik: 'Korps diplomatik (biru)', fta: 'Kawasan perdagangan bebas (hijau)', listrik: 'Kendaraan listrik (strip biru)'};
+// region code from where the vehicle is (Samsat areas, simplified by longitude/latitude)
+function regionCode(lat, lon){
+  if (lon < 106.4) return pick(['A', 'A', 'B']);
+  if (lon < 106.98 && lat > -6.45) return 'B';
+  if (lon < 107.05) return pick(['F', 'F', 'B']);
+  if (lon < 107.55 && lat > -6.5) return pick(['T', 'T', 'B']);
+  if (lon < 108.05) return pick(['D', 'D', 'Z', 'F']);
+  if (lon < 108.8) return pick(['E', 'E', 'Z']);
+  if (lon < 109.5) return pick(['G', 'R', 'R']);
+  if (lon < 110.15) return pick(['G', 'AA', 'H']);
+  if (lon < 110.55) return lat < -7.5 ? pick(['AB', 'AB', 'AA']) : pick(['H', 'H', 'K']);
+  if (lon < 111.2) return lat < -7.3 ? pick(['AD', 'AD', 'AB']) : pick(['K', 'H']);
+  if (lon < 112.0) return pick(['AE', 'AG', 'S']);
+  if (lon < 112.9) return lat < -7.6 ? pick(['N', 'AG']) : pick(['L', 'L', 'W', 'S']);
+  return pick(['P', 'N', 'M']);
+}
+const L3 = () => Array.from({length: 1 + Math.floor(Math.random()*3)}, () => 'ABCDEFGHJKLMNPRSTUVWXYZ'[Math.floor(Math.random()*23)]).join('');
+function randPlate(cat, reg){
+  if (cat === 'polri') return [`${1000 + Math.floor(Math.random()*8999)}-${pick(['I','II','VII','VIII','IX','X'])}`, 'POLRI'];
+  if (cat === 'diplomatik') return [`CD ${10 + Math.floor(Math.random()*80)} ${10 + Math.floor(Math.random()*80)}`, ''];
+  if (cat === 'dinas') return [`${reg} ${1 + Math.floor(Math.random()*999)} ${pick(['', 'A', 'B', 'D'])}`.trim(), 'DINAS'];
+  const y = 25 + Math.floor(Math.random()*5), mo = String(1 + Math.floor(Math.random()*12)).padStart(2, '0');
+  return [`${reg} ${1 + Math.floor(Math.random()*9998)} ${L3()}`, `${mo} · ${y}`];
+}
+function plateCanvas(main, sub, cat){
+  const [bg, fg] = PLATE_STYLE[cat] || PLATE_STYLE.pribadi, c = document.createElement('canvas'); c.width = 320; c.height = 92; const x = c.getContext('2d');
+  x.fillStyle = bg; x.fillRect(0, 0, 320, 92); x.strokeStyle = fg; x.lineWidth = 5; x.strokeRect(5, 5, 310, 82);
+  if (cat === 'listrik') { x.fillStyle = '#1f5fbf'; x.fillRect(8, 70, 304, 14); }
+  x.fillStyle = fg; x.textAlign = 'center'; x.textBaseline = 'middle'; fit(x, main, 290, 54, 800); x.fillText(main, 160, sub ? 36 : 47);
+  if (sub) { x.font = '700 20px Archivo, sans-serif'; x.fillStyle = cat === 'listrik' ? '#fff' : fg; x.fillText(sub, 160, 75); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+}
+// AI plates: a pool of ready-made plate materials per category + region, reused across vehicles
+// (capped: at most 8 plates per category + region and 160 plate textures in all, so long trips do not pile up GPU memory)
+const platePool = new Map(); let plateCount = 0;
+function plateMatFor(cat, reg){
+  const k = cat + reg; let pool = platePool.get(k); if (!pool) platePool.set(k, pool = []);
+  if (!pool.length && plateCount >= 160) { const any = [...platePool.entries()].filter(([kk, pp]) => kk.startsWith(cat) && pp.length).map(([, pp]) => pp); if (any.length) return pick(pick(any)); }
+  if (pool.length < 8 && plateCount < 160 || !pool.length) { plateCount++; const [m1, m2] = randPlate(cat, reg), mat = new THREE.MeshStandardMaterial({map: plateCanvas(m1, m2, cat), roughness: 0.45}); mat.userData.plate = true; SHARED.add(mat); pool.push(mat); return mat; }
+  return pick(pool);
+}
+const plateCatOf = type => type === 'police' ? 'polri' : type === 'damkar' ? 'dinas' : ['taxi', 'angkot', 'bus', 'truck', 'derek'].includes(type) ? 'umum'
+  : type === 'pickup' || type === 'van' ? (Math.random() < 0.3 ? 'umum' : 'pribadi') : Math.random() < 0.03 ? 'dinas' : Math.random() < 0.02 ? 'listrik' : Math.random() < 0.004 ? 'diplomatik' : 'pribadi';
+function plateVehicle(g, type){
+  const ll = EV.length ? latLonAt(camU) : {lat: -6.2, lon: 106.8}, mat = plateMatFor(plateCatOf(type), regionCode(ll.lat, ll.lon));
+  g.traverse(o => { if (o.isMesh && o.material === plateMat) o.material = mat; });
+}
 
 function makeVehicle(type, color){
   const g = new THREE.Group(); let len, wh, r, v0;
@@ -359,7 +412,7 @@ function makeVehicle(type, color){
       for (let k = 0; k < 4; k++) box(0.04, 1.4, 1.1, chromeMat, w/2 + 0.02, r + 1.6, -hl + 1 + k*1.2, g);
       box(0.9, 0.16, len - 1.2, ladderMat, 0, r + 2.7, -0.7, g); for (const s2 of [-1,1]) box(0.08, 0.3, len - 1.2, ladderMat, s2*0.45, r + 2.75, -0.7, g);
       lights = lightBar(cg, 1.8, 3.25, 1.2); }
-    else { box(w, 0.25, len - 2.6, M(0x8a8f93, {metalness: 0.6}), 0, r + 0.95, -1.2, g); box(0.5, 0.7, 0.5, trimMat, 0, r + 1.4, hl - 2.9, g);
+    else { box(w, 0.25, len - 2.6, bedMat, 0, r + 0.95, -1.2, g); box(0.5, 0.7, 0.5, trimMat, 0, r + 1.4, hl - 2.9, g);
       lights = [box(0.5, 0.15, 0.3, towAmber, -0.4, 3.25, 1.2, cg), box(0.5, 0.15, 0.3, towAmber, 0.4, 3.25, 1.2, cg)]; lights.forEach(l => l.visible = false); }
     for (const s2 of [-1, 1]) box(0.25, 0.25, 0.06, tail, s2*1.05, r + 0.9, -hl, g);
     wh = wheels(g, T ? [[-1.1,6.6],[1.1,6.6],[-1.1,4.6],[1.1,4.6],[-1.1,-4.6],[1.1,-4.6],[-1.1,-6],[1.1,-6]] : [[-1.05,hl - 1.3],[1.05,hl - 1.3],[-1.05,-hl + 2.3],[1.05,-hl + 2.3],[-1.05,-hl + 1.1],[1.05,-hl + 1.1]], r, 0.36);
@@ -370,12 +423,13 @@ function makeVehicle(type, color){
     const body = color != null ? paint : own(pick([0xf4f4f2,0x1f3f73,0x2f5a4a,0x5d6670,0xb22a26]));
     part(g, ext('bus', [[-hl,0.5],[hl - 0.05,0.5],[hl,0.95],[hl,2.9],[hl - 0.25,3.45],[-hl + 0.1,3.5],[-hl,3.3]], w, 0.12), body);
     for (const s2 of [-1, 1]) box(0.03, 1.05, len - 1.6, glassMat, s2*(w/2 + 0.115), 2.35, -0.4, g);
-    box(w*0.92, 1.4, 0.05, glassMat, 0, 2.35, hl + 0.11, g); box(w*0.7, 0.28, 0.05, M(0x111111, {emissive: 0xffa000, emissiveIntensity: 0.6}), 0, 3.2, hl + 0.12, g);
+    box(w*0.92, 1.4, 0.05, glassMat, 0, 2.35, hl + 0.11, g); box(w*0.7, 0.28, 0.05, busSignMat, 0, 3.2, hl + 0.12, g);
     box(w + 0.25, 0.25, len - 0.6, angkotStripe, 0, 1.3, 0, g); box(0.04, 2.1, 1.0, trimMat, w/2 + 0.12, 1.55, hl - 1.6, g);
     for (const s2 of [-1, 1]) { box(0.4, 0.18, 0.06, headMat, s2*0.9, 0.95, hl + 0.1, g); box(0.25, 0.4, 0.06, tail, s2*1.05, 1.2, -hl - 0.1, g); box(0.08, 0.5, 0.16, trimMat, s2*(w/2 + 0.25), 2.6, hl - 0.1, g); }
     box(0.52, 0.12, 0.03, plateMat, 0, 0.65, hl + 0.12, g);
     wh = wheels(g, [[-1.1,4.2],[1.1,4.2],[-1.1,-3.4],[1.1,-3.4],[-1.1,-4.8],[1.1,-4.8]], r, 0.38); v0 = rnd(21, 23.5);
   }
+  plateVehicle(g, type);
   bendObj(g);
   g.rotation.order = 'YXZ';
   const front = wh.filter(w => w.position.z > 0); for (const w of front) w.rotation.order = 'YXZ';
@@ -1997,6 +2051,7 @@ function tickNeeds(dt){
   if ((walT -= dt) < 0) { walT = 0.5; cfg.wal = {...WAL}; saveCfgSoon(); uiNeeds(); }
 }
 function uiNeeds(){
+  if (WAL.fuel == null || WAL.fuel > tankOf()) WAL.fuel = tankOf();
   const f = Math.round(WAL.fuel/tankOf()*100), fb = $('fuelb'), sb = $('sleepb');
   fb.style.width = clamp(f, 0, 100) + '%'; fb.classList.toggle('low', f < 15); sb.style.width = Math.round(WAL.sleep) + '%'; sb.classList.toggle('low', WAL.sleep > 70);
   $('cash').textContent = rpS(WAL.cash); $('etoll').textContent = rpS(WAL.etoll); $('cash').title = rp$(WAL.cash); $('etoll').title = rp$(WAL.etoll);
@@ -2075,6 +2130,161 @@ function stepTow(dt){
 }
 function placeTow(){ if (!tow) return; const d = tow.v; d.x = posX(-d.sd, d.lx); d.g.position.set(d.x, 0, camU - d.sd*d.p); d.g.rotation.y = d.sd > 0 ? Math.PI : 0;
   const ph = (clock*2.6) % 1; if (d.lights) { d.lights[0].visible = ph < 0.5; d.lights[1].visible = ph >= 0.5; } for (const w of d.wh) w.rotation.x += d.vel*0.016/d.r; }
+
+// ================================================================
+// VEHICLE MODS: paint, rims, window tint, spoiler, lowered suspension, sport stripes, number plate
+// ================================================================
+const MOD_DEF = {paint: '#ec3013', rim: '#c9ccd0', tint: 0, plate: '', plateCat: '', spoiler: false, low: false, stripe: false};
+const MODS = () => Object.assign({}, MOD_DEF, cfg.mod || {});
+const PAINTS = ['#ec3013', '#f4f4f2', '#1b1c1f', '#8d939a', '#1f3f73', '#2f5a4a', '#e0a020', '#6a1d2b', '#3a9fd8', '#f07a1a'], RIMS = ['#c9ccd0', '#1b1c1f', '#d4af37', '#b02020', '#3a6fd8'];
+// applies the mods to a vehicle model (own copies of the shared materials, so nothing else changes)
+function applyMods(v, m){
+  if (!v || !m) return; const g = v.g; let rimM = null, glassM = null, plateM = null;
+  g.traverse(o => { if (!o.isMesh) return;
+    if (o.material === rimMat) { rimM = rimM || Object.assign(rimMat.clone(), {userData: {own: true}}); rimM.color.set(m.rim); o.material = rimM; }
+    else if (o.material === glassMat && m.tint) { glassM = glassM || Object.assign(glassMat.clone(), {userData: {own: true}}); glassM.color.set(m.tint > 1 ? 0x05070a : 0x10161c); glassM.metalness = 0.8; o.material = glassM; }
+    else if (o.material && o.material.userData && o.material.userData.plate) {
+      if (!plateM) { const cat = m.plateCat || plateCatOf(v.type), d = new Date(), def = randPlate(cat, 'B');
+        plateM = new THREE.MeshStandardMaterial({map: plateCanvas((m.plate || def[0]).toUpperCase(), cat === 'polri' ? 'POLRI' : cat === 'dinas' ? 'DINAS' : cat === 'diplomatik' ? '' : `${String(d.getMonth() + 1).padStart(2, '0')} · ${String((d.getFullYear() + 5) % 100).padStart(2, '0')}`, cat), roughness: 0.45});
+        plateM.userData.own = true; } o.material = plateM; } });
+  const box3 = new THREE.Box3().setFromObject(g), top = box3.max.y, len = v.len, w = (HW[v.type] || 0.92)*2;
+  if (m.spoiler && !heavy(v) && v.type !== 'moto') { const sp = new THREE.Group(); const pm = g.children.find(o => o.isMesh && o.material && o.material.userData.own && o.material !== rimM)?.material || trimMat;
+    const zR = -len/2 + 0.25, yR = v.type === 'car' || v.type === 'taxi' || v.type === 'police' ? 1.02 : top - 0.05;
+    const at = (geo, mat, x, y, z) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); o.castShadow = true; sp.add(o); };
+    for (const s2 of [-0.5, 0.5]) at(bgeo(0.06, 0.18, 0.1), trimMat, s2*w*0.6, yR + 0.09, zR);
+    at(bgeo(w*0.92, 0.04, 0.32), pm, 0, yR + 0.2, zR - 0.04); g.add(sp); }
+  if (m.stripe && v.type !== 'moto') for (const s2 of [-0.18, 0.18]) { const o = new THREE.Mesh(bgeo(0.16, 0.012, len*0.92), angkotStripe); o.position.set(s2, top + 0.002, 0); g.add(o); }
+  v.lowered = m.low ? 0.07 : 0;
+  bendObj(g);
+}
+function buildModUI(){
+  const m = MODS(), set = (k, val) => { cfg.mod = {...MODS(), [k]: val}; saveCfg(); buildModUI(); };
+  const sw = (el, list, key) => { el.innerHTML = ''; for (const c of list) { const b = document.createElement('button'); b.style.background = c; b.title = c; b.setAttribute('aria-pressed', m[key] === c ? 'true' : 'false'); b.onclick = e => { e.preventDefault(); set(key, c); }; el.append(b); } };
+  sw($('paintsel'), PAINTS, 'paint'); sw($('rimsel'), RIMS, 'rim');
+  $('m-paint').value = m.paint; $('m-paint').oninput = e => set('paint', e.target.value);
+  $('m-tint').value = String(m.tint); $('m-tint').onchange = e => set('tint', +e.target.value);
+  $('m-plate').value = m.plate; $('m-plate').onchange = e => set('plate', e.target.value.toUpperCase().replace(/[^A-Z0-9 \-]/g, '').replace(/\s+/g, ' ').slice(0, 12));
+  const pc = $('m-platecat'); if (!pc.options.length) for (const [k, l] of [['', 'Otomatis (sesuai kendaraan)'], ...Object.entries(PLATE_NAME)]) pc.append(new Option(l, k));
+  pc.value = m.plateCat || ''; pc.onchange = e => set('plateCat', e.target.value);
+  for (const k of ['spoiler', 'low', 'stripe']) { $('m-' + k).checked = !!m[k]; $('m-' + k).onchange = e => set(k, e.target.checked); }
+}
+
+// ================================================================
+// MULTIPLAYER on server.7mit (Supabase Realtime: WebSocket broadcast + presence; voice chat over WebRTC)
+// Positions are exchanged as road + km + direction + lane, so every player sees the others on their own copy of the road.
+// ================================================================
+const MP_URL = 'https://lajzrempjyoqkubkumhb.supabase.co', MP_KEY = 'sb_publishable_yGZ90Bkv3yreqc9pA55bpw_YKKBhWRw', MP_SPAWN = 'Semanggi', MP_MAX = 12;
+const mp = {on: false, ready: false, ch: null, sb: null, id: null, peers: new Map(), sendT: 0, voice: false, mic: null, chatT: 0, fake: null};
+const mpName = () => (cfg.name || '').trim() || 'Pemain-' + (mp.id || '0000').slice(0, 4);
+const mpEsc = t => String(t).slice(0, 200);
+function mpStatus(t){ $('mp-stat').textContent = t; }
+function mpLine(txt, cls){ const d = document.createElement('div'); d.textContent = txt; if (cls) d.className = cls; const L = $('mp-log'); L.append(d); while (L.children.length > 60) L.firstChild.remove(); L.scrollTop = L.scrollHeight; }
+function mpMe(){ return {name: mpName(), type: PLR ? PLR.type : cfg.veh, mod: MODS()}; }
+async function mpConnect(){
+  if (mp.on) return; mp.on = true; mp.id = mp.id || (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : Math.random().toString(36).slice(2) + Date.now().toString(36)).slice(0, 12);
+  $('mpbox').hidden = false; mpStatus('Menghubungkan ke server.7mit…'); mpLine(`Anda: ${mpName()} · mulai di GT Semanggi`, 'sys');
+  let ch;
+  if (window.__mpFake) ch = mp.fake = window.__mpFake(mp);                 // test transport
+  else { try { const {createClient} = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm');
+      mp.sb = createClient(MP_URL, MP_KEY, {realtime: {params: {eventsPerSecond: 20}}}); ch = mp.sb.channel('tj-world', {config: {broadcast: {self: false}, presence: {key: mp.id}}}); }
+    catch (e) { mpStatus('Gagal terhubung (periksa internet)'); mp.on = false; return; } }
+  mp.ch = ch;
+  ch.on('broadcast', {event: 'st'}, ({payload}) => mpState(payload));
+  ch.on('broadcast', {event: 'chat'}, ({payload}) => { if (payload && payload.id !== mp.id) mpLine(`${mpEsc(payload.name)}: ${mpEsc(payload.text)}`); });
+  ch.on('broadcast', {event: 'rtc'}, ({payload}) => mpRtc(payload));
+  ch.on('presence', {event: 'sync'}, () => mpSync());
+  ch.on('presence', {event: 'join'}, ({key, newPresences}) => { if (key !== mp.id) mpLine(`${mpEsc((newPresences[0] || {}).name || 'Pemain')} bergabung`, 'sys'); });
+  ch.on('presence', {event: 'leave'}, ({key, leftPresences}) => { if (key !== mp.id) { mpLine(`${mpEsc((leftPresences[0] || {}).name || 'Pemain')} keluar`, 'sys'); mpDrop(key); } });
+  ch.subscribe(async st => { if (st === 'SUBSCRIBED') { mp.ready = true; mpStatus('Online'); await ch.track(mpMe()); mpSync(); }
+    else if (st === 'CHANNEL_ERROR' || st === 'TIMED_OUT') { mp.ready = false; mpStatus('Koneksi terputus, mencoba lagi…'); } });
+}
+function mpLeave(){
+  if (!mp.on) return; try { mp.ch && mp.ch.untrack && mp.ch.untrack(); mp.sb ? mp.sb.removeChannel(mp.ch) : mp.ch && mp.ch.unsubscribe && mp.ch.unsubscribe(); } catch (e) {}
+  for (const id of [...mp.peers.keys()]) mpDrop(id); mpMicOff(); mp.on = mp.ready = false; mp.ch = null; $('mpbox').hidden = true;
+}
+function mpPeer(id){ let p = mp.peers.get(id); if (!p) { p = {id, name: 'Pemain', type: 'car', mod: null, st: null, rt: 0, u: null}; mp.peers.set(id, p); } return p; }
+function mpSync(){
+  const ps = mp.ch.presenceState ? mp.ch.presenceState() : {}, seen = new Set();
+  for (const [key, arr] of Object.entries(ps)) { if (key === mp.id || !arr.length) continue; seen.add(key); const m = arr[0], p = mpPeer(key);
+    if (p.type !== m.type || JSON.stringify(p.mod) !== JSON.stringify(m.mod)) mpModel(p, null); p.name = String(m.name || 'Pemain').slice(0, 16); p.type = VEH[m.type] ? m.type : 'car'; p.mod = m.mod || null;
+    if (mp.voice && mp.id < key && !p.pc && mp.peers.size <= MP_MAX) mpPc(p, true); }
+  for (const id of [...mp.peers.keys()]) if (!seen.has(id)) mpDrop(id);
+  const names = [mpName() + ' (Anda)', ...[...mp.peers.values()].map(p => p.name)];
+  $('mp-list').textContent = `${names.length} online: ${names.join(', ')}`; if (mp.ready) mpStatus(`Online · ${names.length} pemain`);
+}
+function mpDrop(id){ const p = mp.peers.get(id); if (!p) return; mpModel(p, null); if (p.pc) { try { p.pc.close(); } catch (e) {} } if (p.audio) { p.audio.pause(); p.audio.srcObject = null; } mp.peers.delete(id); }
+// where is my car, in shared terms
+function mpTick(dt){
+  if (!mp.ready || !PLR || !EV.length) return; if ((mp.sendT -= dt) > 0) return; mp.sendT = 0.25;
+  const u = foot ? foot.u : (PLR.rp ? PLR.rp.sd*PLR.p : uOfV(PLR)), i = clamp(evAt(u), 0, EV.length - 2), a = EV[i], b = EV[i + 1], ll = latLonAt(u);
+  mp.ch.send({type: 'broadcast', event: 'st', payload: {id: mp.id, name: mpName(), type: PLR.type, c: a.cNext, km: +kmAt(u).toFixed(4), dir: (Math.sign(b.km - a.kmOut) || 1)*(PLR.sd || 1),
+    lx: +(PLR.lx || 0).toFixed(2), v: +(foot ? 0 : PLR.vel).toFixed(1), lat: +ll.lat.toFixed(5), lon: +ll.lon.toFixed(5), em: sirenOn(PLR)}});
+}
+function mpState(p){ if (!p || p.id === mp.id || typeof p.km !== 'number') return; const q = mpPeer(p.id); q.st = p; q.rt = performance.now(); if (p.name) q.name = String(p.name).slice(0, 16);
+  if (p.type && p.type !== q.type && VEH[p.type]) { q.type = p.type; mpModel(q, null); } }
+// the place on my route that corresponds to a road + km, and whether they drive my way (sd = 1) or towards me
+function uForCK(c, km){ for (let i = 0; i < EV.length - 1; i++) { const a = EV[i], b = EV[i + 1]; if (a.cNext !== c) continue; const k0 = a.kmOut, k1 = b.km;
+    if ((km - k0)*(km - k1) > 1e-9) continue; return {u: a.u + (km - k0)/((k1 - k0) || 1)*(b.u - a.u), kdir: Math.sign(k1 - k0) || 1}; } return null; }
+const nameTagCache = new Map();
+function mpModel(p, build){
+  if (p.v) { scene.remove(p.v.g); killVehicle(p.v); p.v = null; }
+  if (!build) return; const md = p.mod || MOD_DEF, fixed = ['taxi', 'police', 'ambulance', 'damkar', 'angkot'].includes(p.type);
+  p.v = makeVehicle(p.type, fixed ? null : new THREE.Color(md.paint || '#3a6fd8').getHex()); applyMods(p.v, md);
+  const tex = canvasTex(1, 0.22, (x, w, h) => { x.fillStyle = 'rgba(20,20,22,0.82)'; x.fillRect(0, 0, w, h); x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle'; fit(x, p.name, w - 40, h*0.7, 800); x.fillText(p.name, w/2, h/2 + 4); });
+  const tag = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.57), new THREE.MeshBasicMaterial({map: tex, transparent: true, depthWrite: false})); tag.material.userData.own = true;
+  tag.position.y = (heavy(p.v) || p.type === 'damkar' || p.type === 'derek' ? 4.4 : 2.6); tag.renderOrder = 5; p.v.g.add(tag); p.tag = tag; bendObj(tag); scene.add(p.v.g);
+}
+function mpPlace(){
+  if (!mp.on) return; const now = performance.now();
+  for (const p of mp.peers.values()) { const st = p.st; if (!st) continue; const m = uForCK(st.c, st.km);
+    if (!m) { if (p.v) p.v.g.visible = false; p.u = null; continue; }
+    const sd = st.dir === m.kdir ? 1 : -1, age = Math.min(1, (now - p.rt)/1000), tu = m.u + sd*st.v*age;
+    p.u = p.u == null || Math.abs(p.u - tu) > 60 ? tu : p.u + (tu - p.u)*0.25; p.sd = sd;
+    const z = camU - p.u, vis = Math.abs(z) < 900; if (vis && !p.v) mpModel(p, true); if (!p.v) continue; p.v.g.visible = vis; if (!vis) continue;
+    p.v.g.position.set(posX(-sd, st.lx), 0, z); p.v.g.rotation.y = sd > 0 ? Math.PI : 0; for (const w of p.v.wh) w.rotation.x += st.v*0.016/p.v.r;
+    if (p.v.lights) { const ph = (clock*3.2) % 1; p.v.lights[0].visible = st.em && ph < 0.5; p.v.lights[1].visible = st.em && ph >= 0.5; }
+    if (p.tag) p.tag.rotation.y = Math.atan2(camera.position.x - p.v.g.position.x, camera.position.z - p.v.g.position.z) - p.v.g.rotation.y;
+    if (p.audio) p.audio.volume = clamp(1 - Math.abs(z)/900, 0.3, 1); }
+}
+function mpDrawMap(x, P){ if (!mp.on) return; x.font = '600 10px Archivo, sans-serif';
+  for (const p of mp.peers.values()) { if (!p.st) continue; const [a, b] = P(p.st.lat, p.st.lon); x.fillStyle = '#1f5fbf'; x.strokeStyle = '#fff'; x.lineWidth = 2; x.beginPath(); x.arc(a, b, 4, 0, Math.PI*2); x.fill(); x.stroke(); x.fillStyle = '#1f5fbf'; x.fillText(p.name, a + 6, b + 3); } }
+function mpSay(text){ text = String(text).trim().slice(0, 200); if (!text || !mp.ready) return; if (clock - mp.chatT < 0.7) { toast('Tunggu sebentar sebelum mengirim lagi', 'warn'); return; } mp.chatT = clock;
+  mp.ch.send({type: 'broadcast', event: 'chat', payload: {id: mp.id, name: mpName(), text}}); mpLine(`${mpName()}: ${text}`); }
+// ---- voice: one WebRTC connection per player; the lower id makes the offer; the mic track is swapped in and out without renegotiation
+const ICE = [{urls: 'stun:stun.l.google.com:19302'}, {urls: 'stun:stun1.l.google.com:19302'}];
+function mpPc(p, initiate){
+  if (p.pc) return p.pc; const pc = new RTCPeerConnection({iceServers: ICE}); p.pc = pc;
+  if (initiate) { p.tx = pc.addTransceiver('audio', {direction: 'sendrecv'}); if (mp.mic) p.tx.sender.replaceTrack(mp.mic.getAudioTracks()[0]); }
+  pc.onicecandidate = e => { if (e.candidate) mp.ch.send({type: 'broadcast', event: 'rtc', payload: {from: mp.id, to: p.id, kind: 'ice', cand: e.candidate.toJSON()}}); };
+  pc.ontrack = e => { if (!p.audio) { p.audio = new Audio(); p.audio.autoplay = true; } p.audio.srcObject = e.streams[0] || new MediaStream([e.track]); p.audio.muted = !mp.voice; p.audio.play().catch(() => {}); };
+  pc.onconnectionstatechange = () => { if (pc.connectionState === 'failed') { try { pc.close(); } catch (e) {} p.pc = null; } };
+  if (initiate) pc.createOffer().then(o => pc.setLocalDescription(o)).then(() => mp.ch.send({type: 'broadcast', event: 'rtc', payload: {from: mp.id, to: p.id, kind: 'offer', sdp: pc.localDescription.toJSON()}})).catch(() => {});
+  return pc;
+}
+function mpPcReset(p){ if (p.pc) { try { p.pc.close(); } catch (e) {} } p.pc = null; p.tx = null; }
+async function mpRtc(m){
+  if (!m || !mp.voice || m.from === mp.id) return;
+  // someone switched voice on: rebuild the link with them (the lower id makes the offer)
+  if (m.kind === 'hello') { const p = mpPeer(m.from); mpPcReset(p); if (mp.id < m.from) mpPc(p, true); return; }
+  if (m.to !== mp.id) return; const p = mpPeer(m.from);
+  try { if (m.kind === 'offer') { if (p.pc && p.pc.signalingState !== 'stable') mpPcReset(p); const pc = mpPc(p, false); await pc.setRemoteDescription(m.sdp);
+      // answer on the offer's own audio line: send our mic on it too
+      p.tx = pc.getTransceivers()[0]; if (p.tx) { p.tx.direction = 'sendrecv'; if (mp.mic) await p.tx.sender.replaceTrack(mp.mic.getAudioTracks()[0]); }
+      const a = await pc.createAnswer(); await pc.setLocalDescription(a);
+      mp.ch.send({type: 'broadcast', event: 'rtc', payload: {from: mp.id, to: p.id, kind: 'answer', sdp: pc.localDescription.toJSON()}}); }
+    else if (m.kind === 'answer' && p.pc) await p.pc.setRemoteDescription(m.sdp);
+    else if (m.kind === 'ice' && p.pc) await p.pc.addIceCandidate(m.cand); } catch (e) {}
+}
+function mpVoice(on){ mp.voice = on; $('mp-voice').setAttribute('aria-pressed', on ? 'true' : 'false');
+  for (const p of mp.peers.values()) { if (p.audio) p.audio.muted = !on; if (on) { mpPcReset(p); if (mp.id < p.id) mpPc(p, true); } else mpPcReset(p); }
+  if (on && mp.ready) mp.ch.send({type: 'broadcast', event: 'rtc', payload: {from: mp.id, to: '*', kind: 'hello'}});
+  if (!on) mpMicOff(); mpLine(on ? 'Suara pemain lain dinyalakan' : 'Suara dimatikan', 'sys'); }
+async function mpMicOn(){
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { toast('Mikrofon tidak didukung browser ini', 'warn'); return; }
+  try { mp.mic = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation: true, noiseSuppression: true}}); } catch (e) { toast('Izin mikrofon ditolak', 'warn'); return; }
+  if (!mp.voice) mpVoice(true); const tr = mp.mic.getAudioTracks()[0]; for (const p of mp.peers.values()) { if (!p.pc && mp.id < p.id) mpPc(p, true); if (p.tx) p.tx.sender.replaceTrack(tr); }
+  $('mp-mic').setAttribute('aria-pressed', 'true'); mpLine('Mikrofon aktif: pemain lain bisa mendengar Anda', 'sys'); }
+function mpMicOff(){ if (mp.mic) { mp.mic.getTracks().forEach(t => t.stop()); mp.mic = null; } for (const p of mp.peers.values()) if (p.tx) p.tx.sender.replaceTrack(null); $('mp-mic').setAttribute('aria-pressed', 'false'); }
 
 // ---------- crash effects: debris and glass, sparks, smoke and fire, dents, skid marks ----------
 // Particles live in road coordinates (u, x, y) so they stay put as the world scrolls; drawn with instanced meshes.
@@ -2268,7 +2478,7 @@ function place(){
   const ph = (clock*3.2) % 1;
   for (const v of vehicles.concat(rampers)) if (v.lights) { const on = sirenOn(v); v.lights[0].visible = on && ph < 0.5; v.lights[1].visible = on && ph >= 0.5; }
   for (const v of vehicles){ const u = v.sd*v.p, z = camU - u;
-    v.g.position.set(v.x, v.lift || 0, z); v.g.rotation.y = (v.sd > 0 ? Math.PI : 0) - v.yaw*v.sd; v.g.visible = Math.abs(z) < 900;
+    v.g.position.set(v.x, (v.lift || 0) - (v.lowered || 0), z); v.g.rotation.y = (v.sd > 0 ? Math.PI : 0) - v.yaw*v.sd; v.g.visible = Math.abs(z) < 900;
     if (v.g.visible && Math.abs(z) < 300) { v.g.rotation.x = v.pit || 0; v.g.rotation.z = v.rol || 0; for (const w of v.front || []) w.rotation.y = v.stv || 0; } }
   for (const v of rampers){ const q = v.q; if (!q) continue; const rp = v.rp, u = rp.sd*v.p, z = camU - u;
     v.x = -rp.sd*(rp.e + q.o + (v.player ? (v.rpOff || 0)*q.hu : 0)); v.g.position.set(v.x, q.h || 0, z);
@@ -2290,11 +2500,12 @@ const stats = {t0: 0, toll: 0, viol: 0, crashes: 0, lastPay: 0, missed: false, d
 let offT = 0, shoulderT = 0, speedT = 0, heavyT = 0, violCd = 0, crashCd = 0, shake = 0;
 function spawnPlayer(){
   if (PLR) { const i = vehicles.indexOf(PLR); if (i >= 0) vehicles.splice(i, 1); const j = rampers.indexOf(PLR); if (j >= 0) rampers.splice(j, 1); killVehicle(PLR); }
-  const v = makeVehicle(VEH[cfg.veh] ? cfg.veh : 'car', ['car', 'suv', 'bus', 'truck', 'moto'].includes(cfg.veh) ? 0xec3013 : null); v.player = true; v.paint = 0xec3013; v.dmg = 0; sirenUI();
+  const md = MODS(), pc = new THREE.Color(md.paint).getHex(), fixed = ['taxi', 'police', 'ambulance', 'damkar', 'angkot'].includes(cfg.veh);
+  const v = makeVehicle(VEH[cfg.veh] ? cfg.veh : 'car', fixed ? null : pc); v.player = true; v.paint = fixed ? 0xf4f4f2 : pc; v.dmg = 0; applyMods(v, md);
   const o = EV[0], n = nAvail(1, 0), startP = o.kind === 't' || o.kind === 'g' ? 160 : o.kind === 'k' || o.kind === 'n0' ? 30 : 320;
   Object.assign(v, {sd: 1, lane: Math.max(0, n - 1), p: startP, vel: o.kind === 'k' || o.kind === 'n0' ? 8 : 16, cd: 0, yaw: 0, cfWant: false, v0: limitAt(startP)});
   v.lx = v.lane; v.x = posX(-1, v.lane); v.paid = o.kind === 't' || o.kind === 'g' ? o.id : null;
-  scene.add(v.g); vehicles.push(v); PLR = v; camU = startP;
+  scene.add(v.g); vehicles.push(v); PLR = v; camU = startP; sirenUI(); uiNeeds();
 }
 const slopeG = v => v.rp ? 0 : 9.81*(v.sd || 1)*gYD(uOfV(v))*Math.cos(v.hd || 0);    // g · grade along the direction of travel
 const GEAR_UP = [5.5, 11, 17.5, 25, 33], GEAR_K = [1, 0.8, 0.64, 0.52, 0.43, 0.36];
@@ -2932,6 +3143,7 @@ function drawMap(){
   x.fillStyle = ink; x.font = '600 9px Archivo, sans-serif';
   const labels = mapBig ? [...new Set(EV.filter(e => e.city && e.kind !== 'n0').map(e => e.key))].map(k => NODES.get(k)) : ['JCT Cawang','GT Banyumanik','JCT Waru','Merak','JCT Pasir Koja','GT Palimanan','Colomadu','Malang','Ketapang'].map(k => NODES.get(k));
   for (const n of labels) { if (!n) continue; const [a, b] = P(n.lat, n.lon); if (a < 0 || b < 0 || a > W || b > H) continue; x.fillText(n.city || n.name, a + 4, b - 3); }
+  mpDrawMap(x, P);
 }
 function latLonAt(u){ const i = evAt(u); if (i < 0) return EV[0]; if (i >= EV.length - 1) return EV[EV.length - 1];
   const a = EV[i], b = EV[i+1], f = clamp((u - a.u)/(b.u - a.u), 0, 1); return {lat: a.lat + (b.lat - a.lat)*f, lon: a.lon + (b.lon - a.lon)*f}; }
@@ -3194,7 +3406,8 @@ const PRESETS = [['Jakarta → Surabaya (Pantura)', 'N:Jakarta', 'N:Surabaya', '
 const legHours = legs => legs.reduce((a, l) => { const c = CORR[l.c], km = Math.abs(c.nodes.find(n => n.key === l.b).km - c.nodes.find(n => n.key === l.a).km); return a + km/({t: 90, n: 50, a: 30}[c.cls]); }, 0);
 let firstPick = null;
 function planPreview(){
-  const free = cfg.trip === 'free' || cfg.trip === 'santai', el = $('preview');
+  const free = cfg.trip === 'free' || cfg.trip === 'santai' || cfg.trip === 'mp', el = $('preview');
+  $('mp-field').hidden = cfg.trip !== 'mp'; $('from').disabled = cfg.trip === 'mp'; if (cfg.trip === 'mp' && [...$('from').options].some(o => o.value === MP_SPAWN)) $('from').value = MP_SPAWN;
   $('to-field').hidden = $('swap').hidden = $('presets-field').hidden = free; $('first-field').hidden = !free;
   [...$('tripsel').children].forEach(c => c.setAttribute('aria-pressed', c.dataset.t === (cfg.trip || 'route') ? 'true' : 'false'));
   if (free) {
@@ -3227,11 +3440,13 @@ function setMode(m){ cfg.mode = m; saveCfg(); [...$('modesel').children].forEach
 function openPlanner(){
   fillSelect($('from'), trip ? trip.from : cfg.from); fillSelect($('to'), trip && trip.dest && [...$('to').options].some(o => o.value === trip.dest) ? trip.dest : cfg.to);
   const ts = $('tripsel'); ts.innerHTML = '';
-  for (const [k, l] of [['route', 'Rute (A → B)'], ['free', 'Keliling bebas'], ['santai', 'Santai (ala Slow Roads)']]) { const x = btn(l, (cfg.trip || 'route') === k); x.dataset.t = k; x.onclick = () => { cfg.trip = k; saveCfg(); planPreview(); }; ts.append(x); }
+  for (const [k, l] of [['route', 'Rute (A → B)'], ['free', 'Keliling bebas'], ['santai', 'Santai (ala Slow Roads)'], ['mp', 'Multiplayer']]) { const x = btn(l, (cfg.trip || 'route') === k); x.dataset.t = k; x.onclick = () => { cfg.trip = k; saveCfg(); planPreview(); }; ts.append(x); }
   const pr = $('presets'); pr.innerHTML = '';
   for (const [label, a, b, m] of PRESETS) { const x = btn(label, false); x.onclick = () => { $('from').value = a; $('to').value = b; setMode(m || 'mix'); planPreview(); }; pr.append(x); }
   const ms = $('modesel'); ms.innerHTML = '';
   for (const [k, l] of MODES) { const x = btn(l, cfg.mode === k); x.dataset.m = k; x.onclick = () => { setMode(k); planPreview(); }; ms.append(x); }
+  buildModUI(); $('mp-field').hidden = cfg.trip !== 'mp'; $('m-name').value = cfg.name || '';
+  $('m-name').onchange = e => { cfg.name = e.target.value.replace(/[^\w .\-]/g, '').slice(0, 16).trim(); saveCfg(); };
   const vs = $('vehsel'); vs.innerHTML = '';
   for (const [k, s] of Object.entries(VEH)) { const x = btn(`${s.label} · ${s.gol}`, cfg.veh === k); x.onclick = () => { cfg.veh = k; [...vs.children].forEach(c => c.setAttribute('aria-pressed', 'false')); x.setAttribute('aria-pressed', 'true'); }; vs.append(x); }
   firstPick = null; planPreview(); $('plan').hidden = false; $('done').hidden = true;
@@ -3240,6 +3455,8 @@ $('from').onchange = () => { firstPick = null; planPreview(); }; $('to').onchang
 $('swap').onclick = () => { const a = $('from').value; $('from').value = $('to').value; $('to').value = a; planPreview(); };
 $('go').onclick = () => { $('plan').hidden = true; cfg.from = $('from').value; if (cfg.trip !== 'free') cfg.to = $('to').value; saveCfg();
   if (cfg.trip === 'santai') { Object.assign(cfg, {auto: true, clean: true, roadStyle: 'kelok', view: 'jauh', den: 0.6}); gameH = 16.4; saveCfg(); setRoadStyle(); setView(); setClean(); hudAuto(); setTod(null); }
+  if (cfg.trip === 'mp') { cfg.auto = false; hudAuto(); startDrive({from: MP_SPAWN}); mpConnect(); if (mp.ready) mp.ch.track(mpMe()); return; }
+  mpLeave();
   if (cfg.trip === 'free' || cfg.trip === 'santai') startDrive({from: cfg.from, first: firstPick}); else startTrip(cfg.from, cfg.to); };
 $('plan-close').onclick = () => { if (trip) $('plan').hidden = true; };
 
@@ -3278,6 +3495,10 @@ $('auto').onclick = () => { cfg.auto = !cfg.auto; saveCfg(); hudAuto();
 $('mapb').onclick = () => openAtlas();
 { const hb = $('hornb'); hb.addEventListener('pointerdown', e => { e.preventDefault(); playerHorn(true); hb.setPointerCapture && hb.setPointerCapture(e.pointerId); });
   for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) hb.addEventListener(ev, () => playerHorn(false)); }
+$('mp-form').onsubmit = e => { e.preventDefault(); mpSay($('mp-in').value); $('mp-in').value = ''; $('mp-in').blur(); };
+$('mp-voice').onclick = () => mpVoice(!mp.voice); $('mp-mic').onclick = () => mp.mic ? (mpMicOff(), mpLine('Mikrofon dimatikan', 'sys')) : mpMicOn();
+$('mp-min').onclick = () => { $('mpbox').classList.toggle('min'); $('mp-min').textContent = $('mpbox').classList.contains('min') ? '+' : '–'; };
+addEventListener('beforeunload', () => mpLeave());
 $('svcb').onclick = openSvc; $('svc-close').onclick = () => { $('svc').hidden = true; }; $('towb').onclick = () => callTow();
 $('mirb').onclick = () => { cfg.mirror = cfg.mirror === false; saveCfg(); $('mirb').setAttribute('aria-pressed', cfg.mirror !== false ? 'true' : 'false'); toast(cfg.mirror !== false ? 'Spion menyala (kokpit: spion kiri, tengah, kanan)' : 'Spion dimatikan'); };
 $('mirb').setAttribute('aria-pressed', cfg.mirror !== false ? 'true' : 'false');
@@ -3289,6 +3510,7 @@ $('camb').onclick = () => { const order = ['chase', 'cockpit', 'drone', 'ic', 'o
 addEventListener('keydown', e => { if (e.key === 'Escape' && !$('atlas').hidden) { closeAtlas(); return; }
   if (e.target.closest && e.target.closest('select,input')) return;
   const k = e.key.toLowerCase();
+  if (k === 'enter' && mp.on && !$('mpbox').hidden) { $('mpbox').classList.remove('min'); $('mp-in').focus(); e.preventDefault(); return; }
   if (['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d'].includes(k) && !document.body.classList.contains('kbd')) document.body.classList.add('kbd');
   if (k === 'arrowup' || k === 'w') { input.gas = true; manualNow(); e.preventDefault(); }
   else if (k === 'arrowdown' || k === 's') { input.brake = true; manualNow(); e.preventDefault(); }
@@ -3537,13 +3759,13 @@ try { await Promise.race([document.fonts.load('700 64px Archivo'), new Promise(r
 setRoadStyle(); setView(); setClean(); setTod(null);
 if (cfg.trip === 'free' || cfg.trip === 'santai') startDrive({from: NODES.has(cfg.from) ? cfg.from : DEF.from}); else startTrip(NODES.has(cfg.from) ? cfg.from : DEF.from, NODES.has(cfg.to) ? cfg.to : DEF.to);
 if (!localStorage.getItem('tj_seen')) { try { localStorage.setItem('tj_seen', '1'); } catch(e) {} openPlanner(); }
-window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam, startDrive, setNav, clearNav, chooseAt, replanIdx, openAtlas, closeAtlas, atTap, AT, get chunks(){ return chunks; }, get OBJ(){ return OBJ; }, sutetTower, setHour: h => { gameH = h; todT = 0; lastSign = -1; tickClock(0); }, get gameH(){ return gameH; }, volcanoes, updateVolcanoes, regionAt, latLonAt, get ELV(){ return ELV; }, elU, elevAt, get LMS(){ return LMS; }, callTow, get tow(){ return tow; }, WAL, openSvc, updateLandmarks, updateRoadSigns, RSIGNS, FX, footToggle, get foot(){ return foot; }};
+window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam, startDrive, setNav, clearNav, chooseAt, replanIdx, openAtlas, closeAtlas, atTap, AT, get chunks(){ return chunks; }, get OBJ(){ return OBJ; }, sutetTower, setHour: h => { gameH = h; todT = 0; lastSign = -1; tickClock(0); }, get gameH(){ return gameH; }, volcanoes, updateVolcanoes, regionAt, latLonAt, get ELV(){ return ELV; }, elU, elevAt, get LMS(){ return LMS; }, mp, mpConnect, mpSay, get mem(){ return {...renderer.info.memory, veh: vehicles.length, ramp: rampers.length, loc: locals.length, chunks: chunks.size, built: built.size}; }, callTow, get tow(){ return tow; }, WAL, openSvc, updateLandmarks, updateRoadSigns, RSIGNS, FX, footToggle, get foot(){ return foot; }};
 
 let last = performance.now(), mapT = 0, frames = 0;
 function tick(dt){
   clock += dt;
   if (PLR && PLR.wantU) { PLR.wantU = false; uTurn(PLR); }
-  stepFoot(dt); tickNeeds(dt); stepTow(dt); sim(dt); rampStep(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt); tickClock(dt);
+  stepFoot(dt); tickNeeds(dt); stepTow(dt); mpTick(dt); sim(dt); rampStep(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt); tickClock(dt);
   if (PLR) camU = foot ? foot.u : uOfV(PLR);
   ensureAhead();
   setupBlocks(false); updateWorld(true); updateSignals(); animGhosts();
@@ -3556,7 +3778,7 @@ renderer.setAnimationLoop(now => {
   const dt = Math.min(0.05, (now - last)/1000); last = now; frames++;
   if ((!$('plan').hidden && trip && !stats.done) || !$('atlas').hidden) { composer.render(); return; }
   tick(dt);
-  placeGroups(); place(); placeFoot(); placeTow(); updateCam(dt); updateVolcanoes(dt); updateLandmarks(); updateRoadSigns(); updateFx(dt); updateSky(dt); updateSound(); flash(); updateBend(); updateHud(dt);
+  placeGroups(); place(); placeFoot(); placeTow(); mpPlace(); updateCam(dt); updateVolcanoes(dt); updateLandmarks(); updateRoadSigns(); updateFx(dt); updateSky(dt); updateSound(); flash(); updateBend(); updateHud(dt);
   mapT -= dt; if (mapT <= 0) { mapT = 0.5; drawMap(); }
   composer.render(); drawMirrors(dt);
 });

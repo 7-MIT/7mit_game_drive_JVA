@@ -89,6 +89,30 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
   - a 30-minute nap.
   Each shows its price.
 - **Siren button.** When you drive an ambulance, fire engine or police car, the Sirene button (or N) switches the siren and lights on and traffic gives way.
+- **Multiplayer (real time).** Choose "Multiplayer" in the planner and pick a username (no login).
+  - **Spawn:** every player starts at GT Semanggi (Tol Dalam Kota).
+  - **Connection:** the game connects to server.7mit (the 7MIT Supabase project, Realtime over WebSocket). Players are exchanged as road + km + direction + lane, so you see the others on your own copy of the road, in their vehicle, colours and plates, with a name tag. Everyone also shows on the mini-map.
+  - **Panel:** lists who is online and has a text chat (Enter to type).
+  - **Voice chat:** goes over WebRTC (one link per player, signalled through the same channel). Press Suara to hear others and Mic to talk; others sound louder when they are close.
+  - **Limits:** no TURN server, so a few strict networks may not connect for voice. The free Realtime plan suits small groups (about 20 players).
+- **Vehicle mods.** In the planner under "Modifikasi kendaraan":
+  - paint (swatches or any colour);
+  - rim colour;
+  - window tint (clear, 40 %, 80 %);
+  - rear spoiler;
+  - lowered suspension;
+  - sport stripes;
+  - your own number plate and plate type.
+  Mods are saved and other players see them too.
+- **Indonesian number plates.** Plates follow the real format: region code, number and letters (e.g. "B 1234 SIM"), with the expiry month · year below and a border. The colour follows the category:
+  - white with black text: private;
+  - yellow: public transport (taxis, angkot, buses, trucks, tow trucks);
+  - red: government (dinas, e.g. fire engines);
+  - black: Polri;
+  - blue: diplomatic corps ("CD …");
+  - green: free-trade zone;
+  - white with a blue strip: electric vehicles.
+  Region codes follow where a vehicle appears: A, B, F, T, D, Z, E, G, R, AA, H, K, AB, AD, AE, AG, S, L, W, N, P, M.
 - **Mirrors (spion).** Working mirrors: rear-facing cameras shown mirror-reversed. In the chase view there is the interior mirror at the top (looking out through the rear window); in the cockpit view also the left and right door mirrors. Toggle with V or the Spion button.
 - **Full screen.** The "Layar penuh" button (or F) switches to full screen and, on phones, tries to lock landscape. It is hidden where the browser does not support it.
 - **Horn.** Hold K or the Klakson button. Drivers ahead in your lane move over when they can.

@@ -367,6 +367,23 @@
   @media (max-width:600px) and (orientation:portrait){ #res{font-size:8.5px;gap:6px} #res .bar{width:26px} }
   @media (max-height:500px) and (orientation:landscape){ #res{font-size:8px;gap:4px;flex-wrap:nowrap;overflow:hidden} #res .bar{width:20px} #res span:nth-child(3){display:none} }
   @media (max-height:380px) and (orientation:landscape){ #res{display:none} }
+  #modbox summary{cursor:pointer;font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+  .modgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px;margin-top:8px;font-size:12px}
+  .modgrid label{display:grid;gap:4px} .modgrid label.chk{display:flex;gap:6px;align-items:center}
+  .swatches{display:flex;gap:4px;flex-wrap:wrap} .swatches button{width:22px;height:22px;border:2px solid var(--color-text);cursor:pointer;padding:0}
+  .swatches button[aria-pressed="true"]{outline:3px solid var(--color-accent);outline-offset:1px}
+  #m-paint{width:44px;height:26px;padding:0;border:2px solid var(--color-text)}
+  #mpbox{position:fixed;left:12px;top:42%;width:min(300px,calc(100vw - 24px));z-index:4;font-size:12px;padding:8px;display:grid;gap:6px}
+  #mpbox[hidden]{display:none}
+  .mp-head{display:flex;gap:6px;align-items:center;flex-wrap:wrap} .mp-head .dbtn{min-height:26px;padding:3px 7px;font-size:11px}
+  #mp-stat{opacity:.75;flex:1}
+  #mp-list{font-size:11px;opacity:.85;max-height:44px;overflow:auto}
+  #mp-log{max-height:130px;overflow:auto;display:grid;gap:2px}
+  #mp-log .sys{opacity:.6;font-style:italic}
+  #mp-form{display:flex;gap:6px} #mp-form .input{flex:1;min-width:0;padding:5px 7px}
+  #mpbox.min #mp-body{display:none}
+  @media (max-width:600px) and (orientation:portrait){ #mpbox{top:auto;bottom:250px} #mp-log{max-height:70px} }
+  @media (max-height:500px) and (orientation:landscape){ #mpbox{top:8px;left:auto;right:12px;width:240px} #mp-log{max-height:60px} #mp-list{display:none} }
 </style>
 <script type="importmap">
 {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
@@ -423,6 +440,14 @@
   </div>
   <div id="toast" class="panel" role="status" aria-live="polite"></div>
   <button id="resume" hidden>Lanjut perjalanan →</button>
+  <div id="mpbox" class="panel" hidden aria-label="Multiplayer">
+    <div class="mp-head"><b>Multiplayer</b> <span id="mp-stat">—</span>
+      <button id="mp-voice" class="dbtn" aria-pressed="false" title="Dengar suara pemain lain">Suara</button>
+      <button id="mp-mic" class="dbtn" aria-pressed="false" title="Mikrofon (bicara)">Mic</button>
+      <button id="mp-min" class="dbtn" title="Kecilkan">–</button></div>
+    <div id="mp-body"><div id="mp-list"></div><div id="mp-log" aria-live="polite"></div>
+      <form id="mp-form" autocomplete="off"><input id="mp-in" class="input" maxlength="200" placeholder="Ketik pesan… (Enter)"><button class="dbtn">Kirim</button></form></div>
+  </div>
 
   <div id="drive">
     <div class="mini">
@@ -460,6 +485,19 @@
       <div class="field"><label>Jenis jalan (rute dan navigasi Peta)</label><div id="modesel" class="chips"></div></div>
       <div class="field" id="presets-field"><label>Rute cepat</label><div id="presets" class="chips"></div></div>
       <div class="field"><label>Kendaraan</label><div id="vehsel" class="chips"></div></div>
+      <details class="field" id="modbox"><summary>Modifikasi kendaraan</summary>
+        <div class="modgrid">
+          <label>Warna cat <span id="paintsel" class="swatches"></span><input type="color" id="m-paint" aria-label="Warna cat bebas"></label>
+          <label>Warna pelek <span id="rimsel" class="swatches"></span></label>
+          <label>Kaca film <select id="m-tint" class="input"><option value="0">Bening</option><option value="1">Sedang (40%)</option><option value="2">Gelap (80%)</option></select></label>
+          <label>Plat nomor <input id="m-plate" class="input" maxlength="12" placeholder="B 1234 SIM"></label>
+          <label>Jenis plat <select id="m-platecat" class="input"></select></label>
+          <label class="chk"><input type="checkbox" id="m-spoiler"> Spoiler belakang</label>
+          <label class="chk"><input type="checkbox" id="m-low"> Ceper (suspensi rendah)</label>
+          <label class="chk"><input type="checkbox" id="m-stripe"> Striping sport</label>
+        </div>
+      </details>
+      <div class="field" id="mp-field" hidden><label for="m-name">Nama pemain (multiplayer, tanpa login)</label><input id="m-name" class="input" maxlength="16" placeholder="mis. Raka_7MIT"></div>
       <div id="preview"></div>
       <button id="go">Mulai mengemudi →</button>
       <p class="help">Lalu lintas lajur kiri. Kemudi manual itu bebas: tahan ← / → untuk menyetir ke mana saja, termasuk bahu jalan, lajur lawan di jalan nasional, atau lajur yang ditutup. Tahan rem saat berhenti untuk mundur. Untuk keluar, setir ke kiri ke ramp saat papan EXIT terlihat (berlaku juga di simpang susun dan rest area); di jalan nasional, setir ke kiri di persimpangan untuk belok. Perjalanan berlanjut dari jalan yang Anda ambil. Mode Keliling bebas tidak punya tujuan: pilih arah di panel tiap simpang, atau buka Peta (M) untuk navigasi ke kota, gerbang tol atau simpang mana saja. Pelanggaran dan tabrakan tetap dicatat. Autopilot selalu mengikuti rute dan aturan: berhenti di gerbang tol dan lampu merah, patuh batas kecepatan, truk dan bus di lajur kiri.</p>
