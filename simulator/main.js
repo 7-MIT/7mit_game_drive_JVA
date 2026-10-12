@@ -2215,7 +2215,9 @@ function mpStatus(t){ $('mp-stat').textContent = t; }
 function mpLine(txt, cls){ const d = document.createElement('div'); d.textContent = txt; if (cls) d.className = cls; const L = $('mp-log'); L.append(d); while (L.children.length > 60) L.firstChild.remove(); L.scrollTop = L.scrollHeight; }
 function mpMe(){ return {name: mpName(), type: PLR ? PLR.type : cfg.veh, mod: MODS()}; }
 async function mpConnect(){
-  if (mp.on) return; mp.on = true; mp.id = mp.id || (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : Math.random().toString(36).slice(2) + Date.now().toString(36)).slice(0, 12);
+  if (mp.on) return; mp.on = true;
+  if (!cfg.mpId || !/^[a-z0-9]{6,40}$/i.test(cfg.mpId)) { cfg.mpId = (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : Math.random().toString(36).slice(2) + Date.now().toString(36)).slice(0, 12); saveCfg(); }
+  mp.id = cfg.mpId;
   $('mpbox').hidden = false; mpStatus('Menghubungkan ke server.7mit…'); mpLine(`Anda: ${mpName()} · mulai di GT Semanggi`, 'sys');
   let ch;
   if (window.__mpFake) ch = mp.fake = window.__mpFake(mp);                 // test transport
@@ -2223,6 +2225,8 @@ async function mpConnect(){
       mp.sb = createClient(MP_URL, MP_KEY, {realtime: {params: {eventsPerSecond: 20}}}); ch = mp.sb.channel('tj-world', {config: {broadcast: {self: false}, presence: {key: mp.id}}}); }
     catch (e) { mpStatus('Gagal terhubung (periksa internet)'); mp.on = false; return; } }
   mp.ch = ch;
+  const pres = await mpPresence('join'); if (pres && pres.banned) { mp.on = false; mpKicked(true, pres.reason); return; }
+  ch.on('broadcast', {event: 'kickhint'}, ({payload}) => { if (payload && payload.id === mp.id) mpCheckKick(); });
   ch.on('broadcast', {event: 'st'}, ({payload}) => mpState(payload));
   ch.on('broadcast', {event: 'chat'}, ({payload}) => { if (payload && payload.id !== mp.id) mpLine(`${mpEsc(payload.name)}: ${mpEsc(payload.text)}`); });
   ch.on('broadcast', {event: 'rtc'}, ({payload}) => mpRtc(payload));
@@ -2265,6 +2269,7 @@ function mpDrop(id){ const p = mp.peers.get(id); if (!p) return; mpModel(p, null
 // where is my car, in shared terms
 function mpTick(dt){
   if (!mp.ready || !PLR || !EV.length) return; if ((mp.srvT = (mp.srvT || 0) - dt) < 0) { mp.srvT = 60; if (!mp.admin) srvPull(); }
+  if ((mp.kickT = (mp.kickT ?? 30) - dt) < 0) { mp.kickT = 30; mpCheckKick(); }
   if ((mp.sendT -= dt) > 0) return; mp.sendT = 0.25;
   const u = foot ? foot.u : (PLR.rp ? PLR.rp.sd*PLR.p : uOfV(PLR)), i = clamp(evAt(u), 0, EV.length - 2), a = EV[i], b = EV[i + 1], ll = latLonAt(u);
   mp.ch.send({type: 'broadcast', event: 'st', payload: {id: mp.id, name: mpName(), type: PLR.type, c: a.cNext, km: +kmAt(u).toFixed(4), dir: (Math.sign(b.km - a.kmOut) || 1)*(PLR.sd || 1),
@@ -2420,8 +2425,8 @@ function makePeace(){ const o = peaceTarget; if (!o || !o.angry) return; const a
 // ---------- multiplayer server settings: one set of weather / time / road settings for everyone, changed only by the admin ----------
 // Stored in server.7mit (table drive7_server); the admin PIN is checked by the server (function drive7_set_settings).
 const SRV_KEYS = ['den', 'weather', 'roadStyle', 'tod', 'tspd', 'lanes', 'close:1', 'close:-1', 'cf', 'cfk', 'ovl', 'scale'];
-// in multiplayer an ordinary player cannot change any setting; only the personal view settings (camera, sound, HUD) stay free
-const MP_FREE = ['cam', 'sound', 'clean'];
+// in multiplayer an ordinary player cannot change any setting; only personal ones (camera, sound, HUD, steering aids) stay free
+const MP_FREE = ['cam', 'sound', 'clean', 'autoSteer', 'steerAssist'];   // personal: kept on this device, never sent to the server
 const srvLocked = id => mp.on && !mp.admin && !MP_FREE.includes(id);
 function srvCollect(){ return {den: cfg.den, weather: cfg.weather, roadStyle: cfg.roadStyle, lanes: cfg.lanes, closed: cfg.closed, cf: cfg.cf, cfk: cfg.cfk, ovl: cfg.ovl, scale: cfg.scale,
   clock: {h: +gameH.toFixed(3), t: Date.now(), spd: +cfg.tspd || 0}}; }
@@ -2448,6 +2453,46 @@ async function srvAdminCheck(pin){
     if (data === true) { mp.admin = true; mp.adminPin = pin; toast('Mode admin server aktif: perubahan berlaku untuk semua pemain'); mpLine('Anda masuk sebagai admin server', 'sys'); renderUI(); }
     else toast('PIN salah (atau terlalu banyak percobaan, tunggu 10 menit)', 'bad'); } catch (e) { toast('Gagal memeriksa PIN', 'bad'); }
 }
+
+// ---------- kick & ban (admin): presence is recorded by the server (name, IP, device, OS, browser) ----------
+function devInfo(){ const ua = navigator.userAgent || '', touch = navigator.maxTouchPoints > 1;
+  const os = /iPad/.test(ua) || (/Macintosh/.test(ua) && touch) ? 'iPadOS' : /iPhone|iPod/.test(ua) ? 'iOS' : /Android/.test(ua) ? 'Android' : /Windows/.test(ua) ? 'Windows' : /CrOS/.test(ua) ? 'ChromeOS' : /Mac OS X|Macintosh/.test(ua) ? 'macOS' : /Linux/.test(ua) ? 'Linux' : 'Lainnya';
+  const browser = /Edg\//.test(ua) ? 'Edge' : /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /OPR\//.test(ua) ? 'Opera' : /Firefox\//.test(ua) ? 'Firefox' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Lainnya';
+  const device = os === 'iPadOS' || (/Android/.test(ua) && !/Mobile/.test(ua)) ? 'Tablet' : os === 'iOS' || /Mobile/.test(ua) ? 'HP' : 'Desktop/Laptop';
+  return {device, os, browser}; }
+async function mpPresence(action){ if (!mp.sb || !mp.sb.functions) return {ok: true};
+  try { const {data, error} = await mp.sb.functions.invoke('drive7-presence', {body: {action, id: mp.id, name: mpName(), ...devInfo()}}); return error ? {ok: true} : (data || {ok: true}); } catch (e) { return {ok: true}; } }
+function mpKicked(banned, reason){ mpLeave(); toast(banned ? `Anda diblokir dari server multiplayer${reason ? ': ' + reason : ''}` : 'Anda dikeluarkan dari multiplayer oleh admin', 'bad');
+  cfg.trip = 'free'; saveCfg(); setTimeout(openPlanner, 600); }
+async function mpCheckKick(){ if (!mp.on || !mp.sb) return; const r = await mpPresence('check'); if (r && (r.kicked || r.banned)) mpKicked(!!r.banned, r.reason); }
+// admin panel
+const fmtT = t => { try { return new Date(t).toLocaleString('id-ID', {hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short'}); } catch (e) { return ''; } };
+async function admLoad(){
+  if (!mp.admin || !mp.sb) return; const pl = $('adm-players'), bl = $('adm-bans'); pl.textContent = 'Memuat…'; bl.textContent = '';
+  const [{data: players}, {data: bans}] = await Promise.all([mp.sb.rpc('drive7_admin_players', {p_pin: mp.adminPin}), mp.sb.rpc('drive7_admin_bans', {p_pin: mp.adminPin})]).catch(() => [{}, {}]);
+  pl.textContent = ''; bl.textContent = '';
+  const online = new Set([...mp.peers.keys(), mp.id]);
+  for (const p of players || []) { const row = document.createElement('div'); row.className = 'adm-row'; const info = document.createElement('div');
+    const b = document.createElement('b'); b.textContent = `${p.name || '(tanpa nama)'}${p.player_id === mp.id ? ' (Anda)' : ''}${online.has(p.player_id) ? ' · online' : ''}`;
+    const sm = document.createElement('small'); sm.textContent = `${p.device || '?'} · ${p.os || '?'} · ${p.browser || '?'} · IP ${p.ip || '?'} · terakhir ${fmtT(p.last_seen)}`;
+    const ua = document.createElement('small'); ua.textContent = p.user_agent || ''; ua.style.opacity = '.5'; info.append(b, sm, ua);
+    const acts = document.createElement('div'); acts.className = 'acts';
+    if (p.player_id !== mp.id) for (const [label, mins, bad] of [['Kick', null, false], ['Ban 1 jam', 60, true], ['Ban permanen', 0, true]]) {
+      const x = document.createElement('button'); x.textContent = label; if (bad) x.className = 'bad';
+      x.onclick = async () => { if (mins !== null && !confirm(`${label} untuk ${p.name || p.player_id}?`)) return;
+        const r = mins === null ? await mp.sb.rpc('drive7_admin_kick', {p_pin: mp.adminPin, p_player: p.player_id}) : await mp.sb.rpc('drive7_admin_ban', {p_pin: mp.adminPin, p_player: p.player_id, p_minutes: mins, p_reason: 'Diblokir admin'});
+        if (r && r.data) { mp.ch.send({type: 'broadcast', event: 'kickhint', payload: {id: p.player_id}}); toast(`${label}: ${p.name || p.player_id}`); admLoad(); } else toast('Gagal (PIN?)', 'bad'); };
+      acts.append(x); }
+    row.append(info, acts); pl.append(row); }
+  if (!(players || []).length) pl.textContent = 'Belum ada pemain.';
+  for (const bn of bans || []) { const row = document.createElement('div'); row.className = 'adm-row'; const info = document.createElement('div');
+    const b = document.createElement('b'); b.textContent = bn.name || bn.player_id || bn.ip; const sm = document.createElement('small'); sm.textContent = `IP ${bn.ip || '?'} · ${bn.until ? 'sampai ' + fmtT(bn.until) : 'permanen'}${bn.reason ? ' · ' + bn.reason : ''}`; info.append(b, sm);
+    const acts = document.createElement('div'); acts.className = 'acts'; const x = document.createElement('button'); x.textContent = 'Buka blokir';
+    x.onclick = async () => { const r = await mp.sb.rpc('drive7_admin_unban', {p_pin: mp.adminPin, p_ban: bn.id}); if (r && r.data) { toast('Blokir dibuka'); admLoad(); } else toast('Gagal', 'bad'); };
+    acts.append(x); row.append(info, acts); bl.append(row); }
+  if (!(bans || []).length) bl.textContent = 'Tidak ada.';
+}
+function admOpen(){ $('adm').hidden = false; admLoad(); }
 
 // ---------- crash effects: debris and glass, sparks, smoke and fire, dents, skid marks ----------
 // Particles live in road coordinates (u, x, y) so they stay put as the world scrolls; drawn with instanced meshes.
@@ -3511,7 +3556,9 @@ function renderUI(){
   }
   if (mp.on) { const l2 = document.createElement('div'); l2.className = 'lbl'; l2.textContent = 'Pengaturan server';
     const c2 = document.createElement('div'); c2.className = 'cell'; const b2 = btn(mp.admin ? 'Admin aktif · keluar' : 'Masuk admin (PIN)', mp.admin);
-    b2.onclick = () => { if (mp.admin) { mp.admin = false; mp.adminPin = null; renderUI(); toast('Keluar dari mode admin'); } else srvAdminLogin(); }; c2.append(b2); ctrl.append(l2, c2); }
+    b2.onclick = () => { if (mp.admin) { mp.admin = false; mp.adminPin = null; renderUI(); toast('Keluar dari mode admin'); } else srvAdminLogin(); }; c2.append(b2);
+    if (mp.admin) { const b3 = btn('Kelola pemain (kick / ban)', false); b3.onclick = admOpen; c2.append(b3); }
+    ctrl.append(l2, c2); }
   const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = 'Rute';
   const cell = document.createElement('div'); cell.className = 'cell'; const b = btn('Ganti rute', false); b.onclick = () => openPlanner(); cell.append(b);
   ctrl.append(lbl, cell);
@@ -3688,6 +3735,7 @@ $('mp-min').onclick = () => { $('mpbox').classList.toggle('min'); $('mp-min').ti
 addEventListener('beforeunload', () => mpLeave());
 try { window.lucide && window.lucide.createIcons(); } catch (e) {}
 $('pin-form').onsubmit = e => { e.preventDefault(); srvAdminCheck($('pin-in').value); }; $('pin-close').onclick = () => { $('pin').hidden = true; };
+$('adm-close').onclick = () => { $('adm').hidden = true; }; $('adm-refresh').onclick = admLoad;
 $('peaceb').onclick = makePeace; $('svcb').onclick = openSvc; $('svc-close').onclick = () => { $('svc').hidden = true; }; $('towb').onclick = () => callTow();
 $('mirb').onclick = () => { cfg.mirror = cfg.mirror === false; saveCfg(); $('mirb').setAttribute('aria-pressed', cfg.mirror !== false ? 'true' : 'false'); toast(cfg.mirror !== false ? 'Spion menyala (kokpit: spion kiri, tengah, kanan)' : 'Spion dimatikan'); };
 $('mirb').setAttribute('aria-pressed', cfg.mirror !== false ? 'true' : 'false');

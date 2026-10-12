@@ -401,6 +401,11 @@
     .mini .dbtn .bl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
     .mini .dbtn svg.lucide{width:18px;height:18px} #mp-form .bl{display:none}
   }
+  .adm-list{display:grid;gap:6px;font-size:12px;max-height:40vh;overflow:auto}
+  .adm-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;border:2px solid var(--color-text);padding:6px 8px}
+  .adm-row small{display:block;opacity:.75;overflow-wrap:anywhere} .adm-row .acts{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+  .adm-row .acts button{font-size:11px;padding:4px 7px;cursor:pointer;border:2px solid var(--color-text);background:var(--color-bg)}
+  .adm-row .acts button.bad{background:var(--color-accent);color:#fff;border-color:var(--color-accent)}
 </style>
 <script type="importmap">
 {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
@@ -540,6 +545,18 @@
       <button id="pin-go"><i data-lucide="key-round"></i><span class="bl">Masuk</span></button>
       <p class="help" style="opacity:.75;font-size:12px">PIN diperiksa oleh server. Admin bisa mengatur cuaca, jam, lalu lintas dan kondisi jalan untuk semua pemain.</p>
     </form>
+  </div>
+</div>
+<div id="adm" class="dlg-back" hidden>
+  <div class="dlg panel" role="dialog" aria-labelledby="adm-title" style="width:min(760px,100%)">
+    <div class="dlg-head"><h2 id="adm-title">Kelola pemain</h2><button id="adm-close" class="x" aria-label="Tutup"><i data-lucide="x">×</i></button></div>
+    <div class="dlg-body">
+      <div style="display:flex;gap:8px;align-items:center"><b style="flex:1">Pemain (3 jam terakhir)</b><button id="adm-refresh" class="dbtn"><i data-lucide="refresh-cw"></i><span class="bl">Muat ulang</span></button></div>
+      <div id="adm-players" class="adm-list"></div>
+      <b>Diblokir (ban aktif)</b>
+      <div id="adm-bans" class="adm-list"></div>
+      <p class="help" style="opacity:.75;font-size:12px">Kick: keluar dari multiplayer (bisa masuk lagi setelah 3 menit). Ban: tidak bisa masuk dari IP dan perangkat itu sampai dibuka atau habis waktunya. Data IP dan perangkat hanya terlihat oleh admin.</p>
+    </div>
   </div>
 </div>
 <div id="done" class="dlg-back" hidden>
