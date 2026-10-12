@@ -387,8 +387,20 @@
   #mp-grip{cursor:grab;touch-action:none;user-select:none;font-size:16px;line-height:1;padding:2px 4px;opacity:.7}
   #mpbox.drag{cursor:grabbing;opacity:.92} #mpbox.drag #mp-grip{cursor:grabbing}
   #mpbox .mp-head b{cursor:grab;touch-action:none;user-select:none}
-  @media (max-width:1180px){ .keys{display:none} }
+  @media (max-width:1560px){ .keys{display:none} }
   @media (max-height:720px){ #mpbox{top:30%} #mp-log{max-height:72px} #mp-list{max-height:28px} }
+  /* icons */
+  svg.lucide{width:16px;height:16px;flex:none;stroke-width:2.2}
+  .dbtn:has(svg.lucide), #toggle, #go, #resume{display:inline-flex;align-items:center;gap:6px}
+  .mini .dbtn{gap:5px} .mini .dbtn svg.lucide{width:15px;height:15px}
+  #go svg.lucide, #resume svg.lucide{width:18px;height:18px}
+  .x svg.lucide{width:20px;height:20px} #mp-grip svg.lucide{width:16px;height:16px;vertical-align:middle}
+  /* narrow screens: the small buttons show only their icon, all in one row */
+  @media (max-width:900px), (max-height:500px) and (orientation:landscape){
+    .mini{flex-wrap:nowrap!important} .mini .dbtn{flex:1 1 0!important;min-width:0!important;justify-content:center!important;padding:6px 2px!important}
+    .mini .dbtn .bl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+    .mini .dbtn svg.lucide{width:18px;height:18px} #mp-form .bl{display:none}
+  }
 </style>
 <script type="importmap">
 {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
@@ -406,7 +418,7 @@
         <div id="route">—</div>
         <div class="sub"><span id="corr">—</span><span id="kmpost">KM —</span></div>
       </div>
-      <button id="toggle" aria-label="Pengaturan">Pengaturan</button>
+      <button id="toggle" aria-label="Pengaturan"><i data-lucide="settings"></i><span class="bl">Pengaturan</span></button>
     </div>
   </div>
   <div id="ctrl" class="panel"></div>
@@ -444,29 +456,29 @@
     </div>
   </div>
   <div id="toast" class="panel" role="status" aria-live="polite"></div>
-  <button id="resume" hidden>Lanjut perjalanan →</button>
+  <button id="resume" hidden><i data-lucide="play"></i><span class="bl">Lanjut perjalanan</span></button>
   <div id="mpbox" class="panel" hidden aria-label="Multiplayer">
-    <div class="mp-head"><span id="mp-grip" title="Tarik untuk memindahkan" aria-hidden="true">⠿</span><b>Multiplayer</b> <span id="mp-stat">—</span>
-      <button id="mp-voice" class="dbtn" aria-pressed="false" title="Dengar suara pemain lain">Suara</button>
-      <button id="mp-mic" class="dbtn" aria-pressed="false" title="Mikrofon (bicara)">Mic</button>
-      <button id="mp-min" class="dbtn" title="Kecilkan">–</button></div>
+    <div class="mp-head"><span id="mp-grip" title="Tarik untuk memindahkan" aria-hidden="true"><i data-lucide="grip-vertical">⠿</i></span><b>Multiplayer</b> <span id="mp-stat">—</span>
+      <button id="mp-voice" class="dbtn" aria-pressed="false" title="Dengar suara pemain lain" aria-label="Suara"><i data-lucide="headphones"></i><span class="bl">Suara</span></button>
+      <button id="mp-mic" class="dbtn" aria-pressed="false" title="Mikrofon (bicara)" aria-label="Mic"><i data-lucide="mic"></i><span class="bl">Mic</span></button>
+      <button id="mp-min" class="dbtn" title="Kecilkan"><i data-lucide="minus">–</i></button></div>
     <div id="mp-body"><div id="mp-list"></div><div id="mp-log" aria-live="polite"></div>
-      <form id="mp-form" autocomplete="off"><input id="mp-in" class="input" maxlength="200" placeholder="Ketik pesan… (Enter)"><button class="dbtn">Kirim</button></form></div>
+      <form id="mp-form" autocomplete="off"><input id="mp-in" class="input" maxlength="200" placeholder="Ketik pesan… (Enter)"><button class="dbtn" aria-label="Kirim"><i data-lucide="send"></i><span class="bl">Kirim</span></button></form></div>
   </div>
 
   <div id="drive">
     <div class="mini">
-      <button id="auto" class="dbtn" aria-pressed="false">Autopilot</button>
-      <button id="camb" class="dbtn">Kamera</button>
-      <button id="mapb" class="dbtn">Peta</button>
-      <button id="hudb" class="dbtn" aria-pressed="false" aria-label="HUD ringkas">HUD</button>
-      <button id="sirb" class="dbtn" aria-pressed="false" hidden title="Sirene (N)">Sirene</button>
-      <button id="hornb" class="dbtn" title="Klakson (K, tahan)">Klakson</button>
-      <button id="mirb" class="dbtn" aria-pressed="true" title="Spion (V)">Spion</button>
-      <button id="svcb" class="dbtn" hidden title="Layanan (L)">Layanan</button>
-      <button id="towb" class="dbtn" hidden title="Panggil derek (T)">Panggil derek</button>
-      <button id="walkb" class="dbtn" title="Keluar / masuk mobil (E)">Keluar mobil</button>
-      <button id="fsb" class="dbtn" aria-pressed="false" title="Layar penuh (F)">Layar penuh</button>
+      <button id="auto" class="dbtn" aria-pressed="false" aria-label="Autopilot"><i data-lucide="bot"></i><span class="bl">Autopilot</span></button>
+      <button id="camb" class="dbtn" aria-label="Kamera"><i data-lucide="camera"></i><span class="bl">Kamera</span></button>
+      <button id="mapb" class="dbtn" aria-label="Peta"><i data-lucide="map"></i><span class="bl">Peta</span></button>
+      <button id="hudb" class="dbtn" aria-pressed="false" aria-label="HUD ringkas"><i data-lucide="layout-dashboard"></i><span class="bl">HUD</span></button>
+      <button id="sirb" class="dbtn" aria-pressed="false" hidden title="Sirene (N)" aria-label="Sirene"><i data-lucide="siren"></i><span class="bl">Sirene</span></button>
+      <button id="hornb" class="dbtn" title="Klakson (K, tahan)" aria-label="Klakson"><i data-lucide="megaphone"></i><span class="bl">Klakson</span></button>
+      <button id="mirb" class="dbtn" aria-pressed="true" title="Spion (V)" aria-label="Spion"><i data-lucide="eye"></i><span class="bl">Spion</span></button>
+      <button id="svcb" class="dbtn" hidden title="Layanan (L)" aria-label="Layanan"><i data-lucide="store"></i><span class="bl">Layanan</span></button>
+      <button id="towb" class="dbtn" hidden title="Panggil derek (T)" aria-label="Panggil derek"><i data-lucide="truck"></i><span class="bl">Panggil derek</span></button>
+      <button id="walkb" class="dbtn" title="Keluar / masuk mobil (E)" aria-label="Keluar mobil"><i data-lucide="footprints"></i><span class="bl">Keluar mobil</span></button>
+      <button id="fsb" class="dbtn" aria-pressed="false" title="Layar penuh (F)" aria-label="Layar penuh"><i data-lucide="maximize"></i><span class="bl">Layar penuh</span></button>
     </div>
     <button id="lft" class="dbtn" aria-label="Setir ke kiri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"><path d="M15 5l-7 7 7 7"/></svg></button>
     <button id="rgt" class="dbtn" aria-label="Setir ke kanan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"><path d="M9 5l7 7-7 7"/></svg></button>
@@ -478,12 +490,12 @@
 
 <div id="plan" class="dlg-back" hidden>
   <div class="dlg panel" role="dialog" aria-labelledby="plan-title">
-    <div class="dlg-head"><h2 id="plan-title">Rencana perjalanan</h2><button id="plan-close" class="x" aria-label="Tutup">×</button></div>
+    <div class="dlg-head"><h2 id="plan-title">Rencana perjalanan</h2><button id="plan-close" class="x" aria-label="Tutup"><i data-lucide="x">×</i></button></div>
     <div class="dlg-body">
       <div class="field"><label>Jenis perjalanan</label><div id="tripsel" class="chips"></div></div>
       <div class="row2">
         <div class="field"><label for="from">Dari (gerbang tol / kota)</label><select id="from" class="input"></select></div>
-        <button id="swap" aria-label="Tukar asal dan tujuan">⇄</button>
+        <button id="swap" aria-label="Tukar asal dan tujuan"><i data-lucide="arrow-left-right">⇄</i></button>
         <div class="field" id="to-field"><label for="to">Ke (gerbang tol / kota)</label><select id="to" class="input"></select></div>
       </div>
       <div class="field" id="first-field"><label>Arah awal</label><div id="firstsel" class="chips"></div></div>
@@ -504,7 +516,7 @@
       </details>
       <div class="field" id="mp-field" hidden><label for="m-name">Nama pemain (multiplayer, tanpa login)</label><input id="m-name" class="input" maxlength="16" placeholder="mis. Raka_7MIT"></div>
       <div id="preview"></div>
-      <button id="go">Mulai mengemudi →</button>
+      <button id="go"><i data-lucide="play"></i><span class="bl">Mulai mengemudi</span></button>
       <p class="help">Lalu lintas lajur kiri. Kemudi manual itu bebas: tahan ← / → untuk menyetir ke mana saja, termasuk bahu jalan, lajur lawan di jalan nasional, atau lajur yang ditutup. Tahan rem saat berhenti untuk mundur. Untuk keluar, setir ke kiri ke ramp saat papan EXIT terlihat (berlaku juga di simpang susun dan rest area); di jalan nasional, setir ke kiri di persimpangan untuk belok. Perjalanan berlanjut dari jalan yang Anda ambil. Mode Keliling bebas tidak punya tujuan: pilih arah di panel tiap simpang, atau buka Peta (M) untuk navigasi ke kota, gerbang tol atau simpang mana saja. Pelanggaran dan tabrakan tetap dicatat. Autopilot selalu mengikuti rute dan aturan: berhenti di gerbang tol dan lampu merah, patuh batas kecepatan, truk dan bus di lajur kiri.</p>
     </div>
   </div>
@@ -512,7 +524,7 @@
 
 <div id="svc" class="dlg-back" hidden>
   <div class="dlg panel" role="dialog" aria-labelledby="svc-title">
-    <div class="dlg-head"><h2 id="svc-title">Layanan</h2><button id="svc-close" class="x" aria-label="Tutup">×</button></div>
+    <div class="dlg-head"><h2 id="svc-title">Layanan</h2><button id="svc-close" class="x" aria-label="Tutup"><i data-lucide="x">×</i></button></div>
     <div class="dlg-body">
       <p id="svc-stat" class="help" style="opacity:1;font-size:13px"></p>
       <div id="svc-list" class="svc-grid"></div>
@@ -544,9 +556,10 @@
     <p id="at-info"></p>
     <div class="actions" id="at-act"></div>
   </div>
-  <div class="at-zoom"><button id="at-in" class="dbtn" aria-label="Perbesar">+</button><button id="at-out" class="dbtn" aria-label="Perkecil">−</button><button id="at-me" class="dbtn" aria-label="Posisi saya">Saya</button></div>
+  <div class="at-zoom"><button id="at-in" class="dbtn" aria-label="Perbesar"><i data-lucide="plus">+</i></button><button id="at-out" class="dbtn" aria-label="Perkecil"><i data-lucide="minus">−</i></button><button id="at-me" class="dbtn" aria-label="Posisi saya">Saya</button></div>
 </div>
 
+<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
 <script type="module" src="main.js"></script>
 </body>
 </html>
