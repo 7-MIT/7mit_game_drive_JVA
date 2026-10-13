@@ -321,6 +321,8 @@ The cockpit camera now sits in a right-hand-drive interior:
 - a live instrument cluster: speed, gear, fuel and time;
 - A-pillars, headliner, centre console and the bonnet in the car's paint.
 
+- **On a motorbike** the cockpit camera is the rider's view instead: the scooter's front in its paint, a handlebar that turns with the front wheel, gloved hands on the grips, brake levers, round mirrors on stalks and a small digital panel (speed, gear, time, fuel). There is no roof or pillar, the rider sits in the middle, and the view leans into bends with the bike; only the two handlebar mirrors are shown.
+
 ### Body textures (liveries)
 Under Modifikasi, choose a pattern for the body in the paint colour and a second colour: Polos, Garis balap, Api, Kamuflase, Batik kawung, Karbon, Gradasi, Kotak balap or Polkadot.
 

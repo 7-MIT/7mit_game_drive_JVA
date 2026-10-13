@@ -1346,7 +1346,8 @@ function drawMirrors(dt){
   const g = v.g, fwd = headV, up = 1.25 + (v.rp && v.q ? v.q.h || 0 : 0) + (heavy(v) ? 1.3 : v.type === 'suv' || v.type === 'van' || v.type === 'angkot' ? 0.35 : 0);
   const right = tmpV2.set(-fwd.z, 0, fwd.x);
   const W = innerWidth, H = innerHeight, redraw = (mirN = (mirN + 1) % (QUAL.level >= 2 || MOBILE ? 3 : 2)) === 0;
-  for (const m of MIRRORS) { m.on = m.k === 'c' || camMode === 'cockpit'; m.frame.visible = m.face.visible = m.on; if (!m.on) continue;
+  const bikeView = camMode === 'cockpit' && PLR && PLR.type === 'moto';
+  for (const m of MIRRORS) { m.on = bikeView ? m.k !== 'c' : m.k === 'c' || camMode === 'cockpit'; m.frame.visible = m.face.visible = m.on; if (!m.on) continue;
     const side = m.k === 'l' ? -1 : m.k === 'r' ? 1 : 0, hw = (HW[v.type] || 0.92) + 0.15;
     m.cam.position.set(g.position.x + right.x*side*hw + fwd.x*(m.k === 'c' ? -0.2 : 0.6), up + (side ? -0.25 : 0.2), g.position.z + right.z*side*hw + fwd.z*(m.k === 'c' ? -0.2 : 0.6));
     m.cam.lookAt(m.cam.position.x - fwd.x*40 + right.x*side*6, up - (side ? 1.2 : 0.5), m.cam.position.z - fwd.z*40 + right.z*side*6);
@@ -4015,8 +4016,36 @@ function buildCockpit(){
   CKP = {g, wheel, cv, tex, hood, t: 0};
   if (!camera.parent) scene.add(camera); camera.add(g);
 }
-function drawCluster(v){
-  const x = CKP.cv.getContext('2d'), W = 512, H = 160, kmh = Math.round(Math.abs(v.vel)*3.6);
+// ---------- rider's view on a motorbike: handlebar (turning with the front wheel), gloved hands on the grips, mirrors on stalks,
+// a small digital panel, the front of the scooter in its paint; no roof or pillars, and the rider leans with the bike ----------
+let CKM = null;
+function buildMotoView(){
+  const g = new THREE.Group(), black = M(0x16171a, {roughness: 0.6}), grey = M(0x4a4d52, {roughness: 0.5}), chrome = M(0xc9ccd0, {metalness: 0.85, roughness: 0.25}), glove = M(0x1e2024, {roughness: 0.9}), sleeve = M(0x2a3d5c, {roughness: 0.95});
+  const body = new THREE.MeshStandardMaterial({color: 0xec3013, roughness: 0.35, metalness: 0.35});
+  const box = (w, h, d, mat, x, y, z, par = g) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); par.add(m); return m; };
+  // the front of the scooter below the bar: the leg shield top and the headlamp cowl in the bike's colour
+  const cowl = new THREE.Mesh(new THREE.SphereGeometry(0.3, 24, 12, 0, Math.PI*2, 0, Math.PI/2), body); cowl.scale.set(1.15, 0.55, 1.5); cowl.position.set(0, -0.47, -0.8); g.add(cowl);
+  box(0.62, 0.06, 0.34, black, 0, -0.47, -0.52).rotation.x = 0.25;                                   // the dark top of the leg shield
+  // the steering part: everything that turns with the front wheel
+  const bar = new THREE.Group(); bar.position.set(0, -0.3, -0.62); g.add(bar);
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.014, 0.66, 10), chrome); tube.rotation.z = Math.PI/2; bar.add(tube);
+  const panelH = box(0.22, 0.085, 0.04, black, 0, 0.075, -0.035, bar); panelH.rotation.x = -0.35;           // instrument housing
+  for (const s2 of [-1, 1]) {
+    const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.13, 12), black); grip.rotation.z = Math.PI/2; grip.position.set(s2*0.3, 0, 0); bar.add(grip);
+    box(0.09, 0.012, 0.03, grey, s2*0.23, 0.02, 0.05, bar).rotation.y = s2*0.25;                      // brake levers
+    const st = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.26, 8), chrome); st.position.set(s2*0.24, 0.12, -0.03); st.rotation.z = -s2*0.35; bar.add(st);   // mirror stalks
+    const mh = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.02, 20), black); mh.rotation.x = Math.PI/2 - 0.2; mh.position.set(s2*0.29, 0.24, -0.03); bar.add(mh);
+    const glass = new THREE.Mesh(new THREE.CircleGeometry(0.052, 20), M(0x9fb3c4, {metalness: 0.9, roughness: 0.1})); glass.position.set(s2*0.29, 0.24, -0.019); glass.rotation.x = -0.2; bar.add(glass);
+    // gloved hand on the grip, the sleeve going back to the rider
+    const hand = new THREE.Mesh(new THREE.SphereGeometry(0.045, 14, 10), glove); hand.scale.set(1.5, 1, 1.15); hand.position.set(s2*0.29, 0.02, 0.01); bar.add(hand);
+    const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 0.5, 12), sleeve); arm.position.set(s2*0.36, -0.42, -0.38); arm.rotation.set(1.05, 0, -s2*0.25); g.add(arm); }
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 160; const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
+  const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.2, 0.0625), new THREE.MeshBasicMaterial({map: tex, toneMapped: false})); scr.position.set(0, 0, 0.021); panelH.add(scr);
+  g.traverse(o => { o.frustumCulled = false; });
+  CKM = {g, bar, cv, tex, body, t: 0}; if (!camera.parent) scene.add(camera); camera.add(g);
+}
+function drawCluster(v, R = CKP){
+  const x = R.cv.getContext('2d'), W = 512, H = 160, kmh = Math.round(Math.abs(v.vel)*3.6);
   x.fillStyle = '#07090b'; x.fillRect(0, 0, W, H); x.strokeStyle = '#2b3138'; x.lineWidth = 4; x.strokeRect(2, 2, W - 4, H - 4);
   // speed arc
   x.lineWidth = 10; x.strokeStyle = '#1d2329'; x.beginPath(); x.arc(110, 120, 80, Math.PI, 2*Math.PI); x.stroke();
@@ -4027,13 +4056,16 @@ function drawCluster(v){
   const f = WAL.fuel != null ? clamp(WAL.fuel/tankOf(), 0, 1) : 1; x.fillStyle = '#9aa4ad'; x.font = `600 18px ${SIGN_FONT}`; x.fillText('BBM', 230, 110);
   x.fillStyle = '#1d2329'; x.fillRect(280, 96, 200, 16); x.fillStyle = f < 0.15 ? '#ec3013' : '#46c37b'; x.fillRect(280, 96, 200*f, 16);
   x.fillStyle = '#9aa4ad'; x.fillText(`${String(Math.floor(gameH)).padStart(2, '0')}:${String(Math.floor(gameH%1*60)).padStart(2, '0')}`, 330, 70);
-  CKP.tex.needsUpdate = true;
+  R.tex.needsUpdate = true;
 }
 function updateCockpit(dt){
-  const on = camMode === 'cockpit' && !!PLR && !foot && !tow;
-  if (!CKP) { if (!on) return; buildCockpit(); }
-  CKP.g.visible = on; const near = on ? 0.05 : 0.3; if (camera.near !== near) { camera.near = near; camera.updateProjectionMatrix(); }
-  if (!on) return;
+  const on = camMode === 'cockpit' && !!PLR && !foot && !tow, moto = on && PLR.type === 'moto';
+  if (moto && !CKM) buildMotoView(); if (CKM) CKM.g.visible = moto;
+  const near = on ? 0.05 : 0.3; if (camera.near !== near) { camera.near = near; camera.updateProjectionMatrix(); }
+  if (!CKP && on && !moto) buildCockpit(); if (CKP) CKP.g.visible = on && !moto;
+  if (moto) { CKM.bar.rotation.y = clamp(-(PLR.stv || PLR.steer || 0)*1.6, -0.6, 0.6); if (CKM.paint !== PLR.paint) { CKM.paint = PLR.paint; CKM.body.color.setHex(PLR.paint || 0xec3013); }
+    if ((CKM.t -= dt) <= 0) { CKM.t = 0.15; drawCluster(PLR, CKM); } return; }
+  if (!on || !CKP) return;
   CKP.wheel.rotation.z = clamp((PLR.steer || 0)*6, -3, 3);
   if (CKP.paint !== PLR.paint) { CKP.paint = PLR.paint; CKP.hood.material.color.setHex(PLR.paint || 0xec3013); }
   if ((CKP.t -= dt) <= 0) { CKP.t = 0.15; drawCluster(PLR); }
@@ -4057,8 +4089,8 @@ function updateCam(dt){
     camera.position.lerp(want, Math.min(1, dt*5)); camera.position.x += shk;
     camera.lookAt(pPos.x + headV.x*20, 1.4 + qh, pPos.z + headV.z*20); camera.fov = fovFor(58);
   } else if (camMode === 'cockpit') {
-    const h = (v.type === 'bus' || v.type === 'truck') ? 2.6 : v.type === 'suv' ? 1.6 : 1.3;
-    camera.position.copy(pPos).addScaledVector(headV, v.len*0.05); camera.position.y = h + qh; camera.position.x += v.sd*0.36 + shk;   // the driver sits on the right
+    const mo = v.type === 'moto', h = (v.type === 'bus' || v.type === 'truck') ? 2.6 : v.type === 'suv' ? 1.6 : mo ? 1.42 : 1.3;
+    camera.position.copy(pPos).addScaledVector(headV, mo ? -0.15 : v.len*0.05); camera.position.y = h + qh; camera.position.x += (mo ? 0 : v.sd*0.36) + shk;   // the driver sits on the right; a rider in the middle
     camera.lookAt(camera.position.x + headV.x*30, camera.position.y - 0.6, camera.position.z + headV.z*30); camera.fov = fovFor(66);
   } else if (camMode === 'drone') {
     const pt = camera.aspect < 1, want = new THREE.Vector3().copy(pPos).addScaledVector(headV, pt ? -38 : -48); want.y = (pt ? 24 : 32) + Math.sin(clock*0.2)*3; want.x += Math.sin(clock*0.15)*(pt ? 8 : 18);
@@ -4071,7 +4103,8 @@ function updateCam(dt){
   } else { controls.target.lerp(pPos, Math.min(1, dt*4)); controls.update(); camera.fov = fovFor(50); }
   // up and down the hills: the camera rides the road's height where it stands and looks at the road's height where it looks
   if (camMode !== 'orbit' && camMode !== 'dbg') { camera.getWorldDirection(tmpV); const L = 30, tx = camera.position.x + tmpV.x*L, ty = camera.position.y + tmpV.y*L, tz = camera.position.z + tmpV.z*L;
-    camDY = roadY(camera.position.z); camera.position.y += camDY; camera.lookAt(tx, ty + roadY(tz), tz); }
+    camDY = roadY(camera.position.z); camera.position.y += camDY; camera.lookAt(tx, ty + roadY(tz), tz);
+    if (camMode === 'cockpit' && PLR && PLR.type === 'moto' && !foot) camera.rotateZ((PLR.rol || 0)*0.75*(PLR.sd || 1)); }
   camera.updateProjectionMatrix();
   camera.getWorldDirection(tmpV); focus.copy(camera.position).addScaledVector(tmpV, 50); focus.y = roadY(focus.z);
   sun.target.position.copy(focus); sun.position.copy(focus).add(sunOff);
