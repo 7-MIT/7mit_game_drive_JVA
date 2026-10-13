@@ -210,6 +210,7 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
 | `main.js` | 3D world, traffic simulation, player, cameras, UI wiring |
 | `phone.js` | The in-game phone: lock and home screens, apps, calls and SMS over the multiplayer channel |
 | `fly.js` | Mode Terbang: the flight simulator over Java and Madura (terrain, roads, airports, aircraft, flight model, HUD) |
+| `osm.js` | Real roads from OpenStreetMap, fetched live from the Overpass API and cached in the browser |
 | `airports.js` | The airports of Java and Madura: real runways from OurAirports, terminal layouts |
 | `terbang/index.html` | The address /terbang: loads the game straight into Mode Terbang |
 | `network.js` | Toll network data (roads, exits, KM, coordinates, lanes, limits), routing, Java outline for the mini-map |
@@ -300,6 +301,16 @@ A phone of your own with a full touch interface: a lock screen (swipe up), a hom
 - **Kamera & Galeri:** take pictures of the road, view them, save them or set one as wallpaper.
 - **Cuaca, Musik, Pengaturan:** change the weather and time; the music player (search, links, recently played, now playing); customise the phone: wallpaper, case colour, accent colour, dark or light theme, icon shape, the name on the lock screen, a new number.
 - Using the phone while driving fast by hand shows a warning (as in real life it is dangerous and not allowed): pull over or switch on Autopilot.
+
+### Real roads from OpenStreetMap
+The maps draw the real roads of Java and Madura from **OpenStreetMap**, downloaded live in the browser from the Overpass API (overpass-api.de, with overpass.kumi.systems, overpass.private.coffee and maps.mail.ru as fallbacks) a few seconds after the game starts:
+
+- toll roads (`highway=motorway`) and national / arterial roads (`trunk`) for the whole island at once; provincial (`primary`) and regency roads (`secondary`) per 1° area when a map is zoomed in;
+- simplified (about 12–20 m) and kept in the browser cache for 14 days, so it downloads once; Pengaturan in the phone shows the status and can reload it;
+- used by the phone map (Peta), the full map (M), the mini map and the roads seen from the air in Mode Terbang (with the name of the road below the aircraft); the car and the route line are put onto the matching real road (toll on toll roads, national roads on trunk/primary);
+- toll roads that are only planned are still drawn dashed from the game's own data; without internet, or if every server is busy, the maps fall back to the game's own road data.
+
+The 3D world you drive in still follows the game's own network (exits, KM posts, lanes, junctions), whose shapes come from the same real places; the maps show the road exactly as OpenStreetMap has it. Map data © OpenStreetMap contributors (ODbL), shown on every map.
 
 ### Mode Terbang: flight simulator (/terbang)
 Open it at **/terbang**, with the Terbang button under Pengaturan, from the route planner, or with the Terbang app on the phone. It is a flight simulator over all of Java and Madura:

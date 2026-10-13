@@ -11,6 +11,7 @@ import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 import {mergeGeometries, toCreasedNormals} from 'three/addons/utils/BufferGeometryUtils.js';
 import {initPhone, phIcon} from './phone.js';
 import {initFly} from './fly.js';
+import {initOSM} from './osm.js';
 import {COAST, altAt, ALT_KM, CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, walkFree, choicesAt, edgesFrom, turnDeg, fmtKm, nodeLabel, JAVA, MADURA, corrGeo, corrLL, RULES} from './network.js';
 
 const MOBILE = matchMedia('(pointer:coarse)').matches || innerWidth < 700;
@@ -21,6 +22,12 @@ const DEF = {mode:'mix', gfx:'auto', cam:'chase', den:1, tod:'day', lanes:'auto'
 // tutorial mode (the /tutorial page, or ?tutorial): a fixed short drive with a coach, the player's own settings left untouched
 const FLYPAGE = !!window.TJ_FLY || /\/terbang\/?(index\.html)?$/.test(location.pathname) || new URLSearchParams(location.search).has('terbang');
 const TUT = !!window.TJ_TUTORIAL || /\/tutorial\/?(index\.html)?$/.test(location.pathname) || new URLSearchParams(location.search).has('tutorial');
+// real roads from OpenStreetMap (osm.js), loaded a moment after the start
+const OSM = initOSM({onUpdate: st => { OSNAP.clear(); drawMap.cache = null; try { drawMap(); reqAtlas(); } catch (e) {} if (FLY) FLY.roadsChanged();
+    if (st === 'ok') toast(`Data jalan OpenStreetMap dimuat: ${OSM.S.n.toLocaleString('id-ID')} ruas tol & arteri (${Math.round(OSM.S.km).toLocaleString('id-ID')} km)`);
+    else if (st === 'fail') toast('Data OpenStreetMap belum bisa dimuat (internet/server sibuk) · memakai data bawaan', 'warn'); }});
+setTimeout(() => OSM.loadBase(), 2500);
+const OSNAP = new Map(), OSM_KINDS = {t: ['t'], n: ['n', 'p'], a: ['s', 'p', 'n', 't']};
 let cfg; try { cfg = {...DEF, ...JSON.parse(localStorage.getItem('tj_cfg1') || '{}')}; } catch(e) { cfg = {...DEF}; }
 if (TUT) cfg = {...DEF, gfx: cfg.gfx, sound: cfg.sound, veh: 'car', mod: cfg.mod, den: 0.7, tod: 'day', gh: 9, cam: 'chase', auto: false, trip: 'route', from: 'Bekasi Barat', to: 'Cikarang Timur', mirror: cfg.mirror};
 const saveCfg = () => { if (TUT) return; try { localStorage.setItem('tj_cfg1', JSON.stringify(cfg)); } catch(e) {} };
@@ -4266,13 +4273,17 @@ function drawMap(cv = map, big = mapBig){
   let lon0 = 105.2, lon1 = 114.7, lat0 = -5.7, lat1 = -8.9;
   // live map: centred on the car and moving with it (about 15 km across, 60 km when enlarged)
   const follow = !!(PLR && trip && EV.length);
-  if (follow) { const u = uOfV(PLR), p = latLonAt(u), span = big ? 0.55 : 0.14; lon0 = p.lon - span/2; lon1 = p.lon + span/2; const h = span*H/W; lat0 = p.lat + h/2; lat1 = p.lat - h/2; }
+  if (follow) { const u = uOfV(PLR), p = latLonMap(u), span = big ? 0.55 : 0.14; lon0 = p.lon - span/2; lon1 = p.lon + span/2; const h = span*H/W; lat0 = p.lat + h/2; lat1 = p.lat - h/2; }
   const sx = Math.min(W/(lon1 - lon0), H/Math.abs(lat1 - lat0)), ox = (W - sx*(lon1 - lon0))/2, oy = (H - sx*Math.abs(lat1 - lat0))/2;
   const P = (lat, lon) => [ox + (lon - lon0)*sx, oy + (lat0 - lat)*sx];
   // the island and its roads: drawn once into a cached layer for the whole-island view, every time when zoomed in on the car
   const base = y => { y.fillStyle = 'rgba(32,30,29,0.06)'; for (const isl of [JAVA, MADURA]) { y.beginPath(); isl.forEach(([lo, la], i) => { const [a, b] = P(la, lo); i ? y.lineTo(a, b) : y.moveTo(a, b); }); y.closePath(); y.fill(); }
     y.lineJoin = 'round';
     const zk = follow ? 2 : 1;
+    if (OSM.ready) { const vis = OSM.inBox(Math.min(lat0, lat1), lon0, Math.max(lat0, lat1), lon1);
+      for (const [k, w, col] of [['s', 0.6, 'rgba(80,88,94,0.4)'], ['p', 0.7, 'rgba(160,120,70,0.45)'], ['n', 1, 'rgba(138,90,40,0.55)'], ['t', 1.5, 'rgba(32,30,29,0.5)']]) {
+        if (!follow && (k === 's' || k === 'p')) continue; y.lineWidth = zk*w; y.strokeStyle = col; OSM.stroke(y, P, vis, [k]); }
+      y.setLineDash([3, 3]); y.lineWidth = zk*1.5; y.strokeStyle = 'rgba(32,30,29,0.4)'; for (const c of CORRIDORS) if (c.planned && roadInView(c.id, P, W, H)) strokeRoad(y, P, c.id); y.setLineDash([]); return; }
     for (const c of CORRIDORS) { if ((c.cls === 'a' && !follow) || !roadInView(c.id, P, W, H)) continue; y.lineWidth = zk*(c.cls === 'a' ? 0.6 : c.prov ? 0.7 : c.cls === 'n' ? 1 : 1.5); y.strokeStyle = c.prov ? 'rgba(160,120,70,0.45)' : c.cls === 'n' ? 'rgba(138,90,40,0.55)' : 'rgba(32,30,29,0.45)'; y.setLineDash(c.planned ? [3, 3] : []); strokeRoad(y, P, c.id); }
     y.setLineDash([]); };
   if (follow) base(x);
@@ -4280,9 +4291,9 @@ function drawMap(cv = map, big = mapBig){
       const y = c.getContext('2d'); y.setTransform(dpr, 0, 0, dpr, 0, 0); base(y); drawMap.cache = c; drawMap.key = k; }
     x.drawImage(drawMap.cache, 0, 0, W, H); }
   if (trip) { const u0 = PLR ? uOfV(PLR) : 0, i0 = Math.max(0, evAt(u0)), i1 = trip.destIdx >= 0 ? trip.destIdx : Math.min(EV.length - 1, i0 + 60);
-    x.lineWidth = 3; x.strokeStyle = acc; x.beginPath(); routeLL(u0, i1).forEach((e, i) => { const [a, b] = P(e.lat, e.lon); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke();
+    x.lineWidth = 3; x.strokeStyle = acc; x.beginPath(); routeMap(u0, i1).forEach((e, i) => { const [a, b] = P(e.lat, e.lon); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke();
     const d = EV[trip.destIdx]; if (d) { const [dx, dy] = P(d.lat, d.lon); x.fillStyle = ink; x.fillRect(dx - 3, dy - 3, 6, 6); }
-    if (PLR) { const u = uOfV(PLR), p = latLonAt(u), [px, py] = P(p.lat, p.lon), fw = (PLR.rp ? PLR.rp.sd : PLR.sd)*(PLR.vel < -0.5 ? -1 : 1), q = latLonAt(u + fw*250), [qx, qy] = P(q.lat, q.lon);
+    if (PLR) { const u = uOfV(PLR), p = latLonMap(u), [px, py] = P(p.lat, p.lon), fw = (PLR.rp ? PLR.rp.sd : PLR.sd)*(PLR.vel < -0.5 ? -1 : 1), q = latLonMap(u + fw*250), [qx, qy] = P(q.lat, q.lon);
       if (Math.hypot(qx - px, qy - py) > 0.3) drawMap.hd = Math.atan2(qx - px, py - qy);
       // the car: an arrow pointing the way it is driving
       x.save(); x.translate(px, py); x.rotate(drawMap.hd || 0); x.fillStyle = acc; x.strokeStyle = '#fff'; x.lineWidth = 2; x.lineJoin = 'round';
@@ -4292,7 +4303,7 @@ function drawMap(cv = map, big = mapBig){
   for (const n of labels) { if (!n) continue; const [a, b] = P(n.lat, n.lon); if (a < 0 || b < 0 || a > W || b > H) continue;
     if (follow) { x.fillRect(a - 2, b - 2, 4, 4); x.lineWidth = 3; x.strokeStyle = 'rgba(255,255,255,0.85)'; x.strokeText(n.name, a + 5, b - 3); }
     x.fillText(follow ? n.name : n.city || n.name, a + 5, b - 3); }
-  mpDrawMap(x, P); towOnMap(x, P, false);
+  mpDrawMap(x, P); towOnMap(x, P, false); if (OSM.ready && follow) osmAttrib(x, W, H);
 }
 // where u is on the map: along the curve of the road it is on
 function latLonAt(u){ const i = evAt(u); if (i < 0) return EV[0]; if (i >= EV.length - 1) return EV[EV.length - 1];
@@ -4321,6 +4332,7 @@ const atlas = $('atlas'), acv = $('atlas-map'), actx = acv.getContext('2d');
 const COSL = Math.cos(7.2*Math.PI/180);
 const AT = {lon: 110, lat: -7.2, k: 100, sel: null, W: 0, H: 0, kMin: 40, kMax: 9000};
 const atP = (lat, lon) => [AT.W/2 + (lon - AT.lon)*AT.k*COSL, AT.H/2 + (AT.lat - lat)*AT.k];
+const atLL = (px, py) => [AT.lat - (py - AT.H/2)/AT.k, AT.lon + (px - AT.W/2)/(AT.k*COSL)];
 const atInv = (x, y) => ({lon: AT.lon + (x - AT.W/2)/(AT.k*COSL), lat: AT.lat - (y - AT.H/2)/AT.k});
 const nodeLL = key => NODES.get(key);
 let atRaf = 0;
@@ -4328,7 +4340,7 @@ const reqAtlas = () => { if (!atRaf) atRaf = requestAnimationFrame(() => { atRaf
 function atSize(){ const W = acv.clientWidth, H = acv.clientHeight, dpr = Math.min(2, devicePixelRatio);
   if (acv.width !== Math.round(W*dpr) || acv.height !== Math.round(H*dpr)) { acv.width = Math.round(W*dpr); acv.height = Math.round(H*dpr); }
   AT.W = W; AT.H = H; AT.kMin = Math.min(W/(10.5*COSL), H/4.5); return dpr; }
-function playerLL(){ if (!PLR || !trip) return null; const u = uOfV(PLR), p = latLonAt(u), i = Math.max(0, evAt(u)), nx = EV[Math.min(EV.length - 1, i + 1)];
+function playerLL(){ if (!PLR || !trip) return null; const u = uOfV(PLR), p = latLonMap(u), i = Math.max(0, evAt(u)), nx = EV[Math.min(EV.length - 1, i + 1)];
   return {...p, hd: Math.atan2((nx.lon - p.lon)*COSL, nx.lat - p.lat)}; }
 let atT = 0;
 function atFollow(){ if (!AT.follow) return; const p = playerLL(); if (p) { AT.lon = p.lon; AT.lat = p.lat; } }
@@ -4339,11 +4351,25 @@ function openAtlas(){ TUTF.mapOpen = true;
 }
 function closeAtlas(){ if (TUTF.mapOpen) TUTF.mapClosed = true; atlas.hidden = true; $('at-res').hidden = true; $('at-q').blur(); }
 function legendText(){
-  $('lg-t').textContent = `Jalan tol · ${NET.t.length} ruas`; $('lg-n').textContent = `Jalan nasional · ${NET.n.filter(c => !c.prov).length} ruas · provinsi/kabupaten · ${NET.n.filter(c => c.prov).length} ruas`; $('lg-a').textContent = `Jalan akses gerbang tol · ${NET.a.length}`;
+  if (OSM.ready) { const c = k => OSM.roads.filter(r => r.k === k).length; $('lg-t').textContent = `Jalan tol (OpenStreetMap) · ${c('t').toLocaleString('id-ID')} ruas`;
+    $('lg-n').textContent = `Jalan nasional/arteri · ${c('n').toLocaleString('id-ID')} · provinsi · ${c('p').toLocaleString('id-ID')} ruas`; $('lg-a').textContent = `Jalan kabupaten · ${c('s').toLocaleString('id-ID')} ruas (dimuat saat diperbesar)`; }
+  else { $('lg-t').textContent = `Jalan tol · ${NET.t.length} ruas`; $('lg-n').textContent = `Jalan nasional · ${NET.n.filter(c => !c.prov).length} ruas · provinsi/kabupaten · ${NET.n.filter(c => c.prov).length} ruas`; $('lg-a').textContent = `Jalan akses gerbang tol · ${NET.a.length}`; }
   const d = trip && EV[trip.destIdx];
   $('at-nav').textContent = d ? `Navigasi ke ${d.name} · ${fmtKm(Math.max(0, d.rk - rkAt(uOfV(PLR))))}` : 'Rute di depan (keliling bebas)';
 }
 function zoomAt(x, y, f){ if (AT.follow) { x = AT.W/2; y = AT.H/2; } const p = atInv(x, y); AT.k = clamp(AT.k*f, AT.kMin, AT.kMax); const q = atInv(x, y); AT.lon += p.lon - q.lon; AT.lat += p.lat - q.lat; reqAtlas(); }
+// ---------- real roads from OpenStreetMap (osm.js): drawn on every map, the car and the route put onto them ----------
+// a point of road `cid` at `lat, lon` moved onto the matching real road (unchanged when OSM is not loaded or nothing is near)
+function onOSM(q, cid, keyKm){ if (!OSM.ready || !q) return q; const c = CORR[cid], kinds = !c ? ['t', 'n', 'p'] : c.cls === 't' ? OSM_KINDS.t : c.cls === 'a' ? OSM_KINDS.a : c.prov ? ['p', 'n', 's'] : OSM_KINDS.n;
+  const key = keyKm != null ? cid + ':' + keyKm.toFixed(2) : null; if (key && OSNAP.has(key)) return OSNAP.get(key);
+  const r = OSM.snap(q.lat, q.lon, kinds, c && c.cls === 't' ? 3 : 1.5), out = r ? {lat: r.lat, lon: r.lon} : q; if (key) { if (OSNAP.size > 20000) OSNAP.clear(); OSNAP.set(key, out); } return out; }
+function corrIdAt(u){ const i = evAt(u); return i >= 0 && EV[i] ? EV[i].cNext : null; }
+function latLonMap(u){ return onOSM(latLonAt(u), corrIdAt(u), Math.round(kmAt(u)*20)/20); }
+function routeMap(u0, i1){ const pts = routeLL(u0, i1), i0 = Math.max(0, evAt(u0)); if (!OSM.ready) return pts;
+  let i = i0; return pts.map((q, j) => { while (i < i1 && EV[i + 1] && Math.abs(EV[i + 1].lat - q.lat) < 1e-9 && Math.abs(EV[i + 1].lon - q.lon) < 1e-9) i++; return j ? onOSM(q, EV[Math.min(i, EV.length - 1)].cNext, null) : latLonMap(u0); }); }
+const OSM_STYLE = {t: '#201e1d', n: '#a0682e', p: '#c49a62', s: 'rgba(80,88,94,0.6)'};
+function osmAttrib(x, W, H){ x.save(); x.font = '600 9px Archivo, sans-serif'; x.textAlign = 'right'; x.textBaseline = 'bottom'; x.fillStyle = 'rgba(255,255,255,0.75)'; const t = '© OpenStreetMap', w = x.measureText(t).width + 6;
+  x.fillRect(W - w - 2, H - 13, w + 2, 13); x.fillStyle = '#3c4043'; x.fillText(t, W - 4, H - 2); x.restore(); }
 function drawAtlas(){
   if (atlas.hidden) return;
   const dpr = atSize(), x = actx, W = AT.W, H = AT.H, k = AT.k; x.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -4353,16 +4379,24 @@ function drawAtlas(){
   const line = c => { if (roadInView(c.id, atP, W, H)) strokeRoad(x, atP, c.id); };
   x.lineCap = 'round'; x.lineJoin = 'round';
   const z = Math.log2(k/100);   // 0 = whole island
+  if (OSM.ready) {      // real roads from OpenStreetMap; the planned toll roads (not built yet) from the game's data
+    const [la1, lo0] = atLL(0, 0), [la0, lo1] = atLL(W, H), vis = OSM.inBox(la0, lo0, la1, lo1); if (z > 1.8) { const [cla, clo] = atLL(W/2, H/2); OSM.loadTile(cla, clo); }
+    if (z > 1.8) { x.strokeStyle = OSM_STYLE.s; x.lineWidth = clamp(0.5 + z*0.3, 0.5, 2); OSM.stroke(x, atP, vis, ['s']); }
+    if (z > 1.2) { x.strokeStyle = OSM_STYLE.p; x.lineWidth = clamp(0.7 + z*0.45, 0.7, 3.2); OSM.stroke(x, atP, vis, ['p']); }
+    x.strokeStyle = OSM_STYLE.n; x.lineWidth = clamp(1 + z*0.6, 1, 4.5); OSM.stroke(x, atP, vis, ['n']);
+    x.strokeStyle = '#fff'; x.lineWidth = clamp(2.4 + z*0.9, 2.4, 8); OSM.stroke(x, atP, vis, ['t']); x.strokeStyle = OSM_STYLE.t; x.lineWidth = clamp(1.4 + z*0.7, 1.4, 6); OSM.stroke(x, atP, vis, ['t']);
+    x.setLineDash([7, 5]); x.strokeStyle = '#6d6a66'; x.lineWidth = clamp(1.4 + z*0.7, 1.4, 6); for (const c of NET.t) if (c.planned) line(c); }
+  else {
   x.setLineDash([4, 4]); x.strokeStyle = 'rgba(80,88,94,0.75)'; x.lineWidth = clamp(0.6 + z*0.35, 0.6, 2.2); for (const c of NET.a) line(c);
   x.setLineDash([]); x.strokeStyle = '#c49a62'; x.lineWidth = clamp(0.7 + z*0.45, 0.7, 3.2); for (const c of NET.n) if (c.prov) line(c);
   x.strokeStyle = '#a0682e'; x.lineWidth = clamp(1 + z*0.6, 1, 4.5); for (const c of NET.n) if (!c.prov) line(c);
-  for (const c of NET.t) { x.setLineDash(c.planned ? [7, 5] : []); x.strokeStyle = '#fff'; x.lineWidth = clamp(2.4 + z*0.9, 2.4, 8); line(c); x.strokeStyle = c.planned ? '#6d6a66' : '#201e1d'; x.lineWidth = clamp(1.4 + z*0.7, 1.4, 6); line(c); }
+  for (const c of NET.t) { x.setLineDash(c.planned ? [7, 5] : []); x.strokeStyle = '#fff'; x.lineWidth = clamp(2.4 + z*0.9, 2.4, 8); line(c); x.strokeStyle = c.planned ? '#6d6a66' : '#201e1d'; x.lineWidth = clamp(1.4 + z*0.7, 1.4, 6); line(c); } }
   x.setLineDash([]);
   // the route ahead (navigation or free driving plan)
   const acc = '#ec3013';
-  if (trip && PLR) { const u = uOfV(PLR), i0 = Math.max(0, evAt(u)), i1 = trip.destIdx >= 0 ? trip.destIdx : Math.min(EV.length - 1, i0 + 80), p = latLonAt(u);
+  if (trip && PLR) { const u = uOfV(PLR), i0 = Math.max(0, evAt(u)), i1 = trip.destIdx >= 0 ? trip.destIdx : Math.min(EV.length - 1, i0 + 80), p = latLonMap(u);
     x.strokeStyle = acc; x.globalAlpha = 0.85; x.lineWidth = clamp(3 + z*0.8, 3, 9); x.beginPath();
-    routeLL(u, i1).forEach((e, j) => { const [a, b] = atP(e.lat, e.lon); j ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke(); x.globalAlpha = 1; }
+    routeMap(u, i1).forEach((e, j) => { const [a, b] = atP(e.lat, e.lon); j ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke(); x.globalAlpha = 1; }
   // nodes + labels (priority order, no overlaps)
   const show = n => n.kind === 'j' ? z > 0.6 : n.kind === 'k' ? (n.city && n.city === n.name ? true : z > 0.9) : n.kind === 'r' ? z > 3.2 : z > 1.6;
   const pts = [];
@@ -4388,7 +4422,7 @@ function drawAtlas(){
   // scale bar
   const kmPx = k/111, nice = [1, 2, 5, 10, 20, 50, 100, 200].find(v => v*kmPx > 60) || 200; x.fillStyle = '#201e1d'; x.fillRect(W - 20 - nice*kmPx, H - 22, nice*kmPx, 3);
   x.font = '600 11px Archivo, sans-serif'; x.textAlign = 'right'; x.fillText(`${nice} km`, W - 20, H - 32); x.textAlign = 'left';
-  legendText();
+  legendText(); if (OSM.ready) osmAttrib(x, W, H - 40);
 }
 // tap: nearest place, otherwise nearest road
 function atTap(px, py){
@@ -5001,8 +5035,8 @@ if (TUT) $('tutb').hidden = true;
 const GM = {sea: '#a8d4f5', land: '#f3f1ec', town: '#e6e1d8', green: '#cfe6c4', ink: '#3c4043', sub: '#70757a',
   toll: ['#f6ad43', '#d4861c'], nat: ['#fde58a', '#e3c35e'], prov: ['#ffffff', '#cfcac2'], acc: ['#ffffff', '#d7d2ca'], route: ['#4285f4', '#1a5fc8'], done: '#9aa0a6'};
 const TOWNS = [...NODES.values()].filter(n => n.kind === 'k' && n.lat != null && n.city && n.city === n.name);
-function gmapView(){ const p = PLR && EV.length ? latLonAt(uOfV(PLR)) : {lat: -6.2, lon: 106.82}; let hd = 0;
-  if (PLR && EV.length) { const u = uOfV(PLR), fw = (PLR.rp ? PLR.rp.sd : PLR.sd)*(PLR.vel < -0.5 ? -1 : 1), q = latLonAt(u + fw*250); hd = Math.atan2((q.lon - p.lon)*COSL, q.lat - p.lat); }
+function gmapView(){ const p = PLR && EV.length ? latLonMap(uOfV(PLR)) : {lat: -6.2, lon: 106.82}; let hd = 0;
+  if (PLR && EV.length) { const u = uOfV(PLR), fw = (PLR.rp ? PLR.rp.sd : PLR.sd)*(PLR.vel < -0.5 ? -1 : 1), q = latLonMap(u + fw*250); hd = Math.atan2((q.lon - p.lon)*COSL, q.lat - p.lat); }
   return {lat: p.lat, lon: p.lon, hd}; }
 function drawGMap(cv, view){
   const dpr = Math.min(2, devicePixelRatio), W = cv.clientWidth, H = cv.clientHeight; if (!W || !H) return;
@@ -5017,12 +5051,18 @@ function drawGMap(cv, view){
   // roads: all casings first, then all fills, minor roads below major ones
   x.lineCap = x.lineJoin = 'round';
   const cls = c => c.cls === 't' ? 'toll' : c.cls === 'a' ? 'acc' : c.prov ? 'prov' : 'nat', wid = {toll: 1.6 + z*0.9, nat: 1.1 + z*0.7, prov: 0.6 + z*0.5, acc: 0.5 + z*0.4};
-  const order = ['acc', 'prov', 'nat', 'toll'], vis = CORRIDORS.filter(c => roadInView(c.id, P, W, H) && (c.cls !== 'a' || z > 2.2) && (!c.prov || z > 0.6));
+  const order = ['acc', 'prov', 'nat', 'toll'];
+  if (OSM.ready) {      // real roads from OpenStreetMap (provincial and regency roads load per area when zoomed in)
+    const la1 = view.lat + H/2/k, la0 = view.lat - H/2/k, lo0 = view.lon - W/2/(k*COSL), lo1 = view.lon + W/2/(k*COSL), ovis = OSM.inBox(la0, lo0, la1, lo1), OK = {acc: 's', prov: 'p', nat: 'n', toll: 't'};
+    if (z > 1.8) OSM.loadTile(view.lat, view.lon);
+    for (const pass of [1, 0]) for (const kind of order) { if ((kind === 'acc' && z < 1.8) || (kind === 'prov' && z < 0.8)) continue; const w = Math.max(0.6, wid[kind]); x.lineWidth = pass ? w + 2 : w; x.strokeStyle = GM[kind][pass]; OSM.stroke(x, P, ovis, [OK[kind]]); }
+    x.setLineDash([4, 4]); x.lineWidth = Math.max(0.6, wid.toll); x.strokeStyle = GM.toll[1]; for (const c of CORRIDORS) if (c.planned && roadInView(c.id, P, W, H)) strokeRoad(x, P, c.id); }
+  else { const vis = CORRIDORS.filter(c => roadInView(c.id, P, W, H) && (c.cls !== 'a' || z > 2.2) && (!c.prov || z > 0.6));
   for (const pass of [1, 0]) for (const kind of order) { const w = Math.max(0.6, wid[kind]); x.lineWidth = pass ? w + 2 : w; x.strokeStyle = GM[kind][pass];
-    for (const c of vis) if (cls(c) === kind) { x.setLineDash(c.planned ? [4, 4] : []); strokeRoad(x, P, c.id); } }
+    for (const c of vis) if (cls(c) === kind) { x.setLineDash(c.planned ? [4, 4] : []); strokeRoad(x, P, c.id); } } }
   x.setLineDash([]);
   // the route ahead
-  if (!view.noRoute && trip && PLR && EV.length) { const u = uOfV(PLR), i1 = trip.destIdx >= 0 ? trip.destIdx : Math.min(EV.length - 1, Math.max(0, evAt(u)) + 60), pts = routeLL(u, i1);
+  if (!view.noRoute && trip && PLR && EV.length) { const u = uOfV(PLR), i1 = trip.destIdx >= 0 ? trip.destIdx : Math.min(EV.length - 1, Math.max(0, evAt(u)) + 60), pts = routeMap(u, i1);
     for (const [lw, col] of [[Math.max(5, 4 + z*1.2) + 3, GM.route[1]], [Math.max(5, 4 + z*1.2), GM.route[0]]]) { x.lineWidth = lw; x.strokeStyle = col; x.beginPath(); pts.forEach((e, j) => { const [a, b] = P(e.lat, e.lon); j ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke(); }
     const d = trip.destIdx >= 0 && EV[trip.destIdx]; if (d) { const [a, b] = P(d.lat, d.lon); x.fillStyle = '#ea4335'; x.strokeStyle = '#a50e0e'; x.lineWidth = 1.5;
       x.beginPath(); x.moveTo(a, b); x.bezierCurveTo(a - 11, b - 14, a - 9, b - 26, a, b - 27); x.bezierCurveTo(a + 9, b - 26, a + 11, b - 14, a, b); x.fill(); x.stroke(); x.fillStyle = '#7d0a0a'; x.beginPath(); x.arc(a, b - 18, 3.5, 0, Math.PI*2); x.fill(); } }
@@ -5048,7 +5088,7 @@ function drawGMap(cv, view){
     x.fillStyle = '#4285f4'; x.beginPath(); x.arc(a, b, 6.5, 0, Math.PI*2); x.fill(); }
   // scale bar
   const kmPx = k/111, nice = [0.5, 1, 2, 5, 10, 20, 50, 100, 200].find(v => v*kmPx > 50) || 200; x.fillStyle = GM.ink; x.textAlign = 'left'; x.font = '600 10px Archivo, sans-serif';
-  x.fillRect(10, H - 14, nice*kmPx, 2.5); x.fillText(`${String(nice).replace('.', ',')} km`, 10, H - 22);
+  x.fillRect(10, H - 14, nice*kmPx, 2.5); x.fillText(`${String(nice).replace('.', ',')} km`, 10, H - 22); if (OSM.ready) osmAttrib(x, W, H);
 }
 // the next manoeuvre on the route: a junction to take, a turn in a town, an exit, the destination
 function nextMove(){ if (!PLR || !trip || !EV.length) return null; const u = uOfV(PLR), rk = rkAt(u);
@@ -5102,7 +5142,7 @@ PHONE = TUT ? null : initPhone({cfg, saveCfg, toast, rp: rp$, rpS, sfx: phoneSfx
     if (n === '110') return 'Polisi: laporan diterima, petugas PJR berpatroli'; if (n === '118') return 'Ambulans: siaga, sebutkan lokasi KM'; return ''; },
   view: () => renderer.domElement,
   snap(){ const src = renderer.domElement, c = document.createElement('canvas'), w = 720, h = Math.round(w*src.height/src.width); c.width = w; c.height = h; c.getContext('2d').drawImage(src, 0, 0, w, h); return c.toDataURL('image/jpeg', 0.82); },
-  setWeather: w => apply('weather', w), setTod: t => apply('tod', t), fly: () => openFly(),
+  setWeather: w => apply('weather', w), setTod: t => apply('tod', t), fly: () => openFly(), osm: {S: () => OSM.S, reload: () => OSM.loadBase(true)},
   music: {state: () => ({on: music.on, now: $('mus-now').textContent, src: music.cur ? music.cur.title : '', h: music.cur ? (music.cur.kind === 'audio' ? 54 : music.cur.h) : 0}), recent: () => music.recent,
     play: i => { const r = music.recent[i]; if (r) musPlay(r.item, r.label); }, stop: () => musStop(), dock: () => PHONE ? $('mus-player') : null,
     submit(v, resEl){ music.resEl = resEl; const it = parseMusic(v); if (it) { music.tok = (music.tok || 0) + 1; resEl.textContent = ''; musPlay(it); } else musSearch(v); }}});
@@ -5110,7 +5150,7 @@ PHONE = TUT ? null : initPhone({cfg, saveCfg, toast, rp: rp$, rpS, sfx: phoneSfx
 if (PHONE) { const dock = $('mus-player'); dock.className = 'musdock'; document.body.append(dock); $('music').hidden = true;
   $('musb').onclick = () => { if (PHONE.open && $('phone').classList.contains('app-open')) PHONE.toggle(false); else PHONE.openApp('musik'); }; }
 // Mode Terbang: a flight simulator over Java and Madura; the drive pauses while flying
-FLY = TUT ? null : initFly({mobile: MOBILE, coast: COAST, altAt, volcanoes: VOLCANO, towns: TOWNS, java: JAVA, madura: MADURA, corridors: CORRIDORS, corrGeo, here: () => gmapView(), gmap: (cv, view) => drawGMap(cv, view),
+FLY = TUT ? null : initFly({mobile: MOBILE, osm: OSM, coast: COAST, altAt, volcanoes: VOLCANO, towns: TOWNS, java: JAVA, madura: MADURA, corridors: CORRIDORS, corrGeo, here: () => gmapView(), gmap: (cv, view) => drawGMap(cv, view),
   toast, sfx: phoneSfx, icon: phIcon, hour: () => gameH, soundOn: () => cfg.sound,
   onEnter(){ if (PHONE) PHONE.toggle(false); if (!atlas.hidden) closeAtlas(); input.gas = input.brake = input.left = input.right = false; playerHorn(false); try { if (AC) AC.suspend(); } catch (e) {} },
   onExit(){ if (FLYPAGE) { location.href = new URL('./', document.baseURI).href; return; } try { if (AC) AC.resume(); } catch (e) {} toast('Kembali menyetir'); }});
@@ -5136,7 +5176,7 @@ function tick(dt){
   ensureAhead();
   setupBlocks(false); updateWorld(true); updateSignals(); animGhosts();
 }
-window.__tj.fly = () => FLY; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
+window.__tj.fly = () => FLY; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering
 window.__tj.step = (n, dt = 1/20) => { for (let i = 0; i < n; i++) tick(dt); updateSegs(); placeGroups(); place(); for (let k = 0; k < 40; k++) updateCam(dt); updateBend(); hudT = 0; updateHud(dt); drawMap(); };

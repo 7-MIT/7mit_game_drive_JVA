@@ -95,10 +95,17 @@ export function initFly(A){
   }
 
   // ---------- roads: every road of the network, drawn on the ground ----------
+  // the roads to draw: the real ones from OpenStreetMap once loaded, the game's own network until then
+  const OSM_NAME = {t: 'Jalan tol', n: 'Jalan nasional', p: 'Jalan provinsi', s: 'Jalan kabupaten'};
+  function roadSource(){ const O = A.osm;
+    if (O && O.ready) return O.roads.map(r => { const g = []; for (let j = 0; j < r.xy.length; j += 2) g.push({lon: r.xy[j], lat: r.xy[j + 1]});
+      return {kd: r.k === 's' ? 'a' : r.k, g, c: {name: r.name || (r.ref ? `${OSM_NAME[r.k]} ${r.ref}` : OSM_NAME[r.k]), cls: r.k === 't' ? 't' : 'n'}}; });
+    return A.corridors.filter(c => !c.planned).map(c => ({kd: c.cls === 't' ? 't' : c.cls === 'a' ? 'a' : c.prov ? 'p' : 'n', g: A.corrGeo(c.id), c})); }
   function buildRoads(){
     const kinds = {t: [[], [], 0xf39c12], n: [[], [], 0xfff1c4], p: [[], [], 0xe9dcc3], a: [[], [], 0xd8d0c4]}; roadPts = [];
-    for (const c of A.corridors) { if (c.planned) continue; const g = A.corrGeo(c.id); if (!g || g.length < 2) continue;
-      const kd = c.cls === 't' ? 't' : c.cls === 'a' ? 'a' : c.prov ? 'p' : 'n', K = kinds[kd], lift = kd === 't' ? 9 : 6;
+    if (roads) for (const l of [...roads, roadsT]) { root.remove(l); l.geometry.dispose(); l.material.dispose(); }
+    for (const {kd, g, c} of roadSource()) { if (!g || g.length < 2) continue;
+      const K = kinds[kd], lift = kd === 't' ? 9 : 6;
       let prev = null;
       for (let q = 0; q < g.length; q++) { const x = toX(g[q].lon), z = toZ(g[q].lat);
         if (prev) { const L = Math.hypot(x - prev[0], z - prev[1]), n = Math.max(1, Math.ceil(L/350));
@@ -539,5 +546,5 @@ export function initFly(A){
     place(dt); timeOfDay(); hud(dt); sound();
     renderer.render(scene, camera); }
 
-  return {dbg: () => ({sea, terrain, root, camera, scene}), enter, exit, get on(){ return on; }, st, spawn, groundAt: (lat, lon) => built ? groundAt(toX(lon), toZ(lat)) : null, airports: APT, step: (n, dt = 1/30) => { for (let i = 0; i < n; i++) physics(dt); place(dt); timeOfDay(); hud(dt); renderer.render(scene, camera); }, key};
+  return {roadsChanged: () => { if (built && A.osm && A.osm.ready) buildRoads(); }, dbg: () => ({sea, terrain, root, camera, scene}), enter, exit, get on(){ return on; }, st, spawn, groundAt: (lat, lon) => built ? groundAt(toX(lon), toZ(lat)) : null, airports: APT, step: (n, dt = 1/30) => { for (let i = 0; i < n; i++) physics(dt); place(dt); timeOfDay(); hud(dt); renderer.render(scene, camera); }, key};
 }
