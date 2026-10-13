@@ -45,7 +45,11 @@
   .top-btns #toggle{flex:1}
   #tutb{display:flex;align-items:center;gap:4px;font-size:10.5px;font-weight:600;line-height:1;color:var(--color-bg);background:#45413e;padding:4px 10px;text-decoration:none;border-top:1px solid rgba(255,255,255,.18)}
   #tutb svg.lucide{width:12px;height:12px}
-  #tutb:hover{background:#5a5550}
+  #tutb:hover,#flyb:hover{background:#5a5550}
+  .sm-btns{display:flex} .sm-btns>*{flex:1}
+  #flyb{display:flex;align-items:center;justify-content:center;gap:4px;font:inherit;font-size:10.5px;font-weight:600;line-height:1;color:var(--color-bg);background:#45413e;padding:4px 10px;border:0;border-top:1px solid rgba(255,255,255,.18);border-left:1px solid rgba(255,255,255,.18);cursor:pointer}
+  #flyb svg.lucide{width:12px;height:12px}
+  #flyb2{margin-top:8px;width:100%;display:inline-flex;align-items:center;justify-content:center;gap:6px;font:inherit;font-weight:700;padding:10px;border:2px solid var(--color-text);background:transparent;color:inherit;cursor:pointer}
   /* tutorial coach card and the highlighted control */
   #tut{position:fixed;top:max(12px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);z-index:6;width:min(440px,calc(100vw - 24px));padding:12px 14px 12px;background:var(--color-bg);border:2px solid var(--color-text);box-shadow:0 8px 30px rgba(0,0,0,.25)}
   #tut .tut-n{font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--color-accent)}
@@ -464,7 +468,7 @@
       </div>
       <div class="top-btns">
         <button id="toggle" aria-label="Pengaturan"><i data-lucide="settings"></i><span class="bl">Pengaturan</span></button>
-        <a id="tutb" href="tutorial/" aria-label="Tutorial cara bermain"><i data-lucide="graduation-cap"></i><span class="bl">Tutorial</span></a>
+        <div class="sm-btns"><a id="tutb" href="tutorial/" aria-label="Tutorial cara bermain"><i data-lucide="graduation-cap"></i><span class="bl">Tutorial</span></a><button id="flyb" aria-label="Mode Terbang"><i data-lucide="plane"></i><span class="bl">Terbang</span></button></div>
       </div>
     </div>
   </div>
@@ -580,6 +584,7 @@
       <div class="field" id="mp-field" hidden><label for="m-name">Nama pemain (multiplayer, tanpa login)</label><input id="m-name" class="input" maxlength="16" placeholder="mis. Raka_7MIT"></div>
       <div id="preview"></div>
       <button id="go"><i data-lucide="play"></i><span class="bl">Mulai mengemudi</span></button>
+      <button id="flyb2"><i data-lucide="plane"></i><span>Mode Terbang (flight simulator Jawa & Madura)</span></button>
       <p class="help">Lalu lintas lajur kiri. Kemudi manual itu bebas: tahan ← / → untuk menyetir ke mana saja, termasuk bahu jalan, lajur lawan di jalan nasional, atau lajur yang ditutup. Tahan rem saat berhenti untuk mundur. Untuk keluar, setir ke kiri ke ramp saat papan EXIT terlihat (berlaku juga di simpang susun dan rest area); di jalan nasional, setir ke kiri di persimpangan untuk belok. Perjalanan berlanjut dari jalan yang Anda ambil. Mode Keliling bebas tidak punya tujuan: pilih arah di panel tiap simpang, atau buka Peta (M) untuk navigasi ke kota, gerbang tol atau simpang mana saja. Pelanggaran dan tabrakan tetap dicatat. Autopilot selalu mengikuti rute dan aturan: berhenti di gerbang tol dan lampu merah, patuh batas kecepatan, truk dan bus di lajur kiri.</p>
     </div>
   </div>

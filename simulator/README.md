@@ -209,6 +209,9 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
 | `index.html` | HUD, driving controls, route planner, settings panel (Modernist design system) |
 | `main.js` | 3D world, traffic simulation, player, cameras, UI wiring |
 | `phone.js` | The in-game phone: lock and home screens, apps, calls and SMS over the multiplayer channel |
+| `fly.js` | Mode Terbang: the flight simulator over Java and Madura (terrain, roads, airports, aircraft, flight model, HUD) |
+| `airports.js` | The airports of Java and Madura: real runways from OurAirports, terminal layouts |
+| `terbang/index.html` | The address /terbang: loads the game straight into Mode Terbang |
 | `network.js` | Toll network data (roads, exits, KM, coordinates, lanes, limits), routing, Java outline for the mini-map |
 | `ds/modernist.css` | Copy of the design-system stylesheet from the handoff bundle |
 
@@ -289,12 +292,25 @@ A phone of your own with a full touch interface: a lock screen (swipe up), a hom
 - **Ojek:** ride as a passenger (the ojek drives you there on autopilot, fare Rp 10.000 + Rp 2.500/km paid at arrival, no toll roads), order food (delivered in 1–2 minutes, makes you less sleepy), or start work as an ojol driver or food courier.
 - **Blue:** taxi rides (argo Rp 7.500 + Rp 6.500/km, via toll roads), send a parcel to any town and track it, or work as a taxi driver or freight truck driver.
 - **Kendaraan:** an STNK-style card with the number plate (colour by category, validity), type, year, colours, rims, livery, window tint, accessories and plate category; fuel, damage, top speed, tank and consumption. Change vehicle, set your own plate and plate category, paint (swatches or any custom colour), second livery colour, rims, livery, tint, spoiler, lowered, stripes; call the tow truck.
-- **Peta:** a live map centred on the car, search and navigate, open the full map.
+- **Peta:** a navigation map in the style of the phone map apps: a full-screen map with sea, land, parks, built-up areas, roads by class (toll orange, national yellow, provincial white), the route in blue, the destination pin and labels; a search pill, a green banner with the next manoeuvre and its distance, buttons for compass, zoom and follow-me, and a sheet with the ETA, remaining distance, arrival time and Akhiri (end navigation) / Peta penuh. Drag to look around, pinch or scroll to zoom.
+- **Terbang:** opens Mode Terbang (/terbang).
 - **Dompet:** cash and e-Toll balance, top up e-Toll, a history of every earning and payment.
 - **Telepon, Pesan, Kontak (multiplayer):** every player has their own number (0800-XXXX-XXXX, +62 800-XXXX-XXXX). With Multiplayer connected you can call other players (ringing, answer/decline, mute, speaker, call timer; the voice goes directly between the two phones), send SMS with delivery receipts (Terkirim, Diterima), see who is online in Kontak and save names, and chat with everyone in the group "Semua pemain", which replaces the old multiplayer chat panel. Without Multiplayer these apps ask you to connect; the service numbers 133 (Info Tol, sends the tow truck), 110 and 118 always work. Calling a number that is not online gives "Nomor yang Anda tuju tidak aktif".
 - **Kamera & Galeri:** take pictures of the road, view them, save them or set one as wallpaper.
 - **Cuaca, Musik, Pengaturan:** change the weather and time; open the music player; customise the phone: wallpaper, case colour, accent colour, dark or light theme, icon shape, the name on the lock screen, a new number.
 - Using the phone while driving fast by hand shows a warning (as in real life it is dangerous and not allowed): pull over or switch on Autopilot.
+
+### Mode Terbang: flight simulator (/terbang)
+Open it at **/terbang**, with the Terbang button under Pengaturan, from the route planner, or with the Terbang app on the phone. It is a flight simulator over all of Java and Madura:
+
+- **Terrain:** the whole island from the elevation model of the game plus every volcano (Gede-Pangrango, Ciremai, Slamet, Sindoro–Sumbing, Merapi–Merbabu, Lawu, Arjuno–Welirang, Semeru, Raung, Ijen …), coloured by height (rice fields, forest, high ground, bare peaks), towns as built-up areas, the real coastline (Natural Earth 1:10m), sea, clouds, and city and toll-road lights at night.
+- **Roads:** every road of the network is drawn on the ground: toll roads orange, national roads, provincial roads and access roads, with the name of the road below you in the HUD.
+- **Airports:** 25 real airports with their real runways (both ends, length, width, from OurAirports open data): Soekarno–Hatta with its three runways, Halim, Husein Sastranegara, Kertajati, Ahmad Yani, Adi Soemarmo, Yogyakarta International, Adisutjipto, Juanda, Abdul Rachman Saleh, Dhoho, Banyuwangi, Trunojoyo, Iswahjudi, Budiarto, Pondok Cabe and the smaller fields. Runways carry real markings (designators such as 07L/25R, threshold bars, centre line, aiming points, touchdown zone), parallel taxiways and links, aprons, edge, threshold and approach lights; the buildings follow the real ones: the joglo pavilions of Soekarno–Hatta T1/T2, the long T3, the wave roofs of Kertajati, Yogyakarta International and Dhoho, the planted roofs of Banyuwangi, the PT DI hangars at Husein, air-force hangars, control towers, jet bridges and parked airliners. (The building positions are modelled from the real layouts, not surveyed.)
+- **Aircraft:** Cessna 172 (slow, forgiving) and Boeing 737 (fast). Start in the air above your car or on the runway of any airport.
+- **Flight model:** thrust, drag and the slope of the path set the speed; controls work with the airflow; banking turns the aircraft; below the stall speed it sinks and drops its nose (STALL warning), PULL UP when descending fast near the ground; take-off at rotation speed; landing gently (sink rate, bank and pitch checked) at an airport or anywhere flat, otherwise a crash and a restart. Time can run 1×, 2×, 4× or 8×.
+- **HUD:** speed (knots, km/h), altitude (feet, metres), vertical speed, height above ground, throttle, heading tape, location (the road or town below, coordinates), a live mini map; in the cockpit view a head-up display with horizon and pitch ladder. Cameras: chase, cockpit, side.
+- **Controls:** ↓/↑ pull/push (I swaps them), ←/→ bank, A/D rudder and nose-wheel steering, W/S throttle, B brake, C camera, T time, Esc menu. On a phone: a stick on the left, a throttle slider on the right.
+- The driving game waits while you fly; "Kembali menyetir" goes back to it.
 
 ### Jobs (Kerja, key J)
 Pick a job and the vehicle is swapped for the right one on the spot.

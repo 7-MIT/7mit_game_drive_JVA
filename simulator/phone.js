@@ -100,6 +100,24 @@ const CSS = `
 #phone .stnk dd i{width:12px;height:12px;border-radius:50%;border:1px solid rgba(0,0,0,.3);display:inline-block}
 #phone select.inp{padding-left:12px;appearance:none;-webkit-appearance:none}
 #phone input[type=color]{width:34px;height:34px;border-radius:50%;border:0;padding:0;background:none;cursor:pointer}
+#phone .gm{position:absolute;inset:0;z-index:1;background:#a8d4f5;overflow:hidden}
+#phone .gm canvas{width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#phone .gm .top{position:absolute;left:10px;right:10px;top:46px;display:flex;gap:8px;align-items:center;z-index:3}
+#phone .gm .sb{flex:1;display:flex;align-items:center;gap:8px;background:#fff;color:#3c4043;border-radius:24px;padding:10px 14px;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.25);cursor:pointer;border:0;font-family:inherit;text-align:left}
+#phone .gm .sb svg{width:18px;height:18px;color:#5f6368} #phone .gm .bk{width:40px;height:40px;border-radius:50%;background:#fff;border:0;display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.25);cursor:pointer;color:#3c4043;flex:none} #phone .gm .bk svg{width:20px;height:20px}
+#phone .gm .mv{position:absolute;left:10px;right:10px;top:96px;z-index:3;background:#0f7a3f;color:#fff;border-radius:16px;padding:10px 12px;display:flex;gap:10px;align-items:center;box-shadow:0 4px 12px rgba(0,0,0,.3);animation:phIn .35s both}
+#phone .gm .mv svg{width:34px;height:34px;flex:none} #phone .gm .mv b{display:block;font-size:15px;line-height:1.15} #phone .gm .mv small{font-size:11.5px;opacity:.9}
+#phone .gm .mv .dd{font-size:20px;font-weight:800;margin-right:2px}
+#phone .gm .fab{position:absolute;right:10px;z-index:3;display:flex;flex-direction:column;gap:8px}
+#phone .gm .fab button{width:42px;height:42px;border-radius:50%;border:0;background:#fff;color:#1a73e8;display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.28);cursor:pointer;transition:transform .15s}
+#phone .gm .fab button:active{transform:scale(.9)} #phone .gm .fab button svg{width:20px;height:20px} #phone .gm .fab button.on{background:#1a73e8;color:#fff} #phone .gm .fab .zb{color:#3c4043;font-size:22px;font-weight:500}
+#phone .gm .sheet{position:absolute;left:0;right:0;bottom:0;z-index:3;background:#fff;color:#202124;border-radius:22px 22px 0 0;padding:8px 14px 24px;box-shadow:0 -4px 16px rgba(0,0,0,.18);animation:phUp .4s cubic-bezier(.2,1,.3,1) both}
+#phone .gm .sheet::before{content:'';display:block;width:36px;height:4px;border-radius:2px;background:#dadce0;margin:0 auto 8px}
+#phone .gm .sheet .eta{display:flex;align-items:baseline;gap:6px} #phone .gm .sheet .eta b{font-size:22px;color:#188038;font-weight:800} #phone .gm .sheet .eta span{font-size:13px;color:#5f6368;font-weight:600}
+#phone .gm .sheet p{margin:2px 0 8px;font-size:12px;color:#5f6368} #phone .gm .sheet .acts{display:flex;gap:8px}
+#phone .gm .sheet .acts button{flex:1;border-radius:20px;border:1px solid #dadce0;background:#fff;color:#1a73e8;font:inherit;font-size:12.5px;font-weight:700;padding:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px}
+#phone .gm .sheet .acts button.p{background:#1a73e8;color:#fff;border-color:#1a73e8} #phone .gm .sheet .acts svg{width:16px;height:16px}
+@keyframes phUp{from{transform:translateY(100%)}}
 #phone .map{width:100%;height:250px;border-radius:18px;display:block;background:#e8ecef;margin-bottom:10px}
 #phone .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;justify-items:center;margin:8px 0}
 #phone .pad button{width:62px;height:62px;border-radius:50%;border:0;background:var(--card);color:var(--ink);font:inherit;font-size:24px;font-weight:500;cursor:pointer;transition:background .15s,transform .15s}
@@ -166,11 +184,11 @@ const CASES = ['#1b1c1f', '#c9ccd0', '#d4af37', '#1f3f73', '#b02020', '#2f5a4a',
 const ACCS = ['#0a84ff', '#34c759', '#ff9f0a', '#ff375f', '#bf5af2', '#ec3013'];
 const G = {ojek: 'linear-gradient(145deg,#2fdc6a,#00873a)', blue: 'linear-gradient(145deg,#4aa3ff,#0b3f9e)', kendaraan: 'linear-gradient(145deg,#ff8a4a,#d9361e)', peta: 'linear-gradient(145deg,#6ee7b7,#0e9f6e 55%,#3b82f6)',
   dompet: 'linear-gradient(145deg,#ffd35a,#e08a00)', telepon: 'linear-gradient(145deg,#5df07a,#18a33a)', pesan: 'linear-gradient(145deg,#66e08a,#1fae4f)', musik: 'linear-gradient(145deg,#ff6a8a,#e3204d)',
-  kamera: 'linear-gradient(145deg,#9aa3ad,#3a4048)', kontak: 'linear-gradient(145deg,#a0a7b2,#5f6773)', galeri: 'conic-gradient(from 45deg,#ff5f6d,#ffc371,#47e37a,#3fa9ff,#c26bff,#ff5f6d)', cuaca: 'linear-gradient(145deg,#7cc7ff,#2a6fd8)', setelan: 'linear-gradient(145deg,#b8bec6,#5d656e)',
+  kamera: 'linear-gradient(145deg,#9aa3ad,#3a4048)', kontak: 'linear-gradient(145deg,#a0a7b2,#5f6773)', galeri: 'conic-gradient(from 45deg,#ff5f6d,#ffc371,#47e37a,#3fa9ff,#c26bff,#ff5f6d)', cuaca: 'linear-gradient(145deg,#7cc7ff,#2a6fd8)', terbang: 'linear-gradient(145deg,#8fe0ff,#0d5bd1)', setelan: 'linear-gradient(145deg,#b8bec6,#5d656e)',
   derek: 'linear-gradient(145deg,#ffcf3a,#e58a00)', polisi: 'linear-gradient(145deg,#4a6bd8,#1a2f80)', amb: 'linear-gradient(145deg,#ff6a6a,#c81e1e)'};
 const APPS = [
   {k: 'ojek', name: 'Ojek', icon: 'Bike'}, {k: 'blue', name: 'Blue', icon: 'CarTaxiFront'}, {k: 'kendaraan', name: 'Kendaraan', icon: 'Car'}, {k: 'peta', name: 'Peta', icon: 'MapPinned'},
-  {k: 'dompet', name: 'Dompet', icon: 'Wallet'}, {k: 'cuaca', name: 'Cuaca', icon: 'CloudSun'}, {k: 'kamera', name: 'Kamera', icon: 'Camera'}, {k: 'galeri', name: 'Galeri', icon: 'Images'},
+  {k: 'terbang', name: 'Terbang', icon: 'Plane'}, {k: 'dompet', name: 'Dompet', icon: 'Wallet'}, {k: 'cuaca', name: 'Cuaca', icon: 'CloudSun'}, {k: 'kamera', name: 'Kamera', icon: 'Camera'}, {k: 'galeri', name: 'Galeri', icon: 'Images'},
   {k: 'musik', name: 'Musik', icon: 'Music'}, {k: 'kontak', name: 'Kontak', icon: 'Contact'}, {k: 'setelan', name: 'Pengaturan', icon: 'Settings'}];
 const DOCK = [{k: 'telepon', name: 'Telepon', icon: 'Phone'}, {k: 'pesan', name: 'Pesan', icon: 'MessageCircle'}, {k: 'peta', name: 'Peta', icon: 'MapPinned'}, {k: 'kamera', name: 'Kamera', icon: 'Camera'}];
 const FOODS = [
@@ -185,6 +203,7 @@ function ic(name){ const L = window.lucide && window.lucide.icons, node = L && L
   const kids = (node[2] || node).map(([tag, a]) => `<${tag} ${Object.entries(a).map(([k, v]) => `${k}="${esc(v)}"`).join(' ')}/>`).join('');
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${kids}</svg>`; }
 
+export const phIcon = name => ic(name);
 export function initPhone(A){
   const st = document.createElement('style'); st.textContent = CSS; document.head.append(st);
   const P = Object.assign({wall: 'aurora', case: '#1b1c1f', theme: 'dark', acc: '#0a84ff', shape: 15, owner: 'Pengemudi 7MIT', photoWall: null, warn: true}, A.cfg.phone || {});
@@ -228,7 +247,8 @@ export function initPhone(A){
     A.sfx(open ? 'open' : 'close'); }
   q('.x').onclick = () => toggle(false);
   q('.hind').onclick = () => { if (cur) closeApp(); else if (!lock.classList.contains('gone')) unlock(); else toggle(false); };
-  function openApp(k, from){ const r = from ? from.getBoundingClientRect() : null, sr = scr.getBoundingClientRect(), sc = sr.width/scr.offsetWidth;
+  function openApp(k, from){ if (k === 'terbang') { A.sfx('tap'); toggle(false); setTimeout(() => A.fly(), 250); return; }
+    const r = from ? from.getBoundingClientRect() : null, sr = scr.getBoundingClientRect(), sc = sr.width/scr.offsetWidth;
     if (r) { app.style.setProperty('--ox', `${(r.left + r.width/2 - sr.left)/sc}px`); app.style.setProperty('--oy', `${(r.top + r.height/2 - sr.top)/sc}px`); }
     cur = k; stack = []; clearBadge(k); app.innerHTML = ''; app.style.setProperty('--g', G[k]); push(APPS_IMPL[k] || APPS_IMPL.stub, true);
     el.classList.add('app-open'); requestAnimationFrame(() => app.classList.add('on')); A.sfx('tap'); }
@@ -361,14 +381,39 @@ export function initPhone(A){
     html(pg, `<button class="btn" style="background:#e58a00">${ic('Truck')} Panggil derek</button>`).onclick = () => { A.tow(); A.sfx('tap'); };
     html(pg, `<button class="btn sec">${ic('Fuel')} Layanan rest area (SPBU, bengkel)</button>`).onclick = () => { A.svc(); }; };
 
-  // Peta: a live map centred on the car, search a destination, open the full map
-  APPS_IMPL.peta = pg => { scr.style.setProperty('--acc', '#0e9f6e'); const s = A.state();
-    pg.innerHTML = head('Peta') + `<canvas class="map"></canvas><div class="card"><h4 class="nv"></h4><p class="ni"></p></div>`;
-    const cv = pg.querySelector('canvas'), f = () => { A.drawMap(cv); const t = A.state(); pg.querySelector('.nv').textContent = t.dest ? `Navigasi ke ${t.dest}` : 'Keliling bebas'; pg.querySelector('.ni').textContent = t.dest ? `Sisa ${t.left} · ${t.place}` : t.place; };
-    requestAnimationFrame(f); live(f);
-    html(pg, `<button class="btn">${ic('Search')} Cari tujuan & navigasi</button>`).onclick = () => pickDest('Navigasi ke', key => { A.nav.set(key); A.sfx('ok'); back(); });
-    if (s.dest) html(pg, `<button class="btn sec">${ic('X')} Hapus navigasi</button>`).onclick = () => { A.nav.clear(); redraw(); };
-    html(pg, `<button class="btn sec">${ic('Maximize2')} Buka peta penuh</button>`).onclick = () => { toggle(false); A.openAtlas(); }; };
+  // Peta: a navigation map like the phone map apps: search pill, the next manoeuvre, follow / compass / zoom buttons, an ETA sheet
+  const MV = {follow: true, z: 1600, lat: 0, lon: 0};
+  APPS_IMPL.peta = pg => { scr.style.setProperty('--acc', '#1a73e8'); pg.style.padding = '0';
+    pg.innerHTML = `<div class="gm"><canvas aria-label="Peta"></canvas>
+      <div class="top"><button class="bk" data-back aria-label="Kembali">${ic('ChevronLeft')}</button><button class="sb">${ic('Search')}<span>Cari di sini</span></button></div>
+      <div class="mvw"></div><div class="fab" style="bottom:178px"><button class="cp" aria-label="Kompas">${ic('Compass')}</button><button class="zb zi" aria-label="Perbesar">+</button><button class="zb zo" aria-label="Perkecil">−</button><button class="lc" aria-label="Ikuti posisi">${ic('LocateFixed')}</button></div>
+      <div class="sheet"></div></div>`;
+    const cv = pg.querySelector('canvas'), here = () => A.here();
+    if (MV.follow || !MV.lat) { const h = here(); MV.lat = h.lat; MV.lon = h.lon; }
+    const paint = () => { if (MV.follow) { const h = here(); MV.lat = h.lat; MV.lon = h.lon; } A.gmap(cv, MV); pg.querySelector('.lc').classList.toggle('on', MV.follow); };
+    const fillUI = () => { const t = A.state(), n = A.next(), mv = pg.querySelector('.mvw');
+      mv.innerHTML = n ? `<div class="mv">${ic(n.icon === 'left' ? 'CornerUpLeft' : n.icon === 'right' ? 'CornerUpRight' : n.icon === 'flag' ? 'Flag' : 'ArrowUp')}<div><span class="dd">${n.d < 1 ? Math.round(n.d*1000/10)*10 + ' m' : n.d.toFixed(n.d < 10 ? 1 : 0).replace('.', ',') + ' km'}</span><b>${esc(n.t)}</b><small>${esc(n.sub)}</small></div></div>` : '';
+      const sh = pg.querySelector('.sheet');
+      if (t.dest) { const mins = Math.max(1, Math.round(t.leftKm/75*60)); sh.innerHTML = `<div class="eta"><b>${mins >= 60 ? Math.floor(mins/60) + ' j ' + mins % 60 + ' mnt' : mins + ' mnt'}</b><span>(${esc(t.left)})</span></div><p>Tiba ± ${esc(t.arrive)} · ke ${esc(t.dest)} · ${esc(t.place)}</p>
+        <div class="acts"><button class="xn">${ic('X')} Akhiri</button><button class="f">${ic('Maximize2')} Peta penuh</button></div>`;
+        sh.querySelector('.xn').onclick = () => { A.nav.clear(); A.sfx('tap'); fillUI(); }; }
+      else { sh.innerHTML = `<div class="eta"><b style="color:#202124;font-size:17px">${esc(t.place || 'Lokasimu')}</b></div><p>${t.kmh} km/jam · ${esc(t.km)}</p><div class="acts"><button class="p g">${ic('Navigation')} Rute</button><button class="f">${ic('Maximize2')} Peta penuh</button></div>`;
+        sh.querySelector('.g').onclick = () => pickDest('Navigasi ke', key => { A.nav.set(key); A.sfx('ok'); back(); }); }
+      sh.querySelector('.f').onclick = () => { toggle(false); A.openAtlas(); }; };
+    requestAnimationFrame(() => { paint(); fillUI(); }); let ui = 0; live(() => { paint(); if (++ui % 2 === 0) fillUI(); });
+    pg.querySelector('.sb').onclick = () => pickDest('Cari tempat', key => { A.nav.set(key); A.sfx('ok'); back(); });
+    pg.querySelector('.zi').onclick = () => { MV.z = Math.min(40000, MV.z*1.6); paint(); A.sfx('tap'); };
+    pg.querySelector('.zo').onclick = () => { MV.z = Math.max(60, MV.z/1.6); paint(); A.sfx('tap'); };
+    pg.querySelector('.lc').onclick = () => { MV.follow = true; MV.z = Math.max(MV.z, 1200); paint(); A.sfx('tap'); };
+    pg.querySelector('.cp').onclick = () => { MV.z = 1600; paint(); };
+    // drag to look around (stops following), pinch or wheel to zoom
+    const ptr = new Map(); let pin = 0;
+    cv.onpointerdown = e => { cv.setPointerCapture(e.pointerId); ptr.set(e.pointerId, {x: e.clientX, y: e.clientY}); if (ptr.size === 2) { const [p1, p2] = [...ptr.values()]; pin = Math.hypot(p1.x - p2.x, p1.y - p2.y); } };
+    cv.onpointermove = e => { const o = ptr.get(e.pointerId); if (!o) return; const sc = cv.getBoundingClientRect().width/cv.clientWidth, dx = (e.clientX - o.x)/sc, dy = (e.clientY - o.y)/sc; o.x = e.clientX; o.y = e.clientY;
+      if (ptr.size === 1) { if (Math.abs(dx) + Math.abs(dy) > 0.5) MV.follow = false; MV.lon -= dx/(MV.z*0.992); MV.lat += dy/MV.z; paint(); }
+      else if (ptr.size === 2) { const [p1, p2] = [...ptr.values()], d = Math.hypot(p1.x - p2.x, p1.y - p2.y); if (pin) MV.z = Math.min(40000, Math.max(60, MV.z*d/pin)); pin = d; paint(); } };
+    cv.onpointerup = cv.onpointercancel = e => { ptr.delete(e.pointerId); if (ptr.size < 2) pin = 0; };
+    cv.onwheel = e => { e.preventDefault(); MV.z = Math.min(40000, Math.max(60, MV.z*Math.exp(-e.deltaY*0.0015))); paint(); }; };
 
   // Dompet: cash, e-Toll, top up, history
   APPS_IMPL.dompet = pg => { scr.style.setProperty('--acc', '#e08a00');
