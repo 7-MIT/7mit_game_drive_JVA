@@ -2460,6 +2460,7 @@ function makePerson(){
 function footToggle(){
   if (!PLR || !trip) return;
   if (!foot) {
+    if (ride) { toast('Kamu penumpang: batalkan pesanan di HP dulu', 'warn'); return; }
     if (PLR.rp || Math.abs(PLR.vel) > 1) { toast('Berhenti dulu sebelum keluar dari mobil', 'warn'); return; }
     cfg.auto = false; hudAuto && hudAuto(); input.gas = input.brake = input.left = input.right = false; PLR.vel = 0;
     const u = uOfV(PLR), m = makePerson(), sd = PLR.sd;
@@ -2591,6 +2592,7 @@ function towOnMap(x, P, big){ if (!tow || !tow.v || !PLR || !EV.length) return; 
   const dist = Math.abs(u - uOfV(PLR))*cfg.scale, txt = tow.phase === 'come' ? `Derek · ${dist >= 1000 ? (dist/1000).toFixed(1).replace('.', ',') + ' km' : Math.round(dist/10)*10 + ' m'}` : 'Derek';
   x.font = `700 ${big ? 12 : 10}px Archivo, sans-serif`; x.textBaseline = 'middle'; x.lineWidth = 3; x.strokeStyle = 'rgba(255,255,255,0.9)'; x.strokeText(txt, a + r + 4, b); x.fillStyle = '#201e1d'; x.fillText(txt, a + r + 4, b); x.restore(); }
 function callTow(auto = false){
+  if (ride) { if (!auto) { toast('Kamu penumpang: kendaraan ini bukan milikmu', 'warn'); return; } rideCancel(); }
   const P = PLR; if (!P || tow) return; if (foot) { toast('Masuk ke kendaraan dulu', 'warn'); return; }
   if (P.rp) { toast('Derek datang setelah kendaraan berada di jalur utama', 'warn'); return; }
   const v = makeVehicle('derek'), n = nAvail(P.sd, P.p);
@@ -3054,21 +3056,21 @@ function musPlay(item, label){
   if (item.kind === 'iframe') { const f = document.createElement('iframe'); f.src = item.src; f.height = item.h; f.allow = 'autoplay; encrypted-media; clipboard-write; picture-in-picture; fullscreen';
     f.referrerPolicy = 'strict-origin-when-cross-origin'; f.loading = 'eager'; f.title = label || item.title; box.append(f); }
   else { const a = document.createElement('audio'); a.src = item.src; a.controls = true; a.autoplay = true; box.append(a); a.play().catch(() => {}); }
-  music.on = true; $('mus-now').textContent = label || item.title; $('musb').setAttribute('aria-pressed', 'true');
+  music.on = true; music.cur = item; $('mus-now').textContent = label || item.title; $('musb').setAttribute('aria-pressed', 'true'); if (PHONE) PHONE.musicChanged();
   const rec = {label: label || item.title, item}; music.recent = [rec, ...music.recent.filter(r => r.item.src !== item.src)].slice(0, 4); cfg.musRecent = music.recent; saveCfg(); musRecentUI();
 }
-function musStop(){ $('mus-player').textContent = ''; music.on = false; $('mus-now').textContent = ''; $('musb').setAttribute('aria-pressed', 'false'); }
+function musStop(){ $('mus-player').textContent = ''; music.on = false; music.cur = null; $('mus-now').textContent = ''; $('musb').setAttribute('aria-pressed', 'false'); if (PHONE) PHONE.musicChanged(); }
 function musRow(img, title, sub, actions){ const r = document.createElement('div'); r.className = 'mus-item'; const im = document.createElement('img'); if (img) im.src = img; im.alt = '';
   const t = document.createElement('div'), b = document.createElement('b'), sm = document.createElement('small'); b.textContent = title; sm.textContent = sub || ''; t.append(b, sm);
   const acts = document.createElement('div'); for (const [lbl, fn] of actions) { const x = document.createElement('button'); x.textContent = lbl; x.onclick = fn; acts.append(x); } r.append(im, t, acts); return r; }
-function musRecentUI(){ const el = $('mus-recent'); el.textContent = ''; if (!music.recent.length) return; const h = document.createElement('div'); h.className = 'mus-note'; h.textContent = 'Terakhir diputar'; el.append(h);
+function musRecentUI(){ const el = $('mus-recent'); if (PHONE) return; el.textContent = ''; if (!music.recent.length) return; const h = document.createElement('div'); h.className = 'mus-note'; h.textContent = 'Terakhir diputar'; el.append(h);
   for (const r of music.recent) el.append(musRow('', r.label, r.item.title, [['Putar', () => musPlay(r.item, r.label)]])); }
 const fetchT = (url, ms = 5000) => { const c = new AbortController(), t = setTimeout(() => c.abort(), ms); return fetch(url, {signal: c.signal}).finally(() => clearTimeout(t)); };
 const fmtDur = s => s ? `${Math.floor(s/60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : '';
 // search: full songs from YouTube through public no-key mirrors; if none answers, 30-second previews from the iTunes catalogue
 const YT_MIRRORS = [q => `https://inv.nadeko.net/api/v1/search?type=video&q=${q}`, q => `https://invidious.nerdvpn.de/api/v1/search?type=video&q=${q}`, q => `https://pipedapi.kavin.rocks/search?filter=music_songs&q=${q}`, q => `https://api.piped.private.coffee/search?filter=videos&q=${q}`];
 async function musSearch(q){
-  const res = $('mus-results'), tok = music.tok = (music.tok || 0) + 1, stale = () => tok !== music.tok; res.textContent = 'Mencari…'; const enc = encodeURIComponent(q);
+  const res = music.resEl || $('mus-results'), tok = music.tok = (music.tok || 0) + 1, stale = () => tok !== music.tok; res.textContent = 'Mencari…'; const enc = encodeURIComponent(q);
   for (const m of YT_MIRRORS) { try { const r = await fetchT(m(enc)); if (!r.ok) continue; const j = await r.json(); const arr = Array.isArray(j) ? j : j.items || [];
       const items = arr.map(v => ({id: v.videoId || (v.url || '').split('v=')[1], title: v.title, by: v.author || v.uploaderName || '', dur: v.lengthSeconds || v.duration, img: (v.videoThumbnails && v.videoThumbnails[0] && v.videoThumbnails[0].url) || v.thumbnail}))
         .filter(v => v.id && /^[\w-]{11}$/.test(v.id)).slice(0, 10);
@@ -3385,7 +3387,7 @@ function rideFare(r = ride){ if (!r || !PLR) return 0; const km = Math.max(0, rk
 function rideFinish(site){ const r = ride; if (!r) return; const km = Math.max(0, rkAt(site.u) - r.rk0), fare = Math.round((r.R.base + r.R.perKm*km)/500)*500;
   pay(fare, `${r.R.name} ke ${site.name} · ${fmtKm(km)}`); ride = null; rideBack = r.prev !== r.R.veh ? r.prev : null; cfg.auto = false; hudAuto();
   toast(`Tiba · bayar ${rp$(fare)} · terima kasih!`); }
-function rideCancel(){ const r = ride; if (!r) return; const fare = rideFare(r); if (fare > r.R.base) pay(fare, `${r.R.name} dibatalkan di jalan`); ride = null; rideBack = r.prev !== r.R.veh ? r.prev : null; cfg.auto = false; hudAuto(); toast('Perjalanan dibatalkan'); }
+function rideCancel(){ const r = ride; if (!r) return; const fare = rideFare(r); if (fare > r.R.base) pay(fare, `${r.R.name} dibatalkan di jalan`); ride = null; rideBack = r.prev !== r.R.veh ? r.prev : null; cfg.auto = false; saveCfg(); hudAuto(); toast('Pesanan dibatalkan · kembali ke kendaraanmu, kemudi manual'); }
 function orderFood(item){ if (WAL.cash < item.price) return 'Uang tunai tidak cukup'; pay(item.price, `Pesan ${item.name}`); FOOD.push({...item, t: clock, eta: clock + rnd(45, 90)}); return null; }
 function sendParcel(dest, kg){ const n = NODES.get(dest), P = PLR; if (!n || !P) return 'Tujuan tidak dikenal';
   const here = latLonAt(uOfV(P)), km = Math.max(5, 1.3*haversine(here.lat, here.lon, n.lat, n.lon)), fee = Math.round((15000 + km*350*(1 + kg/10))/500)*500;
@@ -4130,7 +4132,10 @@ const $ = id => document.getElementById(id);
 const PLACES = placeList();
 let toastT = null;
 function toast(msg, kind=''){ const el = $('toast'); el.textContent = msg; el.className = 'show ' + kind; clearTimeout(toastT); toastT = setTimeout(() => el.className = '', 2600); }
-function hudAuto(){ if (tow || foot) cfg.auto = false; $('auto').setAttribute('aria-pressed', cfg.auto ? 'true' : 'false'); document.body.classList.toggle('auto', cfg.auto); }
+function hudAuto(){ if (tow || foot) cfg.auto = false; else if (ride) cfg.auto = true;     // a passenger (taxi / ojek) always rides on autopilot
+  const b = $('auto'); b.setAttribute('aria-pressed', cfg.auto ? 'true' : 'false'); document.body.classList.toggle('auto', cfg.auto); document.body.classList.toggle('ride', !!ride);
+  b.classList.toggle('locked', !!ride); b.title = ride ? 'Kamu penumpang: autopilot terkunci. Batalkan pesanan di HP untuk menyetir sendiri' : '';
+  const l = b.querySelector('.bl'); if (l) l.textContent = ride ? 'Penumpang' : 'Autopilot'; }
 function hudLane(){ const v = PLR; if (!v) return; const n = Math.round(nAvail(v.sd, v.p)), el = $('lanes'); el.innerHTML = '';
   const neg = []; for (const z of CFA) if (z.A === v.sd && Math.abs(v.p - z.o1) < 900) for (let j = z.k; j >= 1; j--) neg.push(-j);
   const all = [...Array.from({length: n}, (_, i) => n - 1 - i), ...neg.sort((a, b) => b - a)];
@@ -4657,12 +4662,13 @@ $('done-new').onclick = () => { $('done').hidden = true; openPlanner(); };
 $('resume').onclick = () => { if (PLR && PLR.rp && PLR.rp.parked) PLR.rp.park.t = 0; };
 
 // ---------- driving controls ----------
-function manualNow(){ if (ride) { if (clock - (ride.warnT || -9) > 4) { ride.warnT = clock; toast('Kamu penumpang: batalkan perjalanan di aplikasi HP untuk menyetir sendiri', 'warn'); } return; }
+function manualNow(){ if (ride) { input.gas = input.brake = input.left = input.right = false; if (clock - (ride.warnT || -9) > 4) { ride.warnT = clock; toast('Kamu penumpang: autopilot tidak bisa dimatikan. Batalkan pesanan di HP untuk menyetir sendiri', 'warn'); } return; }
   if (cfg.auto) { cfg.auto = false; saveCfg(); hudAuto(); toast('Kemudi manual: bebas, pelanggaran tetap dicatat'); } }
 const hold = (el, k) => { const on = e => { e.preventDefault(); input[k] = true; manualNow(); }, off = () => input[k] = false;
   el.addEventListener('pointerdown', on); for (const ev of ['pointerup','pointerleave','pointercancel']) el.addEventListener(ev, off); };
 hold($('gas'), 'gas'); hold($('brake'), 'brake'); hold($('lft'), 'left'); hold($('rgt'), 'right');
-$('auto').onclick = () => { cfg.auto = !cfg.auto; saveCfg(); hudAuto();
+$('auto').onclick = () => { if (ride) { cfg.auto = true; hudAuto(); toast(`Kamu penumpang ${ride.R.name}: autopilot tidak bisa dimatikan. Batalkan pesanan di HP untuk kembali ke kendaraanmu`, 'warn'); return; }
+  cfg.auto = !cfg.auto; saveCfg(); hudAuto();
   if (PLR) { PLR.hd = 0; PLR.steer = 0; }
   if (cfg.auto && PLR && !PLR.rp) { const n = nAvail(PLR.sd, PLR.p); PLR.lane = clamp(Math.round(PLR.lx), 0, n - 1); if (PLR.vel < 0) PLR.vel = 0; }
   toast(cfg.auto ? 'Autopilot aktif: mengikuti rute dan aturan sampai tujuan' : 'Kemudi manual: bebas, pelanggaran tetap dicatat'); };
@@ -5096,7 +5102,13 @@ PHONE = TUT ? null : initPhone({cfg, saveCfg, toast, rp: rp$, rpS, sfx: phoneSfx
     if (n === '110') return 'Polisi: laporan diterima, petugas PJR berpatroli'; if (n === '118') return 'Ambulans: siaga, sebutkan lokasi KM'; return ''; },
   view: () => renderer.domElement,
   snap(){ const src = renderer.domElement, c = document.createElement('canvas'), w = 720, h = Math.round(w*src.height/src.width); c.width = w; c.height = h; c.getContext('2d').drawImage(src, 0, 0, w, h); return c.toDataURL('image/jpeg', 0.82); },
-  setWeather: w => apply('weather', w), setTod: t => apply('tod', t), fly: () => openFly()});
+  setWeather: w => apply('weather', w), setTod: t => apply('tod', t), fly: () => openFly(),
+  music: {state: () => ({on: music.on, now: $('mus-now').textContent, src: music.cur ? music.cur.title : '', h: music.cur ? (music.cur.kind === 'audio' ? 54 : music.cur.h) : 0}), recent: () => music.recent,
+    play: i => { const r = music.recent[i]; if (r) musPlay(r.item, r.label); }, stop: () => musStop(), dock: () => PHONE ? $('mus-player') : null,
+    submit(v, resEl){ music.resEl = resEl; const it = parseMusic(v); if (it) { music.tok = (music.tok || 0) + 1; resEl.textContent = ''; musPlay(it); } else musSearch(v); }}});
+// the music player is the phone's Musik app now: the player element floats over the app (and plays on when the phone closes)
+if (PHONE) { const dock = $('mus-player'); dock.className = 'musdock'; document.body.append(dock); $('music').hidden = true;
+  $('musb').onclick = () => { if (PHONE.open && $('phone').classList.contains('app-open')) PHONE.toggle(false); else PHONE.openApp('musik'); }; }
 // Mode Terbang: a flight simulator over Java and Madura; the drive pauses while flying
 FLY = TUT ? null : initFly({mobile: MOBILE, coast: COAST, altAt, volcanoes: VOLCANO, towns: TOWNS, java: JAVA, madura: MADURA, corridors: CORRIDORS, corrGeo, here: () => gmapView(), gmap: (cv, view) => drawGMap(cv, view),
   toast, sfx: phoneSfx, icon: phIcon, hour: () => gameH, soundOn: () => cfg.sound,
@@ -5124,7 +5136,7 @@ function tick(dt){
   ensureAhead();
   setupBlocks(false); updateWorld(true); updateSignals(); animGhosts();
 }
-window.__tj.fly = () => FLY; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
+window.__tj.fly = () => FLY; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering
 window.__tj.step = (n, dt = 1/20) => { for (let i = 0; i < n; i++) tick(dt); updateSegs(); placeGroups(); place(); for (let k = 0; k < 40; k++) updateCam(dt); updateBend(); hudT = 0; updateHud(dt); drawMap(); };

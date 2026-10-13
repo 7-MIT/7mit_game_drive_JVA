@@ -424,6 +424,8 @@
   .dbtn:has(svg.lucide), #toggle, #go, #resume{display:inline-flex;align-items:center;gap:6px}
   .mini .dbtn{gap:5px} .mini .dbtn svg.lucide{width:15px;height:15px}
   #go svg.lucide, #resume svg.lucide{width:18px;height:18px}
+  .musdock{position:fixed;left:-10000px;top:0;width:268px;z-index:8;transform-origin:0 0;visibility:hidden} .musdock iframe,.musdock audio{display:block;width:100%;border:0;border-radius:14px;background:#000} .musdock audio{height:54px}
+  #auto.locked{cursor:not-allowed} #auto.locked::after{content:'';width:7px;height:7px;border-radius:50%;background:#ffd400;box-shadow:0 0 0 2px rgba(0,0,0,.25);margin-left:2px;flex:none}
   .x svg.lucide{width:20px;height:20px} #mp-grip svg.lucide{width:16px;height:16px;vertical-align:middle}
   /* narrow screens: the small buttons show only their icon, all in one row */
   @media (max-width:900px), (max-height:500px) and (orientation:landscape){

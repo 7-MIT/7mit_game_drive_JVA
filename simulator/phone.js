@@ -118,6 +118,23 @@ const CSS = `
 #phone .gm .sheet .acts button{flex:1;border-radius:20px;border:1px solid #dadce0;background:#fff;color:#1a73e8;font:inherit;font-size:12.5px;font-weight:700;padding:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px}
 #phone .gm .sheet .acts button.p{background:#1a73e8;color:#fff;border-color:#1a73e8} #phone .gm .sheet .acts svg{width:16px;height:16px}
 @keyframes phUp{from{transform:translateY(100%)}}
+#phone .card.mnow{display:flex;flex-direction:row;align-items:center;gap:10px;text-align:left}
+#phone .card.mnow>div{display:block;text-align:left}
+#phone .mnow .disc{width:46px;height:46px;border-radius:50%;flex:none;display:grid;place-items:center;color:#fff;background:conic-gradient(from 0deg,#e3204d,#ff6a8a,#7a1030,#e3204d);box-shadow:inset 0 0 0 14px rgba(0,0,0,.25)}
+#phone .mnow .disc svg{width:18px;height:18px} #phone .mnow.on .disc{animation:phSpin 3s linear infinite}
+#phone .mnow div{flex:1;min-width:0} #phone .mnow b{display:block;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} #phone .mnow small{font-size:11.5px;color:var(--sub)}
+#phone .mnow button{width:36px;height:36px;border-radius:50%;border:0;background:var(--card);color:var(--ink);display:grid;place-items:center;cursor:pointer;flex:none} #phone .mnow button svg{width:16px;height:16px}
+#phone .hint{font-size:11px;color:var(--sub);margin:4px 2px 12px;line-height:1.45}
+#phone .mph{border-radius:14px;background:#000;margin-bottom:10px;overflow:hidden}
+#phone .mus-item{display:flex;align-items:center;gap:9px;padding:7px 0;margin:0;border:0;border-bottom:1px solid rgba(127,127,127,.18);background:none;border-radius:0}
+#phone .mus-item:last-child{border-bottom:0}
+#phone .mus-item img{width:42px;height:42px;border-radius:9px;object-fit:cover;background:var(--card);flex:none}
+#phone .mus-item img:not([src]){visibility:hidden;width:0;margin-right:-9px}
+#phone .mus-item>div:nth-child(2){flex:1;min-width:0} #phone .mus-item b{display:block;font-size:12.5px;line-height:1.25;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical} #phone .mus-item small{font-size:11px;color:var(--sub)}
+#phone .mus-item>div:last-child{display:flex;flex-direction:column;gap:4px} #phone .mus-item button{border:0;border-radius:14px;padding:6px 10px;font:inherit;font-size:11.5px;font-weight:800;background:#e3204d;color:#fff;cursor:pointer}
+#phone .mus-item button+button{background:var(--card);color:var(--ink)}
+#phone .mus-note{font-size:11.5px;color:var(--sub);padding:4px 0 6px}
+@keyframes phSpin{to{transform:rotate(360deg)}}
 #phone .map{width:100%;height:250px;border-radius:18px;display:block;background:#e8ecef;margin-bottom:10px}
 #phone .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;justify-items:center;margin:8px 0}
 #phone .pad button{width:62px;height:62px;border-radius:50%;border:0;background:var(--card);color:var(--ink);font:inherit;font-size:24px;font-weight:500;cursor:pointer;transition:background .15s,transform .15s}
@@ -241,7 +258,7 @@ export function initPhone(A){
   function unlock(){ A.sfx('unlock'); lock.classList.add('gone'); drawHome(true); }
   function lockNow(){ lock.classList.remove('gone'); closeApp(true); }
   // ---------- open / close ----------
-  function toggle(force){ open = force ?? !open; el.classList.toggle('on', open); A.onToggle(open);
+  function toggle(force){ open = force ?? !open; el.classList.toggle('on', open); A.onToggle(open); musPos();
     if (open) { look(); lockNow(); tickClock(); renderLockNotes(); clearBadge('all');
       if (P.warn && A.state().kmh > 15 && !A.state().auto && !A.state().ride) A.toast('Hati-hati: main HP sambil menyetir itu berbahaya (dan dilarang). Menepi dulu, atau pakai Autopilot', 'warn'); }
     A.sfx(open ? 'open' : 'close'); }
@@ -252,7 +269,7 @@ export function initPhone(A){
     if (r) { app.style.setProperty('--ox', `${(r.left + r.width/2 - sr.left)/sc}px`); app.style.setProperty('--oy', `${(r.top + r.height/2 - sr.top)/sc}px`); }
     cur = k; stack = []; clearBadge(k); app.innerHTML = ''; app.style.setProperty('--g', G[k]); push(APPS_IMPL[k] || APPS_IMPL.stub, true);
     el.classList.add('app-open'); requestAnimationFrame(() => app.classList.add('on')); A.sfx('tap'); }
-  function closeApp(instant){ if (!cur) return; cur = null; stack = []; app.classList.remove('on'); el.classList.remove('app-open'); if (instant) app.innerHTML = ''; else setTimeout(() => { if (!cur) app.innerHTML = ''; }, 420); drawHome(); }
+  function closeApp(instant){ if (!cur) return; cur = null; setTimeout(musPos); stack = []; app.classList.remove('on'); el.classList.remove('app-open'); if (instant) app.innerHTML = ''; else setTimeout(() => { if (!cur) app.innerHTML = ''; }, 420); drawHome(); }
   // a stack of pages inside an app: push slides in from the right, back slides it out
   function push(render, first){ const pg = document.createElement('div'); pg.className = 'pg' + (first ? '' : ' new'); app.append(pg);
     const prev = stack[stack.length - 1]; stack.push({pg, render}); draw(pg, render);
@@ -561,11 +578,27 @@ export function initPhone(A){
       html(p2, `<div class="card" style="margin-top:10px"><h4>Simpan nama</h4><input class="inp" style="padding-left:12px" maxlength="24" value="${esc(P.names[n] || nameOf(n))}"></div>`).querySelector('input').onchange = e => { P.names[n] = e.target.value.trim().slice(0, 24) || nameOf(n); save(); }; }));
     html(pg, `<button class="btn sec">${ic('UserPlus')} Tambah kontak</button>`).onclick = () => push(p2 => { p2.innerHTML = head('Tambah kontak') + `<div class="card"><input class="inp nm" style="padding-left:12px;margin-bottom:8px" placeholder="Nama" maxlength="24"><input class="inp no" style="padding-left:12px" placeholder="0800-XXXX-XXXX" inputmode="tel"></div>`;
       html(p2, `<button class="btn">${ic('Check')} Simpan</button>`).onclick = () => { const n = canon(p2.querySelector('.no').value), nm = p2.querySelector('.nm').value.trim(); if (!/^0800\d{8}$/.test(n) || !nm) return A.toast('Isi nama dan nomor 0800-XXXX-XXXX', 'warn'); P.names[n] = nm.slice(0, 24); save(); back(); }; }); };
-  APPS_IMPL.musik = pg => { scr.style.setProperty('--acc', '#e3204d');
-    pg.innerHTML = head('Musik') + `<div class="hero" style="--g:${G.musik}"><small>Radio & lagu</small><b>Teman perjalanan</b><small>Cari lagu favoritmu dan putar sambil berkendara</small></div>`;
-    html(pg, `<button class="btn" style="background:#e3204d">${ic('Play')} Buka pemutar musik</button>`).onclick = () => { toggle(false); A.openMusic(); }; };
-
-  // Kamera & Galeri: take a picture of the road, keep it, set it as wallpaper
+  // Musik: the music player lives here. Search songs (or paste a YouTube / Spotify / SoundCloud link), the results, recently played;
+  // the player itself is one element of the game laid over this page, so the song keeps playing when the phone closes
+  const mres = document.createElement('div');
+  APPS_IMPL.musik = pg => { scr.style.setProperty('--acc', '#e3204d'); const m = A.music.state();
+    pg.innerHTML = head('Musik') + `<div class="card mnow ${m.on ? 'on' : ''}"><span class="disc">${ic('Music')}</span><div><b>${esc(m.on ? m.now : 'Belum ada lagu')}</b><small>${m.on ? esc(m.src) + ' · tetap diputar saat HP ditutup' : 'Cari lagu atau tempel link'}</small></div>${m.on ? `<button class="mstop" aria-label="Hentikan">${ic('Square')}</button>` : ''}</div>
+      ${m.on ? `<div class="mph" style="height:${m.h}px"></div>` : ''}
+      <form class="srch mf" autocomplete="off">${ic('Search')}<input class="inp" placeholder="Cari lagu, atau tempel link YouTube / Spotify…" enterkeyhint="search"></form>`;
+    pg.append(mres);
+    const rec = A.music.recent(); if (rec.length) html(pg, `<div class="card"><h4>Terakhir diputar</h4>${rec.map((r, i) => `<div class="row" data-i="${i}"><span class="ri" style="--g:${G.musik}">${ic('Music2')}</span><span class="rt"><b>${esc(r.label)}</b><small>${esc(r.item.title)}</small></span><span class="rv">${ic('Play')}</span></div>`).join('')}</div>`)
+      .querySelectorAll('.row').forEach(r => r.onclick = () => { A.music.play(+r.dataset.i); A.sfx('tap'); });
+    html(pg, `<p class="hint">Lagu dari YouTube, YouTube Music, Spotify, SoundCloud, Apple Music, Deezer atau file audio. Tombol U membuka aplikasi ini.</p>`);
+    const f = pg.querySelector('.mf'), inp = f.querySelector('input');
+    f.onsubmit = e => { e.preventDefault(); const v = inp.value.trim(); if (!v) return; A.music.submit(v, mres); inp.blur(); A.sfx('tap'); };
+    const st = pg.querySelector('.mstop'); if (st) st.onclick = () => { A.music.stop(); A.sfx('tap'); redraw(); }; };
+  // lay the game's player over the page's placeholder while the Musik page is on screen, park it off screen otherwise
+  function musPos(){ const dock = A.music.dock(); if (dock) {
+      const t = stack[stack.length - 1], ph = open && cur === 'musik' && t && !t.pg.classList.contains('out') && t.render === APPS_IMPL.musik ? t.pg.querySelector('.mph') : null;
+      if (ph && ph.offsetWidth) { const r = ph.getBoundingClientRect(), sr = scr.getBoundingClientRect(), k = r.width/ph.offsetWidth, top = Math.max(0, sr.top + 46*k - r.top)/k, bot = Math.max(0, r.bottom - sr.bottom + 30*k)/k;
+        Object.assign(dock.style, {left: r.left + 'px', top: r.top + 'px', width: ph.offsetWidth + 'px', transform: `scale(${k})`, clipPath: `inset(${top}px 0 ${bot}px 0 round 14px)`, visibility: top + bot >= ph.offsetHeight ? 'hidden' : 'visible'}); }
+      else Object.assign(dock.style, {left: '-10000px', top: '0px', transform: 'none', clipPath: 'none', visibility: 'hidden'}); } }
+  const musPlace = () => { musPos(); requestAnimationFrame(musPlace); }; requestAnimationFrame(musPlace);
   APPS_IMPL.kamera = pg => { scr.style.setProperty('--acc', '#ffd60a');
     pg.innerHTML = head('Kamera') + `<div class="shot"><canvas></canvas></div><button class="shut" aria-label="Ambil foto"></button><p style="text-align:center;font-size:11.5px;color:var(--sub);margin-top:10px">Foto tersimpan di Galeri</p>`;
     const cv = pg.querySelector('canvas'), ctx = cv.getContext('2d'), f = () => { const src = A.view(); if (!src) return; cv.width = 300; cv.height = 400; const s = Math.max(cv.width/src.width, cv.height/src.height), w = src.width*s, h = src.height*s; ctx.drawImage(src, (cv.width - w)/2, (cv.height - h)/2, w, h); };
@@ -606,5 +639,5 @@ export function initPhone(A){
 
   look(); drawHome();
   const peersChanged = () => { if (cur === 'kontak' || cur === 'pesan' || cur === 'telepon') redraw(); };
-  return {toggle, notify, tick, netIn: onNet, groupIn, peersChanged, get number(){ return P.no; }, openGroup: () => { if (!open) toggle(true); lock.classList.add('gone'); drawHome(); openApp('pesan'); setTimeout(() => net.ready && groupThread(), 450); }, get open(){ return open; }, openApp: k => { if (!open) toggle(true); unlock(); setTimeout(() => openApp(k, home.querySelector(`[data-app="${k}"]`)), 350); }};
+  return {musicChanged: () => { if (cur === 'musik') redraw(); }, toggle, notify, tick, netIn: onNet, groupIn, peersChanged, get number(){ return P.no; }, openGroup: () => { if (!open) toggle(true); lock.classList.add('gone'); drawHome(); openApp('pesan'); setTimeout(() => net.ready && groupThread(), 450); }, get open(){ return open; }, openApp: k => { if (!open) toggle(true); unlock(); setTimeout(() => openApp(k, home.querySelector(`[data-app="${k}"]`)), 350); }};
 }
