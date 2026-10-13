@@ -9,7 +9,7 @@ const MIRRORS = ['https://overpass-api.de/api/interpreter', 'https://overpass.ku
   'https://overpass.private.coffee/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
 const BBOX = [-8.95, 105.1, -5.75, 114.75];                  // south, west, north, east
 const CACHE = 'tj-osm-v1', MAX_AGE = 14*24*3600e3, CELL = 0.05;
-const KIND = {motorway: 't', trunk: 'n', primary: 'p', secondary: 's'};
+const KIND = {motorway: 't', trunk: 'n', primary: 'p', secondary: 's', tertiary: 'c', residential: 'r', unclassified: 'r', living_street: 'r'};
 const COSL = Math.cos(7.2*Math.PI/180);
 
 // Douglas–Peucker in metres on [lon, lat] pairs
@@ -38,7 +38,7 @@ export function initOSM({onUpdate = () => {}, log = () => {}} = {}){
   // Overpass JSON → compact roads [{k, n, r, p: [[lon, lat], …]}]
   function parse(j){ const out = [];
     for (const e of j.elements || []) { if (e.type !== 'way' || !e.geometry || e.geometry.length < 2) continue; const t = e.tags || {}, k = KIND[t.highway]; if (!k) continue;
-      const p = simplify(e.geometry.map(g => [Math.round(g.lon*1e5)/1e5, Math.round(g.lat*1e5)/1e5]), k === 't' || k === 'n' ? 12 : 20);
+      const p = simplify(e.geometry.map(g => [Math.round(g.lon*1e5)/1e5, Math.round(g.lat*1e5)/1e5]), k === 't' || k === 'n' ? 12 : k === 'r' ? 8 : 15);
       out.push({k, n: t.name || t['name:id'] || '', r: t.ref || '', p}); }
     return out; }
   async function cached(key){ try { const c = await caches.open(CACHE), r = await c.match('https://tj-osm.local/' + key); if (!r) return null; const j = await r.json(); return Date.now() - j.t < MAX_AGE ? j : null; } catch (e) { return null; } }
@@ -87,13 +87,16 @@ export function initOSM({onUpdate = () => {}, log = () => {}} = {}){
     for (const r of land) { if (r.bb[2] < la0 || r.bb[0] > la1 || r.bb[3] < lo0 || r.bb[1] > lo1) continue; const xy = r.xy; let [a, b] = P(xy[1], xy[0]); x.moveTo(a, b);
       for (let j = 2; j < xy.length; j += 2) { [a, b] = P(xy[j + 1], xy[j]); x.lineTo(a, b); } x.closePath(); }
     x.fill(); }
-  // provincial and regency roads of the 1° tile around a point
-  async function loadTile(lat, lon){ if (S.status !== 'ok') return; const ti = Math.floor(lat), tj = Math.floor(lon), key = `t${ti}_${tj}`; if (tiles.has(key)) return;
-    if (ti + 1 < BBOX[0] || ti > BBOX[2] || tj + 1 < BBOX[1] || tj > BBOX[3]) return; tiles.set(key, 'loading');
-    try { let c = await cached(key);
-      if (!c) { const j = await overpass(`[out:json][timeout:120];way["highway"~"^(primary|secondary)$"]${bb(ti, tj, ti + 1, tj + 1)};out geom;`, 150000); const d = parse(j); await store(key, d); c = {d}; }
+  // provincial, regency and city roads (primary, secondary, tertiary) of the 1° tile around a point;
+  // the street network (residential, unclassified) of the 0.1° tile around a point, for close-up maps and the side streets in the game
+  async function loadArea(key, q, ms){ if (S.status !== 'ok' || tiles.has(key)) return; tiles.set(key, 'loading');
+    try { let c = await cached(key); if (!c) { const j = await overpass(q, ms); const d = parse(j); await store(key, d); c = {d}; }
       add(c.d); tiles.set(key, 'ok'); onUpdate('tile'); }
     catch (e) { tiles.set(key, 'fail'); setTimeout(() => tiles.delete(key), 60000); } }
+  function loadTile(lat, lon){ const ti = Math.floor(lat), tj = Math.floor(lon); if (ti + 1 < BBOX[0] || ti > BBOX[2] || tj + 1 < BBOX[1] || tj > BBOX[3]) return;
+    return loadArea(`u${ti}_${tj}`, `[out:json][timeout:150];way["highway"~"^(primary|secondary|tertiary)$"]${bb(ti, tj, ti + 1, tj + 1)};out geom;`, 180000); }
+  function loadStreets(lat, lon){ const ti = Math.floor(lat*10), tj = Math.floor(lon*10); if (lat < BBOX[0] || lat > BBOX[2] || lon < BBOX[1] || lon > BBOX[3]) return;
+    return loadArea(`r${ti}_${tj}`, `[out:json][timeout:90];way["highway"~"^(residential|unclassified|living_street)$"]${bb(ti/10, tj/10, (ti + 1)/10, (tj + 1)/10)};out geom;`, 120000); }
   // roads with a part inside a lat/lon box
   function inBox(la0, lo0, la1, lo1){ const seen = new Set(), out = [];
     if ((la1 - la0)*(lo1 - lo0)/(CELL*CELL) > 6000) { for (const r of roads) if (r.bb[2] >= la0 && r.bb[0] <= la1 && r.bb[3] >= lo0 && r.bb[1] <= lo1) out.push(r); return out; }
@@ -110,7 +113,7 @@ export function initOSM({onUpdate = () => {}, log = () => {}} = {}){
     for (let a = ca - r0; a <= ca + r0; a++) for (let b = cb - r0; b <= cb + r0; b++) for (const i of grid.get(a + ',' + b) || []) { if (seen.has(i)) continue; seen.add(i); const r = roads[i]; if (!kinds.includes(r.k)) continue;
       const xy = r.xy; for (let j = 2; j < xy.length; j += 2) { const x0 = xy[j - 2]*COSL, y0 = xy[j - 1], x1 = xy[j]*COSL, y1 = xy[j + 1], px = lon*COSL, dx = x1 - x0, dy = y1 - y0, L = dx*dx + dy*dy;
         const t = L ? Math.max(0, Math.min(1, ((px - x0)*dx + (lat - y0)*dy)/L)) : 0, qx = x0 + dx*t, qy = y0 + dy*t, d = (qx - px)**2 + (qy - lat)**2;
-        if (d < bd) { bd = d; best = {lat: qy, lon: qx/COSL, road: r, km: Math.sqrt(d)*111}; } } }
+        if (d < bd) { bd = d; best = {lat: qy, lon: qx/COSL, road: r, j: j/2 - 1, t, km: Math.sqrt(d)*111}; } } }
     return best; }
-  return {S, get ready(){ return S.status === 'ok'; }, get coastReady(){ return S.coast === 'ok'; }, land, fillLand, roads, loadBase, loadTile, inBox, stroke, snap, tiles};
+  return {S, get ready(){ return S.status === 'ok'; }, get coastReady(){ return S.coast === 'ok'; }, land, fillLand, roads, loadBase, loadTile, loadStreets, inBox, stroke, snap, tiles};
 }

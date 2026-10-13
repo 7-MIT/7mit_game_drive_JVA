@@ -23,7 +23,7 @@ const DEF = {mode:'mix', gfx:'auto', cam:'chase', den:1, tod:'day', lanes:'auto'
 const FLYPAGE = !!window.TJ_FLY || /\/terbang\/?(index\.html)?$/.test(location.pathname) || new URLSearchParams(location.search).has('terbang');
 const TUT = !!window.TJ_TUTORIAL || /\/tutorial\/?(index\.html)?$/.test(location.pathname) || new URLSearchParams(location.search).has('tutorial');
 // real roads from OpenStreetMap (osm.js), loaded a moment after the start
-const OSM = initOSM({onUpdate: st => { OSNAP.clear(); LAT = null; segT = 0; drawMap.cache = null; try { drawMap(); reqAtlas(); } catch (e) {} if (FLY) FLY.roadsChanged();
+const OSM = initOSM({onUpdate: st => { OSNAP.clear(); LAT = null; segT = 0; drawMap.cache = null; OSMV++; JCACHE.clear(); try { for (const [i, g] of chunks) if (i*CH > camU + 350) { dropSolids([g]); dispose(g); chunks.delete(i); } } catch (e) {} try { drawMap(); reqAtlas(); } catch (e) {} if (FLY) FLY.roadsChanged();
     if (st === 'ok') toast(`Data jalan OpenStreetMap dimuat: ${OSM.S.n.toLocaleString('id-ID')} ruas tol & arteri (${Math.round(OSM.S.km).toLocaleString('id-ID')} km)`);
     else if (st === 'fail') toast('Data OpenStreetMap belum bisa dimuat (internet/server sibuk) · memakai data bawaan', 'warn'); }});
 setTimeout(() => OSM.loadBase(), 2500);
@@ -170,14 +170,7 @@ function bendObj(g){ g.traverse(o => { if (!o.isMesh) return; o.frustumCulled = 
 function buildLat(force){
   if (!EV.length || !PLR) { LAT = null; return; } if (!force && LAT && Math.abs(camU - LAT.at) < 40) return;
   const b = Math.floor((camU - 1400)/LT_S)*LT_S, end = b + (LT_N - 1)*LT_S, STEP = 20, n = Math.round((end - b)/STEP) + 1, u0 = EV[0].u, u1 = EV[EV.length - 1].u;
-  // follow one real road: each point is looked for next to where the previous one moved to (so a crossing or parallel road never steals it)
-  const P = []; let prev = null, prevRaw = null;
-  for (let i = -4; i < n + 4; i++) { const u = clamp(b + i*STEP, u0, u1), raw = latLonAt(u); let q = raw;
-    if (OSM.ready) { const cid = corrIdAt(u), c = CORR[cid], kinds = !c ? ['t', 'n', 'p'] : c.cls === 't' ? OSM_KINDS.t : c.cls === 'a' ? OSM_KINDS.a : c.prov ? ['p', 'n', 's'] : OSM_KINDS.n;
-      const pred = prev ? {lat: prev.lat + raw.lat - prevRaw.lat, lon: prev.lon + raw.lon - prevRaw.lon} : raw;
-      let r = OSM.snap(pred.lat, pred.lon, kinds, 0.35); if (r && Math.hypot((r.lon - raw.lon)*COSL, r.lat - raw.lat)*111 > 3) r = null;
-      if (!r) r = OSM.snap(raw.lat, raw.lon, kinds, c && c.cls === 't' ? 2.5 : 1.2); if (r) q = {lat: r.lat, lon: r.lon}; }
-    prev = q; prevRaw = raw; P.push([q.lon*COSL, q.lat]); }
+  const P = trackLL(b - 4*STEP, b + (n + 3)*STEP, STEP).map(q => [q.lon*COSL, q.lat]);
   const S = P.map((_, i) => { let x = 0, y = 0, w = 0; for (let k = -3; k <= 3; k++) { const q = P[clamp(i + k, 0, P.length - 1)], wk = 4 - Math.abs(k); x += q[0]*wk; y += q[1]*wk; w += wk; } return [x/w, y/w]; });
   const th = []; for (let i = 0; i < n; i++) { const a = S[i + 2], c = S[i + 6]; th.push(Math.hypot(c[0] - a[0], c[1] - a[1]) > 1e-7 ? Math.atan2(c[0] - a[0], c[1] - a[1]) : (th[i - 1] ?? 0)); }
   const ic = clamp(Math.round((camU - b)/STEP), 0, n - 1), ref = th[ic], d = i => { let x = th[i] - ref; x = ((x + Math.PI*3) % (Math.PI*2)) - Math.PI; return 0.7*Math.tanh(x/0.7); };
@@ -978,6 +971,7 @@ function buildChunkNat(i){
   const xGap = u => KSITES.some(t => Math.abs(t.u - u) < XW/2 + 9);
   const sea = SEA && u1 > SEA[0] - 200 && u0 < SEA[1] + 200;    // the Suramadu bridge and its approaches: no land use here
   if (sea) suramaduBridge(g, u0, u1, Z);
+  const SJ = sea ? [] : osmJunctions(u0, u1); sideStreets(g, u0, u1, Z, SJ);     // the real side streets (OpenStreetMap)
   for (const s of [-1, 1]) {
     g.add(strip(us, u => s*(MED - 0.05), u => s*(eAt(u) + 0.8), 0, asphalt, Z));
     g.add(strip(us, u => s*(eAt(u) + 0.8), u => s*(eAt(u) + (town ? 5 : 2.6)), 0.004, town ? curbMat : shoulderMat, Z));
@@ -992,7 +986,7 @@ function buildChunkNat(i){
       // shophouses (ruko) with coloured awnings, gaps for side streets
       let u = u0 + R()*4;
       while (u < u1) { const w = 7 + R()*5, h = 6 + R()*5, d = 12, x = s*(eAt(u) + 6 + d/2);
-        if (!xGap(u) && !xGap(u + w) && R() > 0.08 && !rampFoot(6, u + w/2, w)) {
+        if (!xGap(u) && !xGap(u + w) && !jGap(SJ, s, u, u + w) && R() > 0.08 && !rampFoot(6, u + w/2, w)) {
           g.add(ubox(RUKO[Math.floor(R()*RUKO.length)], x, h/2, Z(u + w/2), d, h, w - 0.4));
           g.add(ubox(AWN[Math.floor(R()*AWN.length)], s*(eAt(u) + 5.4), 3.1, Z(u + w/2), 1.6, 0.15, w - 0.6));
           g.add(ubox(roofMat2, x, h + 0.2, Z(u + w/2), d + 0.4, 0.4, w)); }
@@ -1002,7 +996,7 @@ function buildChunkNat(i){
     } else {
       if (regionAt(u0 + CH/2) === 'paddy') for (let k = 0; k < 2; k++) { const w = 30 + R()*120, o = 14 + R()*40;
         g.add(flat(w, CH*(0.4 + R()*0.6), PADDY[Math.floor(R()*3)], s*(eAt(u0) + o + w/2), 0.002, -CH/2)); }
-      for (let u = u0 + R()*30; u < u1; u += 30 + R()*40) { if (R() < 0.45) continue; const o = 9 + R()*14, x = s*(eAt(u) + o + 3); if (rampFoot(o, u, 8)) continue;
+      for (let u = u0 + R()*30; u < u1; u += 30 + R()*40) { if (R() < 0.45) continue; const o = 9 + R()*14, x = s*(eAt(u) + o + 3); if (rampFoot(o, u, 8) || jGap(SJ, s, u - 5, u + 5)) continue;
         g.add(ubox(RUKO[Math.floor(R()*RUKO.length)], x, 1.6, Z(u), 6, 3.2, 7));
         const rf = new THREE.Mesh(roofGeo, R() < 0.5 ? roofMat : roofMat2); rf.position.set(x, 4.4, Z(u)); rf.scale.set(1, 1, 1.2); rf.castShadow = true; g.add(rf); }
     }
@@ -4309,8 +4303,8 @@ function drawMap(cv = map, big = mapBig){
     y.lineJoin = 'round';
     const zk = follow ? 2 : 1;
     if (OSM.ready) { const vis = OSM.inBox(Math.min(lat0, lat1), lon0, Math.max(lat0, lat1), lon1);
-      for (const [k, w, col] of [['s', 0.6, 'rgba(80,88,94,0.4)'], ['p', 0.7, 'rgba(160,120,70,0.45)'], ['n', 1, 'rgba(138,90,40,0.55)'], ['t', 1.5, 'rgba(32,30,29,0.5)']]) {
-        if (!follow && (k === 's' || k === 'p')) continue; y.lineWidth = zk*w; y.strokeStyle = col; OSM.stroke(y, P, vis, [k]); }
+      for (const [k, w, col] of [['r', 0.4, 'rgba(80,88,94,0.25)'], ['c', 0.5, 'rgba(80,88,94,0.35)'], ['s', 0.6, 'rgba(80,88,94,0.4)'], ['p', 0.7, 'rgba(160,120,70,0.45)'], ['n', 1, 'rgba(138,90,40,0.55)'], ['t', 1.5, 'rgba(32,30,29,0.5)']]) {
+        if (!follow && k !== 't' && k !== 'n') continue; if (k === 'r' && !big) continue; y.lineWidth = zk*w; y.strokeStyle = col; OSM.stroke(y, P, vis, [k]); }
       y.setLineDash([3, 3]); y.lineWidth = zk*1.5; y.strokeStyle = 'rgba(32,30,29,0.4)'; for (const c of CORRIDORS) if (c.planned && roadInView(c.id, P, W, H)) strokeRoad(y, P, c.id); y.setLineDash([]); return; }
     for (const c of CORRIDORS) { if ((c.cls === 'a' && !follow) || !roadInView(c.id, P, W, H)) continue; y.lineWidth = zk*(c.cls === 'a' ? 0.6 : c.prov ? 0.7 : c.cls === 'n' ? 1 : 1.5); y.strokeStyle = c.prov ? 'rgba(160,120,70,0.45)' : c.cls === 'n' ? 'rgba(138,90,40,0.55)' : 'rgba(32,30,29,0.45)'; y.setLineDash(c.planned ? [3, 3] : []); strokeRoad(y, P, c.id); }
     y.setLineDash([]); };
@@ -4380,7 +4374,7 @@ function openAtlas(){ TUTF.mapOpen = true;
 function closeAtlas(){ if (TUTF.mapOpen) TUTF.mapClosed = true; atlas.hidden = true; $('at-res').hidden = true; $('at-q').blur(); }
 function legendText(){
   if (OSM.ready) { const c = k => OSM.roads.filter(r => r.k === k).length; $('lg-t').textContent = `Jalan tol (OpenStreetMap) · ${c('t').toLocaleString('id-ID')} ruas`;
-    $('lg-n').textContent = `Jalan nasional/arteri · ${c('n').toLocaleString('id-ID')} · provinsi · ${c('p').toLocaleString('id-ID')} ruas`; $('lg-a').textContent = `Jalan kabupaten · ${c('s').toLocaleString('id-ID')} ruas (dimuat saat diperbesar)`; }
+    $('lg-n').textContent = `Jalan nasional/arteri · ${c('n').toLocaleString('id-ID')} · provinsi · ${c('p').toLocaleString('id-ID')} ruas`; $('lg-a').textContent = `Jalan kabupaten/kota · ${(c('s') + c('c')).toLocaleString('id-ID')} · lingkungan · ${c('r').toLocaleString('id-ID')} ruas (dimuat per wilayah)`; }
   else { $('lg-t').textContent = `Jalan tol · ${NET.t.length} ruas`; $('lg-n').textContent = `Jalan nasional · ${NET.n.filter(c => !c.prov).length} ruas · provinsi/kabupaten · ${NET.n.filter(c => c.prov).length} ruas`; $('lg-a').textContent = `Jalan akses gerbang tol · ${NET.a.length}`; }
   const d = trip && EV[trip.destIdx];
   $('at-nav').textContent = d ? `Navigasi ke ${d.name} · ${fmtKm(Math.max(0, d.rk - rkAt(uOfV(PLR))))}` : 'Rute di depan (keliling bebas)';
@@ -4393,8 +4387,70 @@ function onOSM(q, cid, keyKm){ if (!OSM.ready || !q) return q; const c = CORR[ci
   const r = OSM.snap(q.lat, q.lon, kinds, c && c.cls === 't' ? 3 : 1.5), out = r ? {lat: r.lat, lon: r.lon} : q; if (key) { if (OSNAP.size > 20000) OSNAP.clear(); OSNAP.set(key, out); } return out; }
 function corrIdAt(u){ const i = evAt(u); return i >= 0 && EV[i] ? EV[i].cNext : null; }
 function latLonMap(u){ return onOSM(latLonAt(u), corrIdAt(u), Math.round(kmAt(u)*20)/20); }
-function routeMap(u0, i1){ const pts = routeLL(u0, i1), i0 = Math.max(0, evAt(u0)); if (!OSM.ready) return pts;
-  let i = i0; return pts.map((q, j) => { while (i < i1 && EV[i + 1] && Math.abs(EV[i + 1].lat - q.lat) < 1e-9 && Math.abs(EV[i + 1].lon - q.lon) < 1e-9) i++; return j ? onOSM(q, EV[Math.min(i, EV.length - 1)].cNext, null) : latLonMap(u0); }); }
+// the route followed along one real road: every point looked for next to where the previous one moved to, so a crossing
+// or parallel road never steals it; returns [{u, lat, lon, r: OSM road, j: its segment}]
+function kindsFor(cid){ const c = CORR[cid]; return !c ? ['t', 'n', 'p'] : c.cls === 't' ? OSM_KINDS.t : c.cls === 'a' ? OSM_KINDS.a : c.prov ? ['p', 'n', 's', 'c'] : OSM_KINDS.n; }
+function trackLL(ua, ub, step){ const out = [], u0 = EV[0].u, u1 = EV[EV.length - 1].u; let prev = null, prevRaw = null;
+  for (let u = ua; u <= ub + 1e-6; u += step) { const uu = clamp(u, u0, u1), raw = latLonAt(uu); let q = {u: uu, lat: raw.lat, lon: raw.lon, r: null, j: -1};
+    if (OSM.ready) { const cid = corrIdAt(uu), c = CORR[cid], kinds = kindsFor(cid);
+      const pred = prev ? {lat: prev.lat + raw.lat - prevRaw.lat, lon: prev.lon + raw.lon - prevRaw.lon} : raw;
+      let r = OSM.snap(pred.lat, pred.lon, kinds, 0.35); if (r && Math.hypot((r.lon - raw.lon)*COSL, r.lat - raw.lat)*111 > 3) r = null;
+      if (!r) r = OSM.snap(raw.lat, raw.lon, kinds, c && c.cls === 't' ? 2.5 : 1.2); if (r) q = {u: uu, lat: r.lat, lon: r.lon, r: r.road, j: r.j}; }
+    prev = q; prevRaw = raw; out.push(q); }
+  return out; }
+// the route line on the maps: along the real roads, with every bend of the road between two tracked points
+let RCACHE = null, OSMV = 0;
+function routeMap(u0, i1){ if (!OSM.ready || !EV.length) return routeLL(u0, i1);
+  const ue = EV[Math.min(i1, EV.length - 1)].u, key = `${EV[0].u}|${EV.length}|${i1}|${OSMV}|${cfg.scale}`;
+  if (!RCACHE || RCACHE.key !== key || u0 < RCACHE.ua - 1 || u0 > ue) { const ua = Math.max(EV[0].u, u0 - 50), step = Math.max(100/cfg.scale, (ue - ua)/5000), tr = trackLL(ua, ue, step), pts = [];
+    for (let i = 0; i < tr.length; i++) { const a = tr[i - 1], b = tr[i];
+      if (a && a.r && a.r === b.r && a.j !== b.j && Math.abs(a.j - b.j) < 400) { const xy = a.r.xy, dj = b.j > a.j ? 1 : -1;
+        for (let k = dj > 0 ? a.j + 1 : a.j; dj > 0 ? k <= b.j : k > b.j; k += dj) pts.push({u: a.u, lat: xy[k*2 + 1], lon: xy[k*2]}); }
+      pts.push({u: b.u, lat: b.lat, lon: b.lon}); }
+    RCACHE = {key, ua, pts}; }
+  const out = [latLonMap(u0)]; for (const q of RCACHE.pts) if (q.u > u0) out.push(q); return out; }
+// side streets in the 3D world where real roads (OpenStreetMap) meet the route: [{u, s: side, ang, k: kind, name}] for a chunk of national road
+const JCACHE = new Map();
+function osmJunctions(ua, ub){ if (!OSM.ready || !EV.length) return []; const key = `${Math.round(ua)}|${OSMV}`; if (JCACHE.has(key)) return JCACHE.get(key);
+  const tr = trackLL(ua - 20, ub + 20, 8), out = []; if (tr.length < 3) return out;
+  let la0 = 90, la1 = -90, lo0 = 180, lo1 = -180; for (const q of tr) { la0 = Math.min(la0, q.lat); la1 = Math.max(la1, q.lat); lo0 = Math.min(lo0, q.lon); lo1 = Math.max(lo1, q.lon); }
+  const KM = 111320, kinds = cfg.scale <= 2 ? ['n', 'p', 's', 'c', 'r'] : ['n', 'p', 's', 'c'], own = new Set(tr.map(q => q.r).filter(Boolean));
+  for (const r of OSM.inBox(la0 - 0.002, lo0 - 0.002, la1 + 0.002, lo1 + 0.002)) { if (!kinds.includes(r.k) || own.has(r)) continue; const xy = r.xy, nv = xy.length/2;
+    for (let k = 0; k < nv; k++) { const vx = xy[k*2], vy = xy[k*2 + 1];
+      // nearest point of the route to this vertex
+      let bd = Infinity, bi = -1, bt = 0; for (let i = 1; i < tr.length; i++) { const ax = tr[i - 1].lon*COSL, ay = tr[i - 1].lat, dx = tr[i].lon*COSL - ax, dy = tr[i].lat - ay, L = dx*dx + dy*dy;
+        const t = L ? clamp(((vx*COSL - ax)*dx + (vy - ay)*dy)/L, 0, 1) : 0, d = Math.hypot(ax + dx*t - vx*COSL, ay + dy*t - vy)*KM; if (d < bd) { bd = d; bi = i; bt = t; } }
+      if (bd > 14) continue; const u = tr[bi - 1].u + (tr[bi].u - tr[bi - 1].u)*bt; if (u < ua || u >= ub) continue;
+      const ex = (tr[bi].lon - tr[bi - 1].lon)*COSL, ey = tr[bi].lat - tr[bi - 1].lat, el = Math.hypot(ex, ey) || 1;
+      for (const dk of [-1, 1]) { let m = k + dk; while (m >= 0 && m < nv && Math.hypot((xy[m*2] - vx)*COSL, xy[m*2 + 1] - vy)*KM < 25) m += dk; if (m < 0 || m >= nv) continue;
+        const bx = (xy[m*2] - vx)*COSL, by = xy[m*2 + 1] - vy, bl = Math.hypot(bx, by) || 1, along = (bx*ex + by*ey)/(bl*el), cross = (ex*by - ey*bx)/(bl*el);
+        if (Math.abs(cross) < 0.4) continue;                                       // running alongside: not a side street
+        out.push({u, s: cross > 0 ? -1 : 1, ang: clamp(Math.atan2(along, Math.abs(cross)), -0.8, 0.8), k: r.k, name: r.name || r.ref || ''}); } } }
+  // one street per spot and side, the bigger one; never on top of the game's own intersections
+  const rank = {n: 0, p: 1, s: 2, c: 3, r: 4}, keep = [];
+  for (const j of out.sort((a, b) => rank[a.k] - rank[b.k])) { if (keep.some(q => q.s === j.s && Math.abs(q.u - j.u) < (j.k === 'r' ? 12 : 18))) continue;
+    if (KSITES.some(t => Math.abs(t.u - j.u) < XW/2 + 14)) continue; keep.push(j); }
+  if (JCACHE.size > 400) JCACHE.clear(); JCACHE.set(key, keep); return keep; }
+// while driving: the city and regency roads (and, at real scale, the streets) around the car and ahead come in by area
+let osmT = 0;
+function osmTick(dt){ if ((osmT -= dt) > 0 || !OSM.ready || !PLR || !EV.length) return; osmT = 3; const u = uOfV(PLR);
+  for (const du of [0, 1500]) { const q = latLonMap(u + du); OSM.loadTile(q.lat, q.lon); if (cfg.scale <= 2 && !isToll(u + du)) OSM.loadStreets(q.lat, q.lon); } }
+const STREET_TEX = new Map();
+function streetTex(name){ if (STREET_TEX.has(name)) return STREET_TEX.get(name); const t = canvasTex(1.6, 0.36, (x, w, h) => { x.fillStyle = '#0b6b3a'; x.fillRect(0, 0, w, h); x.strokeStyle = '#fff'; x.lineWidth = 10; x.strokeRect(14, 14, w - 28, h - 28);
+    x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle'; fit(x, name, w - 70, 150, 800); x.fillText(name, w/2, h/2 + 4); }); if (STREET_TEX.size > 120) STREET_TEX.clear(); STREET_TEX.set(name, t); return t; }
+// draw them: the mouth of the street (asphalt, kerb line, stop line, centre line), and a street-name sign at the corner
+const SIDE_W = {n: 9, p: 8, s: 7, c: 6, r: 4.5}, SIDE_L = {n: 70, p: 64, s: 56, c: 48, r: 34};
+function sideStreets(g, u0, u1, Z, list){
+  const strip = (w, l, mat, x, u, rot, y) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, l), mat); m.rotation.set(-Math.PI/2, 0, rot); m.position.set(x, y, Z(u)); m.receiveShadow = true; g.add(m); };
+  for (const j of list) { const W = SIDE_W[j.k], L = SIDE_L[j.k], e = eAt(j.u) + 0.8, dirx = j.s*Math.cos(j.ang), diru = Math.sin(j.ang);
+    const rot = Math.atan2(-dirx, diru), at = d => [j.s*e + dirx*d, j.u + diru*d];   // the strip's length runs along (dirx, diru) away from the road
+    { const [x, u] = at(L/2); strip(W, L, asphalt, x, u, rot, 0.003); }
+    { const [x, u] = at(1.2); strip(W, 0.35, white, x, u, rot + Math.PI/2*0, 0.012); }
+    if (W >= 6) for (let d = 6; d < L - 2; d += 6) { const [x, u] = at(d); strip(0.15, 2.5, white, x, u, rot, 0.012); }
+    if (j.name) { const pu = j.u - (W/2 + 1.6), px = j.s*(e + 1.4), p = panelMesh(1.6, 0.36, streetTex(j.name)); p.position.set(px, 2.7, Z(pu)); p.rotation.y = j.s < 0 ? 0 : Math.PI; g.add(p);
+      g.add(solid(0.08, 2.6, 0.08, uPoleMat, px, 1.3, Z(pu))); } } }
+// a stretch where a side street meets the road: no ruko or house there
+const jGap = (list, s, a, b) => list.some(j => j.s === s && j.u > a - SIDE_W[j.k]/2 - 2 && j.u < b + SIDE_W[j.k]/2 + 2);
 const OSM_STYLE = {t: '#201e1d', n: '#a0682e', p: '#c49a62', s: 'rgba(80,88,94,0.6)'};
 function paintLand(x, P, la0, lo0, la1, lo1){ if (OSM.coastReady) return OSM.fillLand(x, P, Math.min(la0, la1), Math.min(lo0, lo1), Math.max(la0, la1), Math.max(lo0, lo1));
   x.beginPath(); for (const isl of [COAST.JAVA, COAST.MADURA, ...COAST.ISL]) { isl.forEach(([lo, la], i) => { const [a, b] = P(la, lo); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.closePath(); } x.fill(); }
@@ -4411,7 +4467,8 @@ function drawAtlas(){
   const z = Math.log2(k/100);   // 0 = whole island
   if (OSM.ready) {      // real roads from OpenStreetMap; the planned toll roads (not built yet) from the game's data
     const [la1, lo0] = atLL(0, 0), [la0, lo1] = atLL(W, H), vis = OSM.inBox(la0, lo0, la1, lo1); if (z > 1.8) { const [cla, clo] = atLL(W/2, H/2); OSM.loadTile(cla, clo); }
-    if (z > 1.8) { x.strokeStyle = OSM_STYLE.s; x.lineWidth = clamp(0.5 + z*0.3, 0.5, 2); OSM.stroke(x, atP, vis, ['s']); }
+    if (z > 3.3) { const [cla, clo] = atLL(W/2, H/2); OSM.loadStreets(cla, clo); x.strokeStyle = 'rgba(120,126,130,0.55)'; x.lineWidth = clamp(z - 3, 0.5, 2.5); OSM.stroke(x, atP, vis, ['r']); }
+    if (z > 1.8) { x.strokeStyle = OSM_STYLE.s; x.lineWidth = clamp(0.5 + z*0.3, 0.5, 2); OSM.stroke(x, atP, vis, ['s', 'c']); }
     if (z > 1.2) { x.strokeStyle = OSM_STYLE.p; x.lineWidth = clamp(0.7 + z*0.45, 0.7, 3.2); OSM.stroke(x, atP, vis, ['p']); }
     x.strokeStyle = OSM_STYLE.n; x.lineWidth = clamp(1 + z*0.6, 1, 4.5); OSM.stroke(x, atP, vis, ['n']);
     x.strokeStyle = '#fff'; x.lineWidth = clamp(2.4 + z*0.9, 2.4, 8); OSM.stroke(x, atP, vis, ['t']); x.strokeStyle = OSM_STYLE.t; x.lineWidth = clamp(1.4 + z*0.7, 1.4, 6); OSM.stroke(x, atP, vis, ['t']);
@@ -5084,8 +5141,9 @@ function drawGMap(cv, view){
   const order = ['acc', 'prov', 'nat', 'toll'];
   if (OSM.ready) {      // real roads from OpenStreetMap (provincial and regency roads load per area when zoomed in)
     const la1 = view.lat + H/2/k, la0 = view.lat - H/2/k, lo0 = view.lon - W/2/(k*COSL), lo1 = view.lon + W/2/(k*COSL), ovis = OSM.inBox(la0, lo0, la1, lo1), OK = {acc: 's', prov: 'p', nat: 'n', toll: 't'};
-    if (z > 1.8) OSM.loadTile(view.lat, view.lon);
-    for (const pass of [1, 0]) for (const kind of order) { if ((kind === 'acc' && z < 1.8) || (kind === 'prov' && z < 0.8)) continue; const w = Math.max(0.6, wid[kind]); x.lineWidth = pass ? w + 2 : w; x.strokeStyle = GM[kind][pass]; OSM.stroke(x, P, ovis, [OK[kind]]); }
+    if (z > 1.8) OSM.loadTile(view.lat, view.lon); if (z > 3.3) OSM.loadStreets(view.lat, view.lon);
+    if (z > 3.3) for (const pass of [1, 0]) { const w = Math.max(0.6, (z - 3)*1.6); x.lineWidth = pass ? w + 1.5 : w; x.strokeStyle = GM.acc[pass]; OSM.stroke(x, P, ovis, ['r']); }
+    for (const pass of [1, 0]) for (const kind of order) { if ((kind === 'acc' && z < 1.8) || (kind === 'prov' && z < 0.8)) continue; const w = Math.max(0.6, wid[kind]); x.lineWidth = pass ? w + 2 : w; x.strokeStyle = GM[kind][pass]; OSM.stroke(x, P, ovis, kind === 'acc' ? ['s', 'c'] : [OK[kind]]); }
     x.setLineDash([4, 4]); x.lineWidth = Math.max(0.6, wid.toll); x.strokeStyle = GM.toll[1]; for (const c of CORRIDORS) if (c.planned && roadInView(c.id, P, W, H)) strokeRoad(x, P, c.id); }
   else { const vis = CORRIDORS.filter(c => roadInView(c.id, P, W, H) && (c.cls !== 'a' || z > 2.2) && (!c.prov || z > 0.6));
   for (const pass of [1, 0]) for (const kind of order) { const w = Math.max(0.6, wid[kind]); x.lineWidth = pass ? w + 2 : w; x.strokeStyle = GM[kind][pass];
@@ -5199,14 +5257,14 @@ window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ ret
 
 let last = performance.now(), mapT = 0, frames = 0;
 function tick(dt){
-  clock += dt; if (TUT) tutTick(dt); phoneTick(dt);
+  clock += dt; if (TUT) tutTick(dt); phoneTick(dt); osmTick(dt);
   if (PLR && PLR.wantU) { PLR.wantU = false; uTurn(PLR); }
   stepFoot(dt); tickNeeds(dt); stepTow(dt); stepAngry(dt); mpTick(dt); sim(dt); mbzTraffic(); rampStep(dt); jobTick(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt); tickClock(dt);
   if (PLR) camU = foot ? foot.u : uOfV(PLR);
   ensureAhead();
   setupBlocks(false); updateWorld(true); updateSignals(); animGhosts();
 }
-window.__tj.fly = () => FLY; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
+window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering
 window.__tj.step = (n, dt = 1/20) => { for (let i = 0; i < n; i++) tick(dt); updateSegs(); placeGroups(); place(); for (let k = 0; k < 40; k++) updateCam(dt); updateBend(); hudT = 0; updateHud(dt); drawMap(); };

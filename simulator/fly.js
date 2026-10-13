@@ -100,10 +100,10 @@ export function initFly(A){
 
   // ---------- roads: every road of the network, drawn on the ground ----------
   // the roads to draw: the real ones from OpenStreetMap once loaded, the game's own network until then
-  const OSM_NAME = {t: 'Jalan tol', n: 'Jalan nasional', p: 'Jalan provinsi', s: 'Jalan kabupaten'};
+  const OSM_NAME = {t: 'Jalan tol', n: 'Jalan nasional', p: 'Jalan provinsi', s: 'Jalan kabupaten', c: 'Jalan kota/kabupaten'};
   function roadSource(){ const O = A.osm;
-    if (O && O.ready) return O.roads.map(r => { const g = []; for (let j = 0; j < r.xy.length; j += 2) g.push({lon: r.xy[j], lat: r.xy[j + 1]});
-      return {kd: r.k === 's' ? 'a' : r.k, g, c: {name: r.name || (r.ref ? `${OSM_NAME[r.k]} ${r.ref}` : OSM_NAME[r.k]), cls: r.k === 't' ? 't' : 'n'}}; });
+    if (O && O.ready) return O.roads.filter(r => r.k !== 'r').map(r => { const g = []; for (let j = 0; j < r.xy.length; j += 2) g.push({lon: r.xy[j], lat: r.xy[j + 1]});
+      return {kd: r.k === 's' || r.k === 'c' ? 'a' : r.k, g, c: {name: r.name || (r.ref ? `${OSM_NAME[r.k]} ${r.ref}` : OSM_NAME[r.k]), cls: r.k === 't' ? 't' : 'n'}}; });
     return A.corridors.filter(c => !c.planned).map(c => ({kd: c.cls === 't' ? 't' : c.cls === 'a' ? 'a' : c.prov ? 'p' : 'n', g: A.corrGeo(c.id), c})); }
   function buildRoads(){
     const kinds = {t: [[], [], 0xf39c12], n: [[], [], 0xfff1c4], p: [[], [], 0xe9dcc3], a: [[], [], 0xd8d0c4]}; roadPts = [];
