@@ -75,7 +75,7 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
 - **Realistic vehicles.** Every vehicle is built from a real side profile extruded across its width: sloping hood and windscreen, glasshouse with pillars, roof and boot for sedans (also the Bluebird-style taxi and police car); a taller body with roof rails for SUVs; cab and load bed for pickups; one-box minibuses (van, ambulance, angkot) with a window band; cab-over trucks, fire engines and tow trucks with rounded cab fronts; buses with a deep window band and destination board. All have rims, bumpers, grille, head and tail lights, door mirrors and number plates. Bodies have rounded, smoothly shaded profiles, dark wheel arches, sills, door shut lines and handles, wrap-round lamps with daytime running lights, mirrors in body colour and a shark-fin aerial. Paint, glass, chrome and rims reflect a sky-and-road environment (metallic paints more sharply than solid white or red), dimmed at night. Traffic mixes sedans, hatchbacks and 7-seat MPVs, body-on-frame SUVs and crossovers, and semi-trailers with six-wheel box trucks, in the colours seen on Indonesian roads (mostly white, silver, black and grey).
 - **Realistic traffic movement.** Drivers put the indicator on 1–2 s before a lane change and keep it on while moving over (and towards their exit); brake lights come on when they slow down or stand in a queue; hazards flash after a crash. Trucks and buses pull away slowly and keep longer gaps, motorbikes are brisk. Nobody drives dead centre: cars drift gently within their lane, and every body rides the road on its springs, pitches under braking and rolls in a lane change.
 - **Taxis and motorbikes.** Blue taxis with a lit TAXI sign drive in the cities. You can also choose Taksi or Motor. A motorbike leans into bends and, as in reality, is never routed onto a toll road.
-- **Tow truck (derek).** After a bad crash, an engine failure (100 % damage, called automatically) or an empty tank, press "Panggil derek" (or T). A yellow tow truck with amber lights comes along the shoulder and stops in front of you. For an empty tank it brings 10 L of emergency fuel. Otherwise it winches the car onto its bed and takes it to the nearest workshop, where the car is repaired; the clock moves on and the tow and repair are paid from your cash.
+- **Tow truck (derek).** After a bad crash, an engine failure (100 % damage, called automatically) or an empty tank, press "Panggil derek" (or T). A yellow tow truck with amber lights comes along the shoulder and stops in front of you. For an empty tank it brings 10 L of emergency fuel. Otherwise it winches the car onto its bed and takes it to the nearest workshop, where the car is repaired; the clock moves on and the tow and repair are paid from your cash. The tow truck shows live on the mini-map and the full map (an amber truck marker with its distance while it comes).
 - **Trip needs.** The dashboard shows fuel (BBM), cash (Tunai), e-Toll balance and drowsiness (Kantuk).
   - Fuel is used by real distance and vehicle (a car does about 13 km/L). An empty tank stops the engine.
   - Tolls are paid from the e-Toll balance.
@@ -154,7 +154,8 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
   - Ramps reach deck height before they pass under the deck.
   - Low ramp sections sit on grassed embankments with 1:1.5 slopes; high sections are viaducts with piers, crossbeams and concrete parapets.
   - Overpasses have earth fills with side slopes and abutment walls. No lamp post stands under a bridge deck or a toll-plaza canopy.
-  - **Info Tol 133.** Blue "Info Tol" boards with a phone icon and the number 133 stand beside both carriageways every few kilometres, clear of exits, gates and junctions.
+  - **Tanjakan dan turunan (real hills).** The road climbs and falls with the real height of the land: an elevation model of Java (towns, toll gates and passes such as Puncak, Kledung, Gumitir, Pandaan–Lawang) and per-KM profiles of the hilly toll roads (Cipularang, Padaleunyi, Semarang–Solo, Gempol–Pandaan–Malang, Jagorawi, Bocimi, Cisumdawu, Soroja). Heights are scaled like distances, so grades are the real ones (for example Cipularang up to about 3 %, the Puncak road up to about 10 %). The camera rides up and down with the road, gravity slows you on a climb and speeds you up downhill, loaded trucks and buses crawl up long climbs and hold back going down, and yellow "Tanjakan" / "Turunan curam" boards stand before long steep stretches.
+- **Info Tol 133.** Blue "Info Tol" boards with a phone icon and the number 133 stand beside both carriageways every few kilometres, clear of exits, gates and junctions.
   - **Billboards.** Two-sided billboards on a single pole stand beside toll roads (about every kilometre, alternating sides) and national roads outside towns, with made-up brands and road-safety notices, lit at night.
   - **Street lights everywhere on the toll road.** Median lamps light the main road; where the MBZ deck covers Japek's median, lamps stand on both verges instead (also seen from the deck). Exit, junction and rest-area ramps have lamps along their edge, the rest-area car park has its own, and every toll gate has lights under the canopy and lamp posts on the approaches.
   - A geometry check run during development reports no clashes between ramps, decks, the main road, the parallel road or signs.
@@ -286,14 +287,17 @@ Pick a job and the vehicle is swapped for the right one on the spot.
 
 | Job | Vehicle | Pay |
 |---|---|---|
-| Ojek online | motorbike | Rp 9.000 + Rp 2.500/km |
-| Antar makanan | motorbike | Rp 10.000 + Rp 2.500/km |
-| Sopir taksi | taxi | Rp 7.500 + Rp 6.500/km |
-| Sopir bus | bus | Rp 8.000 per boarding passenger |
-| Sopir angkot | angkot | Rp 5.000 per boarding passenger |
-| Sopir truk ekspedisi | truck | Rp 250.000 + Rp 9.000/km, less damage to the load |
+| Ojek online | motorbike | Rp 3.000.000 + Rp 25.000/km |
+| Antar makanan | motorbike | Rp 3.000.000 + Rp 25.000/km |
+| Sopir taksi | taxi | Rp 3.000.000 + Rp 50.000/km |
+| Sopir bus | bus | Rp 3.000.000 per halte + Rp 150.000 per boarding passenger |
+| Sopir angkot | angkot | Rp 3.000.000 per halte + Rp 100.000 per boarding passenger |
+| Sopir truk ekspedisi | truck | Rp 3.000.000 + Rp 100.000/km, less damage to the load |
+
+Every order (or every halte for bus and angkot) pays at least Rp 3.000.000.
 
 - **Stops.** Stops are marked by the road: a coloured post with people waiting, a bus shelter, a food stall or a pile of crates. Pull over next to the marker and stop to pick up or drop off.
+- **Truck deliveries.** A truck loads its parcels at a warehouse and delivers them at least 25 km further on. The drive may use toll roads; the receiving warehouse is off the toll road where the route leaves it, otherwise beside it. If the route ahead is too short, pick a farther destination or drive Keliling bebas.
 - **Rating.** Each trip is rated with 1–5 stars according to violations and crashes. Five stars earns a Rp 5.000 tip.
 - **Motorbikes.** Motorbike jobs never use toll roads: the road ahead is planned again without them.
 

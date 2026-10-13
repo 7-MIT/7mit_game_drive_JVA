@@ -9,7 +9,7 @@ import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
 import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
 import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 import {mergeGeometries, toCreasedNormals} from 'three/addons/utils/BufferGeometryUtils.js';
-import {CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, walkFree, choicesAt, edgesFrom, turnDeg, fmtKm, nodeLabel, JAVA, MADURA, corrGeo, corrLL, RULES} from './network.js';
+import {altAt, ALT_KM, CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, walkFree, choicesAt, edgesFrom, turnDeg, fmtKm, nodeLabel, JAVA, MADURA, corrGeo, corrLL, RULES} from './network.js';
 
 const MOBILE = matchMedia('(pointer:coarse)').matches || innerWidth < 700;
 const LW = 3.6, MED = 1.2, CH = 120, OPEN_HW = 35, OVH = 7.5, PRC = 328, BACK = 460, FWD = 720;
@@ -68,18 +68,27 @@ composer.addPass(bloom); composer.addPass(new OutputPass());
 // roads wind (kelak-kelok) and climb, Cipularang / Semarang–Solo / Bocimi roll over the hills.
 const SEG_N = 6, segU = Array.from({length: SEG_N}, () => new THREE.Vector4(0, -1, 0, 0));
 const EL_N = 3, elU = Array.from({length: EL_N}, () => new THREE.Vector4(0, -1, 0, 1));
-const CU = {uW:{value:0}, uCz:{value:0}, uB0:{value:0}, uB1:{value:0}, vB0:{value:0}, vB1:{value:0}, uSeg:{value:segU}, uX:{value:new THREE.Vector3(1, 0, 0)}, uEl:{value:elU}};   // uX: base bend × , extra winding, extra hills
+// the real height profile of the road (tanjakan & turunan): samples every PR_S metres of route, heights scaled like distances so grades are real;
+// the shader gets the PR_N samples around the camera (height, slope) and draws a smooth Hermite curve through them
+const PR_S = 400, PR_N = 14; let PROF = null; const prW = Array.from({length: PR_N}, () => new THREE.Vector2());
+const CU = {uW:{value:0}, uCz:{value:0}, uB0:{value:0}, uB1:{value:0}, vB0:{value:0}, vB1:{value:0}, uSeg:{value:segU}, uX:{value:new THREE.Vector3(1, 0, 0)}, uEl:{value:elU}, uPrB:{value:0}, uPr:{value:prW}};   // uX: base bend × , extra winding, extra hills
 const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a)/(b - a))); return t*t*(3 - 2*t); };
 function segAmp(u){ let w = CU.uX.value.y, h = CU.uX.value.z; for (const q of segU) { if (q.y <= q.x) continue; const k = sstep(q.x, q.x + 400, u)*(1 - sstep(q.y - 400, q.y, u)); w += k*q.z; h += k*q.w; } return [w, h]; }
 const gC = u => { const w = segAmp(u)[0]; return CU.uX.value.x*(45*Math.sin(u/450) + 20*Math.sin(u/200+1.3)) + w*(Math.sin(u/80 + 0.7) + 0.45*Math.sin(u/45 + 2.1)); };
-const gY = u => { const h = segAmp(u)[1]; return h*(0.7*Math.sin(u/520) + 0.3*Math.sin(u/230 + 2)); };
+function profY(u){ if (!PROF) return 0; const t = clamp((u - PROF.u0)/PR_S, 0, PROF.h.length - 1.0001), i = Math.floor(t), f = t - i, a = PROF.h[i], b = PROF.h[i + 1], ma = PROF.m[i]*PR_S, mb = PROF.m[i + 1]*PR_S, f2 = f*f, f3 = f2*f;
+  return (2*f3 - 3*f2 + 1)*a + (f3 - 2*f2 + f)*ma + (-2*f3 + 3*f2)*b + (f3 - f2)*mb; }
+const gY = u => { const h = segAmp(u)[1]; return h*(0.7*Math.sin(u/520) + 0.3*Math.sin(u/230 + 2)) + profY(u); };
+// height of the road at view z relative to the car (the world is drawn with the car's spot of road at y = 0)
+const roadY = z => gY(camU - z) - gY(camU);
 const gD = u => gC(u + 0.5) - gC(u - 0.5), gYD = u => gY(u + 0.5) - gY(u - 0.5);
-const BEND_HEAD = `uniform float uW; uniform float uCz; uniform float uB0; uniform float uB1; uniform float vB0; uniform float vB1; uniform vec4 uSeg[${SEG_N}]; uniform vec3 uX; uniform vec4 uEl[${EL_N}];
+const BEND_HEAD = `uniform float uW; uniform float uCz; uniform float uB0; uniform float uB1; uniform float vB0; uniform float vB1; uniform vec4 uSeg[${SEG_N}]; uniform vec3 uX; uniform vec4 uEl[${EL_N}]; uniform float uPrB; uniform vec2 uPr[${PR_N}];
+float profY(float u){ float t = clamp((u - uPrB)/${PR_S}.0, 0.0, ${PR_N - 1}.0 - 0.0001); int i = int(floor(t)); float f = t - float(i), f2 = f*f, f3 = f2*f; vec2 a = uPr[i], b = uPr[i + 1];
+  return (2.0*f3 - 3.0*f2 + 1.0)*a.x + (f3 - 2.0*f2 + f)*a.y*${PR_S}.0 + (-2.0*f3 + 3.0*f2)*b.x + (f3 - f2)*b.y*${PR_S}.0; }
 float segK(vec4 q, float u){ if (q.y <= q.x) return 0.0; return smoothstep(q.x, q.x + 400.0, u)*(1.0 - smoothstep(q.y - 400.0, q.y, u)); }
 float bendX(float z){ float u = uW - z, w = uX.y; for (int i = 0; i < ${SEG_N}; i++) w += segK(uSeg[i], u)*uSeg[i].z;
   return uX.x*(45.0*sin(u/450.0) + 20.0*sin(u/200.0 + 1.3)) + w*(sin(u/80.0 + 0.7) + 0.45*sin(u/45.0 + 2.1)) - uB0 - uB1*(z - uCz); }
 float bendY(float z){ float u = uW - z, h = uX.z; for (int i = 0; i < ${SEG_N}; i++) h += segK(uSeg[i], u)*uSeg[i].w;
-  return h*(0.7*sin(u/520.0) + 0.3*sin(u/230.0 + 2.0)) - vB0 - vB1*(z - uCz); }
+  return h*(0.7*sin(u/520.0) + 0.3*sin(u/230.0 + 2.0)) + profY(u) - vB0 - vB1*(z - uCz); }
 float elevY(float z){ float u = uW - z, e = 0.0; for (int i = 0; i < ${EL_N}; i++){ vec4 q = uEl[i]; if (q.y > q.x) e += q.z*smoothstep(q.x, q.x + q.w, u)*(1.0 - smoothstep(q.y - q.w, q.y, u)); } return e; }
 `;
 const BEND_CHUNK = THREE.ShaderChunk.project_vertex.replace('mvPosition = modelViewMatrix * mvPosition;',
@@ -87,8 +96,8 @@ const BEND_CHUNK = THREE.ShaderChunk.project_vertex.replace('mvPosition = modelV
 const WORLD_CHUNK = '#include <worldpos_vertex>\n#if defined( USE_ENVMAP ) || defined( DISTANCE ) || defined ( USE_SHADOWMAP ) || defined ( USE_TRANSMISSION ) || NUM_SPOT_LIGHT_COORDS > 0\nworldPosition.x += bendX(worldPosition.z); worldPosition.y += bendY(worldPosition.z);\n#ifdef TERRAIN\nworldPosition.y -= elevY(worldPosition.z);\n#endif\n#endif';
 // winding / hill amplitude per road
 const ROADFORM = {selatan1: [24, 18], garut: [24, 20], pansela1: [22, 14], pansela2: [26, 18], pansela3: [18, 10], pansela4: [22, 16], pansela5: [24, 16],
-  puncak: [26, 22], sindang: [26, 20], kuningan: [20, 14], wonosobo: [24, 20], magelang: [16, 12], batu: [24, 20], pelratu: [22, 14], sukabumi: [16, 12],
-  banjar: [16, 8], malsel: [20, 14], ponorogo: [20, 14], wonogiri: [20, 14], lembang: [22, 18], tegal: [14, 10], jasinga: [14, 8], sumedang: [18, 14],
+  puncak: [26, 12], sindang: [26, 20], kuningan: [20, 14], wonosobo: [24, 12], magelang: [16, 12], batu: [24, 12], pelratu: [22, 14], sukabumi: [16, 12],
+  banjar: [16, 8], malsel: [20, 14], ponorogo: [20, 14], wonogiri: [20, 14], lembang: [22, 10], tegal: [14, 10], jasinga: [14, 8], sumedang: [18, 14],
   cipularang: [6, 14], semsol: [5, 12], bocimi: [6, 12], cisumdawu: [6, 14], gempan: [4, 8], soroja: [4, 8]};
 // jalan layang: these toll roads run on a viaduct (deck height in metres)
 const ELEVATED = {juanda: 10, mbz: 16, becakayu: 18, wiyoto: 12};
@@ -108,6 +117,16 @@ function layoutElev(){ ELV = [];
 // KM range of the Madura road on the Suramadu bridge (Surabaya at KM 0), and its span in route u when the route crosses it
 const SURAMADU = [4.5, 9.7]; let SEA = null;
 const onSea = u => !!SEA && u > SEA[0] && u < SEA[1];
+function buildProfile(){
+  if (!EV.length) { PROF = null; return; } const a = EV[0].u - 2400, end = EV[EV.length - 1].u, n = Math.ceil((end + 6400 - a)/PR_S) + 1, raw = new Float32Array(n), h = new Float32Array(n), m = new Float32Array(n);
+  const kmAlt = (tab, km) => { if (km <= tab[0][0]) return tab[0][1]; for (let j = 1; j < tab.length; j++) if (km <= tab[j][0]) { const [k0, a0] = tab[j - 1], [k1, a1] = tab[j]; return a0 + (a1 - a0)*(km - k0)/(k1 - k0); } return tab[tab.length - 1][1]; };
+  for (let i = 0; i < n; i++) { const u = clamp(a + i*PR_S, EV[0].u, end), e = EV[Math.max(0, evAt(u))], tab = e && ALT_KM[e.cNext];
+    if (tab) raw[i] = kmAlt(tab, kmAt(u))/cfg.scale; else { const ll = latLonAt(u); raw[i] = altAt(ll.lat, ll.lon)/cfg.scale; } }
+  for (let i = 0; i < n; i++) { let s2 = 0, w = 0; for (let k = -1; k <= 1; k++) { const q = clamp(i + k, 0, n - 1), wk = 2 - Math.abs(k); s2 += raw[q]*wk; w += wk; } h[i] = s2/w; }
+  const h0 = h[clamp(Math.round((0 - a)/PR_S), 0, n - 1)];
+  for (let i = 0; i < n; i++) h[i] -= h0;                                       // heights relative to the start of the trip
+  for (let i = 0; i < n; i++) m[i] = clamp((h[Math.min(n - 1, i + 1)] - h[Math.max(0, i - 1)])/((Math.min(n - 1, i + 1) - Math.max(0, i - 1))*PR_S || 1), -0.1, 0.1);
+  PROF = {u0: a, h, m}; }
 function elevAt(u){ let e = 0; for (const [a, b, H, r] of ELV) if (u > a && u < b) e += H*sstep(a, a + r, u)*(1 - sstep(b - r, b, u)); return e; }
 let segT = 0;
 function updateSegs(){
@@ -129,7 +148,9 @@ const depthMatT = new THREE.MeshDepthMaterial({depthPacking: THREE.RGBADepthPack
 const bendAt = z => gC(camU - z) - CU.uB0.value - CU.uB1.value*(z - CU.uCz.value);
 function bendObj(g){ g.traverse(o => { if (!o.isMesh) return; o.frustumCulled = false; (Array.isArray(o.material) ? o.material : [o.material]).forEach(patchMat); if (o.castShadow) o.customDepthMaterial = (Array.isArray(o.material) ? o.material[0] : o.material).userData.terrain ? depthMatT : depthMat; }); }
 function updateBend(){ const cz = camera.position.z; if (--segT <= 0) { segT = 20; updateSegs(); }
-  CU.uW.value = camU; CU.uCz.value = cz; CU.uB0.value = gC(camU - cz); CU.uB1.value = -gD(camU - cz); CU.vB0.value = gY(camU - cz); CU.vB1.value = -gYD(camU - cz); }
+  CU.uW.value = camU; CU.uCz.value = cz; CU.uB0.value = gC(camU - cz); CU.uB1.value = -gD(camU - cz); CU.vB0.value = gY(camU); CU.vB1.value = 0;
+  if (PROF) { const k = Math.floor((camU - 1200 - PROF.u0)/PR_S), n = PROF.h.length; CU.uPrB.value = PROF.u0 + k*PR_S;
+    for (let j = 0; j < PR_N; j++) { const q = clamp(k + j, 0, n - 1); prW[j].set(PROF.h[q], PROF.m[q]); } } }
 
 // ---------- materials & primitives ----------
 const M = (c, o={}) => new THREE.MeshStandardMaterial({color:c, roughness:0.9, ...o});
@@ -229,7 +250,7 @@ function signPost(parent, x, z, rot, items, y0=0, sc=1){
 const SIGN_GREEN = '#0c6a3c', SIGN_BLUE = '#0d3b7a';
 // pictograms on the road signs: vector icons drawn straight into the sign texture (white tiles with a dark symbol, as on real signs)
 const PICTO = {fuel: 'Fuel', food: 'Utensils', mosque: 'MoonStar', wc: 'Toilet', parking: 'CircleParking', cart: 'ShoppingCart', wrench: 'Wrench', atm: 'Banknote', plug: 'PlugZap',
-  coffee: 'Coffee', toll: 'CreditCard', split: 'Split', city: 'Building2', pin: 'MapPin', car: 'Car', bridge: 'Waves', left: 'ArrowUpLeft', route: 'Route', exit: 'LogOut', phone: 'Phone'};
+  coffee: 'Coffee', toll: 'CreditCard', split: 'Split', city: 'Building2', pin: 'MapPin', car: 'Car', bridge: 'Waves', left: 'ArrowUpLeft', route: 'Route', exit: 'LogOut', phone: 'Phone', up: 'TrendingUp', down: 'TrendingDown'};
 const REST_ICONS = ['fuel', 'food', 'mosque', 'wc', 'cart'];
 const OWN_ICONS = {road: [['path', {d: 'M12 17v4'}], ['path', {d: 'M12 5V3'}], ['path', {d: 'M12 9v3'}], ['path', {d: 'M2.077 18.449A2 2 0 0 0 4 21h16a2 2 0 0 0 1.924-2.55l-4-14A2 2 0 0 0 16 3H8a2 2 0 0 0-1.924 1.45z'}]]};
 function drawIcon(x, key, cx, cy, size, col = '#1b1b1b'){
@@ -703,7 +724,7 @@ function layoutTrip(t, keepN = -1){
   ZONES.sort((a, b) => a.u - b.u);
   // corridor KM of each event on the corridor that LEAVES it
   for (const e of EV) { const n = CORR[e.cNext].nodes.find(n => n.key === e.key); e.kmOut = n ? n.km : e.km; }
-  layoutMbz();
+  layoutMbz(); buildProfile();
   // no roadworks or contraflow on or next to the MBZ ramps
   if (MBZG) { const G = MBZG; ZONES = ZONES.filter(z => z.user || !((z.u > G.F - 900 && z.u < G.uH + 600) || (z.u > G.uE - 600 && z.u < G.M + 900))); }
   // lane changes between corridors: taper over the 150 m before c
@@ -1262,6 +1283,14 @@ function layoutRoadSigns(){
       const mbz = a.cNext === 'mbz', lines = [['SELAMAT DATANG DI', 0.15], ['JALAN TOL', 0.17], [cN.name.replace(/^Tol\s+/i, '').toUpperCase(), 0.26]];
       if (mbz) lines.push(['Khusus Gol I: sedan, SUV, pickup · Bus & truk dilarang', 0.12]);
       if (!mbz) RSIGNS.push({u: a.u + (a.kind === 'j' ? 430 : 260), side: 1, lines, bg: SIGN_GREEN, w: 8.4, h: 3.6, icon: 'road'}); } }
+  // steep grades from the real height profile: "Tanjakan" before a long climb, "Turunan curam" before a long descent (both directions)
+  if (PROF) { const m = PROF.m, at = u => m[clamp(Math.round((u - PROF.u0)/PR_S), 0, m.length - 1)], lastS = {'1': -1e9, '-1': 1e9};
+    for (let u = EV[0].u + 400; u < EV[EV.length - 1].u - 400; u += 200) {
+      const ahead = [0, 200, 400, 600].map(d => at(u + d)), back = [0, 200, 400, 600].map(d => -at(u - d));
+      for (const [g, side] of [[ahead, 1], [back, -1]]) { const avg = g.reduce((x, y) => x + y, 0)/4, k = String(side);
+        if (Math.abs(avg) < 0.03 || Math.abs(u - lastS[k]) < 2500) continue; lastS[k] = u; const pct = Math.round(Math.abs(avg)*100);
+        RSIGNS.push(avg > 0 ? {u: u - side*150, side, lines: [['TANJAKAN', 0.26], [`${pct}% · ${fmtKm(800*cfg.scale/1000)}`, 0.16], ['Kendaraan berat lajur kiri', 0.13]], bg: '#f2c230', fg: '#111', w: 5.6, h: 3.2, icon: 'up'}
+          : {u: u - side*150, side, lines: [['TURUNAN CURAM', 0.24], [`${pct}% · gunakan gigi rendah`, 0.15], ['Jaga jarak, jangan rem terus', 0.13]], bg: '#f2c230', fg: '#111', w: 5.6, h: 3.2, icon: 'down'}); } } }
   // "Info Tol 133": the toll road's call number, every ~3 km of game road on both carriageways, clear of exits, gates and junctions
   if (EV.length > 1) for (let u = EV[0].u + 1800; u < EV[EV.length - 1].u - 600; u += 3000) { const c = CORR[EV[Math.max(0, evAt(u))].cNext];
     if (!c || c.cls !== 't' || SITES.some(t => Math.abs(t.u - u) < 500) || OVS.some(o => Math.abs(o.u - u) < 60) || mbzRampAt(u) || mbzRampAt(u + 300)) continue;
@@ -2547,6 +2576,12 @@ function openSvc(){
 // front of the car, loads it onto the bed and takes it to the nearest workshop (or just brings emergency fuel).
 // ================================================================
 let tow = null;
+// the tow truck on the maps, live: an amber marker with its distance while it comes, tows and leaves
+function towOnMap(x, P, big){ if (!tow || !tow.v || !PLR || !EV.length) return; const d = tow.v, u = d.sd*d.p, ll = latLonAt(u), [a, b] = P(ll.lat, ll.lon);
+  const r = big ? 9 : 6; x.save(); x.fillStyle = '#f2a20a'; x.strokeStyle = '#201e1d'; x.lineWidth = 2; x.beginPath(); x.roundRect(a - r, b - r, 2*r, 2*r, 3); x.fill(); x.stroke();
+  drawIcon(x, 'Truck', a, b, r*1.5, '#201e1d');
+  const dist = Math.abs(u - uOfV(PLR))*cfg.scale, txt = tow.phase === 'come' ? `Derek · ${dist >= 1000 ? (dist/1000).toFixed(1).replace('.', ',') + ' km' : Math.round(dist/10)*10 + ' m'}` : 'Derek';
+  x.font = `700 ${big ? 12 : 10}px Archivo, sans-serif`; x.textBaseline = 'middle'; x.lineWidth = 3; x.strokeStyle = 'rgba(255,255,255,0.9)'; x.strokeText(txt, a + r + 4, b); x.fillStyle = '#201e1d'; x.fillText(txt, a + r + 4, b); x.restore(); }
 function callTow(auto = false){
   const P = PLR; if (!P || tow) return; if (foot) { toast('Masuk ke kendaraan dulu', 'warn'); return; }
   if (P.rp) { toast('Derek datang setelah kendaraan berada di jalur utama', 'warn'); return; }
@@ -3120,6 +3155,11 @@ function sim(dt){
       else if ((v.ngT -= dt) < 0 && v.lane === n - 1 && !isToll(uOfV(v))) v.ngStop = clock + rnd(4, 10); else if (v.ngT < 0) v.ngT = 5; }
     const pz = plazaAhead(v.sd, front);
     if (pz && v.paid !== pz.s.id) { v0 = Math.min(v0, Math.sqrt(25 + 1.2*Math.max(0, pz.d))); }
+    // on a climb loaded trucks and buses crawl (down to ~25 km/h on the steepest), cars ease off a little; downhill the heavies hold back on the engine brake
+    if (!v.player && !v.em) { const gr = v.sd*gYD(v.sd*v.p);
+      if (heavy(v) && gr > 0.008) v0 = Math.min(v0, Math.max(7, v0*(1 - gr*11)));
+      else if (gr > 0.03) v0 = Math.min(v0, v0*(1 - (gr - 0.03)*4));
+      if (heavy(v) && gr < -0.025) v0 = Math.min(v0, v0*Math.max(0.6, 1 + (gr + 0.025)*7)); }
     v.v0e = v0;
     if (manual && (foot || tow)) v.acc = tow ? 0 : -v.vel/dt;
     else if (manual) { v.acc = playerAcc(v, dt); steerPlayer(v, dt); }
@@ -3280,13 +3320,15 @@ function spawnPlayer(){
 // JOBS (mode pekerjaan): ojek online, food delivery, taxi, bus, angkot, freight truck. Stops are marked by the road;
 // pull over next to the marker and stop to pick up / drop off. Pay goes to the cash wallet, with a rating for how you drove.
 // ================================================================
+// every job pays at least Rp 3.000.000 per order (or per halte for bus and angkot), plus per km or per passenger
+const JOB_MIN = 3000000;
 const JOBS = {
-  ojek:   {name: 'Ojek online', veh: 'moto', desc: 'Jemput penumpang di pinggir jalan, antar ke tujuan', pay: 'Rp 9.000 + Rp 2.500/km', base: 9000, perKm: 2500, kind: 'ride', who: 'penumpang'},
-  food:   {name: 'Antar makanan', veh: 'moto', desc: 'Ambil pesanan di warung, antar ke pelanggan', pay: 'Rp 10.000 + Rp 2.500/km', base: 10000, perKm: 2500, kind: 'ride', who: 'pesanan'},
-  taksi:  {name: 'Sopir taksi', veh: 'taxi', desc: 'Antar penumpang dengan argo', pay: 'Rp 7.500 + Rp 6.500/km', base: 7500, perKm: 6500, kind: 'ride', who: 'penumpang'},
-  bus:    {name: 'Sopir bus', veh: 'bus', desc: 'Berhenti di setiap halte: penumpang naik dan turun', pay: 'Rp 8.000 per penumpang', perPax: 8000, kind: 'line', stops: 5, gap: [380, 720]},
-  angkot: {name: 'Sopir angkot', veh: 'angkot', desc: 'Banyak penumpang jarak pendek', pay: 'Rp 5.000 per penumpang', perPax: 5000, kind: 'line', stops: 6, gap: [200, 420]},
-  truk:   {name: 'Sopir truk ekspedisi', veh: 'truck', desc: 'Muat barang di gudang, antar ke tujuan; muatan rusak dipotong', pay: 'Rp 250.000 + Rp 9.000/km', base: 250000, perKm: 9000, kind: 'ride', who: 'muatan'},
+  ojek:   {name: 'Ojek online', veh: 'moto', desc: 'Jemput penumpang di pinggir jalan, antar ke tujuan', pay: 'Rp 3.000.000 + Rp 25.000/km', base: JOB_MIN, perKm: 25000, kind: 'ride', who: 'penumpang'},
+  food:   {name: 'Antar makanan', veh: 'moto', desc: 'Ambil pesanan di warung, antar ke pelanggan', pay: 'Rp 3.000.000 + Rp 25.000/km', base: JOB_MIN, perKm: 25000, kind: 'ride', who: 'pesanan'},
+  taksi:  {name: 'Sopir taksi', veh: 'taxi', desc: 'Antar penumpang dengan argo', pay: 'Rp 3.000.000 + Rp 50.000/km', base: JOB_MIN, perKm: 50000, kind: 'ride', who: 'penumpang'},
+  bus:    {name: 'Sopir bus', veh: 'bus', desc: 'Berhenti di setiap halte: penumpang naik dan turun', pay: 'Rp 3.000.000 per halte + Rp 150.000 per penumpang', perStop: JOB_MIN, perPax: 150000, kind: 'line', stops: 5, gap: [380, 720]},
+  angkot: {name: 'Sopir angkot', veh: 'angkot', desc: 'Banyak penumpang jarak pendek', pay: 'Rp 3.000.000 per halte + Rp 100.000 per penumpang', perStop: JOB_MIN, perPax: 100000, kind: 'line', stops: 6, gap: [200, 420]},
+  truk:   {name: 'Sopir truk ekspedisi', veh: 'truck', desc: 'Muat paket di gudang, antar minimal 25 km (boleh lewat tol); muatan rusak dipotong', pay: 'Rp 3.000.000 + Rp 100.000/km', base: JOB_MIN, perKm: 100000, kind: 'ride', who: 'paket', minKm: 25},
 };
 let job = null;
 // swap the player's vehicle in place (same spot, lane and speed), without rebuilding the world
@@ -3301,6 +3343,12 @@ function swapPlayerVeh(type){
 // a spot by the road from u on: not at a junction, gate, rest area, town crossing or on the MBZ ramps
 function jobSpot(u, noToll = cfg.veh === 'moto'){ for (let k = 0; k < 120; k++, u += 40) { const bad = (noToll && isToll(u)) || RSITES.some(s => Math.abs(s.u - u) < 420) || PLAZAS.some(s => Math.abs(s.u - u) < 300) || KSITES.some(s => Math.abs(s.u - u) < 40)
     || mbzHid(u) || mbzGap(u) || (MBZG && MBZG.frame === 'japek' && u > MBZG.F - 60 && u < MBZG.F + 120) || elevAt(u) > 0.5 || onSea(u); if (!bad) return u; } return u; }
+// where an order ends: a short ride for passengers and food; a truck delivery at least J.minKm (real km) on, at a warehouse off the
+// toll road when the route leaves it (the toll roads in between are fine), otherwise beside the toll road
+function jobDrop(J, a){ if (!J.minKm) return jobSpot(a + rnd(600, 1500));
+  const u0 = a + J.minKm*1000/cfg.scale + rnd(0, 600), last = EV[EV.length - 1].u - 120;
+  for (let u = u0; u < Math.min(last, u0 + 30000/cfg.scale); u += 200) if (!isToll(u)) { const v = jobSpot(u, true); if (!isToll(v) && v < last) return v; }
+  return jobSpot(u0); }
 function jobStart(k){
   const J = JOBS[k], P = PLR; if (!J || !P || !trip) return;
   if (P.rp || foot || tow) return toast('Kembali ke jalan utama dulu', 'warn');
@@ -3313,9 +3361,9 @@ function jobStart(k){
   if (J.veh === 'moto') { const i0 = Math.max(0, evAt(u)); if (EV.slice(i0, EV.length - 1).some(e => CORR[e.cNext] && CORR[e.cNext].cls === 't')) { const i = replanIdx(u), e = EV[i];
       if (trip.dest) setNav(trip.dest, true); else if (e) { const tail = walkFree(e.key, prevKeyOf(e), e.c, null, 50, 'mix'); if (tail) replan(i, tail, null); } } }
   const stops = [];
-  if (J.kind === 'ride') { const a = jobSpot(u + rnd(350, 700)), b = jobSpot(a + rnd(600, 1500)); stops.push({u: a, kind: 'pick'}, {u: b, kind: 'drop'}); }
+  if (J.kind === 'ride') { const a = jobSpot(u + rnd(350, 700)), b = jobDrop(J, a); stops.push({u: a, kind: 'pick'}, {u: b, kind: 'drop'}); }
   else { let x = u; for (let i = 0; i < J.stops; i++) { x = jobSpot(x + rnd(J.gap[0], J.gap[1])); stops.push({u: x, kind: 'halte', on: 1 + Math.floor(Math.random()*(k === 'bus' ? 9 : 4)), off: 0}); } }
-  if (stops[stops.length - 1].u > last - 100) return toast('Rute di depan terlalu pendek untuk pekerjaan ini: pilih tujuan yang lebih jauh', 'warn');
+  if (stops[stops.length - 1].u > last - 100) return toast(J.minKm ? `Pengiriman truk minimal ${J.minKm} km: pilih tujuan yang lebih jauh (atau keliling bebas)` : 'Rute di depan terlalu pendek untuk pekerjaan ini: pilih tujuan yang lebih jauh', 'warn');
   job = {k, J, stops, i: 0, earned: 0, pax: 0, hold: 0, viol0: stats.viol, crash0: stats.crashes, dmg0: P.dmg || 0, t0: clock};
   $('jobdlg').hidden = true; jobMarker(); jobUI(); toast(`${J.name}: ${jobGoal()}`);
 }
@@ -3339,8 +3387,8 @@ function jobMarker(){
 function placeJob(){ if (!job || !job.mk) return; const st = job.stops[job.i]; if (!st) return; const sd = 1, e = eAt(st.u);
   job.mk.position.set(-sd*(e + (isToll(st.u) ? 4.2 : 3.4)), 0, camU - st.u); job.mk.visible = Math.abs(camU - st.u) < 900; }
 function jobGoal(){ if (!job) return ''; const st = job.stops[job.i]; if (!st) return ''; const d = st.u - (PLR.p + PLR.len/2), dk = fmtKm(Math.max(0, d)/1000*cfg.scale);
-  if (st.kind === 'pick') return `${job.k === 'food' ? 'Ambil pesanan di warung' : job.k === 'truk' ? 'Muat barang di gudang' : 'Jemput penumpang'} · ${dk}`;
-  if (st.kind === 'drop') return `${job.k === 'food' ? 'Antar pesanan' : job.k === 'truk' ? 'Antar muatan' : 'Antar penumpang'} ke tujuan · ${dk}`;
+  if (st.kind === 'pick') return `${job.k === 'food' ? 'Ambil pesanan di warung' : job.k === 'truk' ? 'Muat paket di gudang' : 'Jemput penumpang'} · ${dk}`;
+  if (st.kind === 'drop') return `${job.k === 'food' ? 'Antar pesanan' : job.k === 'truk' ? 'Antar paket ke gudang' : 'Antar penumpang'} ke tujuan · ${dk}`;
   return `Halte ${job.i + 1}/${job.stops.length} · ${dk} · ${job.pax} penumpang di dalam`; }
 function jobUI(){ const c = $('jobcard'); c.hidden = !job; $('jobb').setAttribute('aria-pressed', job ? 'true' : 'false'); if (!job) return;
   $('jc-name').textContent = job.J.name; $('jc-goal').textContent = jobGoal() + (job.hold > 0 ? ' · berhenti…' : ''); $('jc-pay').textContent = `Pendapatan pekerjaan ini ${rp$(job.earned)} · menepi di samping penanda lalu berhenti`; }
@@ -3353,17 +3401,17 @@ function jobTick(dt){
   const there = d > -14 && d < 14 && Math.abs(P.vel) < 1.2 && P.lx > n - 1 - 0.35;
   job.hold = there ? job.hold + dt : 0;
   if (job.hold > 1.0) { job.hold = 0;
-    if (st.kind === 'pick') { job.pickU = st.u; toast(job.k === 'food' ? 'Pesanan diambil · antar ke pelanggan' : job.k === 'truk' ? 'Barang dimuat · antar ke tujuan' : 'Penumpang naik · antar ke tujuan'); job.i++; jobMarker(); }
+    if (st.kind === 'pick') { job.pickU = st.u; toast(job.k === 'food' ? 'Pesanan diambil · antar ke pelanggan' : job.k === 'truk' ? 'Paket dimuat · antar ke gudang tujuan, boleh lewat tol' : 'Penumpang naik · antar ke tujuan'); job.i++; jobMarker(); }
     else if (st.kind === 'drop') { const km = Math.max(0.5, (st.u - job.pickU)/1000*cfg.scale), stars = jobStars();
-      let fare = Math.round((job.J.base + job.J.perKm*km)/500)*500;
+      let fare = Math.max(JOB_MIN, Math.round((job.J.base + job.J.perKm*km)/500)*500);
       if (job.k === 'truk') { const dd = Math.max(0, (P.dmg || 0) - job.dmg0); if (dd > 2) { fare = Math.round(fare*(1 - Math.min(0.6, dd/100))/500)*500; } }
       const tip = stars === 5 && job.k !== 'truk' ? 5000 : 0; job.earned += fare + tip;
       earn(fare + tip, `${job.J.name} · ${fmtKm(km)} · ${'★'.repeat(stars)}${'☆'.repeat(5 - stars)}${tip ? ' · tip ' + rp$(tip) : ''}`);
       // next order straight away
-      const a = jobSpot(front + rnd(350, 700)), b = jobSpot(a + rnd(600, 1500)); if (b < EV[EV.length - 1].u - 100) { job.stops = [{u: a, kind: 'pick'}, {u: b, kind: 'drop'}]; job.i = 0; job.viol0 = stats.viol; job.crash0 = stats.crashes; job.dmg0 = P.dmg || 0; jobMarker(); setTimeout(() => job && toast(`Order baru: ${jobGoal()}`), 2800); }
+      const a = jobSpot(front + rnd(350, 700)), b = jobDrop(job.J, a); if (b < EV[EV.length - 1].u - 100) { job.stops = [{u: a, kind: 'pick'}, {u: b, kind: 'drop'}]; job.i = 0; job.viol0 = stats.viol; job.crash0 = stats.crashes; job.dmg0 = P.dmg || 0; jobMarker(); setTimeout(() => job && toast(`Order baru: ${jobGoal()}`), 2800); }
       else { toast('Tidak ada order lagi di rute ini · pekerjaan selesai'); jobStop(); return; } }
     else { const off = Math.min(job.pax, 1 + Math.floor(Math.random()*Math.max(1, job.pax))), on = st.on; job.pax = job.pax - off + on;
-      const fare = on*job.J.perPax; job.earned += fare; earn(fare, `${job.J.name} · ${off} turun, ${on} naik`); job.i++;
+      const fare = Math.max(JOB_MIN, (job.J.perStop || 0) + on*job.J.perPax); job.earned += fare; earn(fare, `${job.J.name} · ${off} turun, ${on} naik`); job.i++;
       if (job.i >= job.stops.length) { let x = front; for (let i = 0; i < job.J.stops; i++) { x = jobSpot(x + rnd(job.J.gap[0], job.J.gap[1])); job.stops.push({u: x, kind: 'halte', on: 1 + Math.floor(Math.random()*(job.k === 'bus' ? 9 : 4))}); }
         if (job.stops[job.stops.length - 1].u > EV[EV.length - 1].u - 100) { toast('Trayek selesai'); jobStop(); return; } }
       jobMarker(); } }
@@ -3945,7 +3993,9 @@ function updateCockpit(dt){
   if (CKP.paint !== PLR.paint) { CKP.paint = PLR.paint; CKP.hood.material.color.setHex(PLR.paint || 0xec3013); }
   if ((CKP.t -= dt) <= 0) { CKP.t = 0.15; drawCluster(PLR); }
 }
+let camDY = 0;
 function updateCam(dt){
+  camera.position.y -= camDY; camDY = 0;
   updateCockpit(dt);
   const v0 = PLR; if (!v0) return; const v = foot ? {g: foot.g, q: null, sd: v0.sd, len: 0.5, type: 'car'} : v0;
   pPos.copy(v.g.position); if (foot) pPos.y = 0;
@@ -3974,13 +4024,16 @@ function updateCam(dt){
     camera.position.set(cx + bendAt(cz) + r*Math.cos(a), camera.aspect < 1 ? 190 : 130, cz + r*Math.sin(a)); camera.lookAt(cx + bendAt(cz), 0, cz); camera.fov = fovFor(50);
   } else if (camMode === 'dbg') { const d = window.__tjCam; camera.position.set(d[0], d[1], d[2]); camera.lookAt(d[3], d[4], d[5]); camera.fov = d[6] || 55;
   } else { controls.target.lerp(pPos, Math.min(1, dt*4)); controls.update(); camera.fov = fovFor(50); }
+  // up and down the hills: the camera rides the road's height where it stands and looks at the road's height where it looks
+  if (camMode !== 'orbit' && camMode !== 'dbg') { camera.getWorldDirection(tmpV); const L = 30, tx = camera.position.x + tmpV.x*L, ty = camera.position.y + tmpV.y*L, tz = camera.position.z + tmpV.z*L;
+    camDY = roadY(camera.position.z); camera.position.y += camDY; camera.lookAt(tx, ty + roadY(tz), tz); }
   camera.updateProjectionMatrix();
-  camera.getWorldDirection(tmpV); focus.copy(camera.position).addScaledVector(tmpV, 50); focus.y = 0;
+  camera.getWorldDirection(tmpV); focus.copy(camera.position).addScaledVector(tmpV, 50); focus.y = roadY(focus.z);
   sun.target.position.copy(focus); sun.position.copy(focus).add(sunOff);
   const fu = camU - focus.z, base = Math.round(fu/45)*45, lamps = [];
   for (let k = -2; k <= 2; k++) { const u = base + k*45; if (OPENS.some(o => Math.abs(o.u - u) < OPEN_HW + 3)) continue; lamps.push(u); }
   lamps.sort((a, b) => Math.abs(a - fu) - Math.abs(b - fu));
-  lampLights.forEach((l, i) => { const u = lamps[i >> 1] ?? base, z = camU - u; l.position.set((i % 2 ? 3.6 : -3.6) + bendAt(z), 10, z); l.intensity = lampI; });
+  lampLights.forEach((l, i) => { const u = lamps[i >> 1] ?? base, z = camU - u; l.position.set((i % 2 ? 3.6 : -3.6) + bendAt(z), 10 + roadY(z), z); l.intensity = lampI; });
 }
 function flash(){
   const ph = Math.floor(clock*5) % 2;
@@ -4154,7 +4207,7 @@ function drawMap(){
   for (const n of labels) { if (!n) continue; const [a, b] = P(n.lat, n.lon); if (a < 0 || b < 0 || a > W || b > H) continue;
     if (follow) { x.fillRect(a - 2, b - 2, 4, 4); x.lineWidth = 3; x.strokeStyle = 'rgba(255,255,255,0.85)'; x.strokeText(n.name, a + 5, b - 3); }
     x.fillText(follow ? n.name : n.city || n.name, a + 5, b - 3); }
-  mpDrawMap(x, P);
+  mpDrawMap(x, P); towOnMap(x, P, false);
 }
 // where u is on the map: along the curve of the road it is on
 function latLonAt(u){ const i = evAt(u); if (i < 0) return EV[0]; if (i >= EV.length - 1) return EV[EV.length - 1];
@@ -4246,7 +4299,7 @@ function drawAtlas(){
   const pl = playerLL(); if (pl) { const [a, b] = atP(pl.lat, pl.lon); x.save(); x.translate(a, b); x.rotate(pl.hd); x.fillStyle = acc; x.strokeStyle = '#fff'; x.lineWidth = 2.5;
     x.beginPath(); x.moveTo(0, -12); x.lineTo(8, 9); x.lineTo(0, 4); x.lineTo(-8, 9); x.closePath(); x.stroke(); x.fill(); x.restore(); }
   // the other players (multiplayer)
-  mpDrawMap(x, atP, true);
+  mpDrawMap(x, atP, true); towOnMap(x, atP, true);
   // scale bar
   const kmPx = k/111, nice = [1, 2, 5, 10, 20, 50, 100, 200].find(v => v*kmPx > 60) || 200; x.fillStyle = '#201e1d'; x.fillRect(W - 20 - nice*kmPx, H - 22, nice*kmPx, 3);
   x.font = '600 11px Archivo, sans-serif'; x.textAlign = 'right'; x.fillText(`${nice} km`, W - 20, H - 32); x.textAlign = 'left';
@@ -4869,7 +4922,7 @@ function tick(dt){
   ensureAhead();
   setupBlocks(false); updateWorld(true); updateSignals(); animGhosts();
 }
-window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
+window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering
 window.__tj.step = (n, dt = 1/20) => { for (let i = 0; i < n; i++) tick(dt); updateSegs(); placeGroups(); place(); for (let k = 0; k < 40; k++) updateCam(dt); updateBend(); hudT = 0; updateHud(dt); drawMap(); };
