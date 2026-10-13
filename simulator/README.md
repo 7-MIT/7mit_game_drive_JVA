@@ -208,6 +208,7 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
 | --- | --- |
 | `index.html` | HUD, driving controls, route planner, settings panel (Modernist design system) |
 | `main.js` | 3D world, traffic simulation, player, cameras, UI wiring |
+| `phone.js` | The in-game phone: lock and home screens, apps, calls and SMS over the multiplayer channel |
 | `network.js` | Toll network data (roads, exits, KM, coordinates, lanes, limits), routing, Java outline for the mini-map |
 | `ds/modernist.css` | Copy of the design-system stylesheet from the handoff bundle |
 
@@ -281,6 +282,19 @@ Cash is added while the car is moving:
 - Rp 100.000 every 2 km.
 
 The counters are saved with the wallet.
+
+### Handphone (HP button or O)
+A phone of your own with a full touch interface: a lock screen (swipe up), a home screen with widgets (cash, speed, fuel), an app grid and a dock, apps that open from their icon and close back into it, page transitions, notification banners and a Dynamic-Island-style pill, all animated. When the phone is closed, new notifications shake the HP button and show a badge.
+
+- **Ojek:** ride as a passenger (the ojek drives you there on autopilot, fare Rp 10.000 + Rp 2.500/km paid at arrival, no toll roads), order food (delivered in 1–2 minutes, makes you less sleepy), or start work as an ojol driver or food courier.
+- **Blue:** taxi rides (argo Rp 7.500 + Rp 6.500/km, via toll roads), send a parcel to any town and track it, or work as a taxi driver or freight truck driver.
+- **Kendaraan:** an STNK-style card with the number plate (colour by category, validity), type, year, colours, rims, livery, window tint, accessories and plate category; fuel, damage, top speed, tank and consumption. Change vehicle, set your own plate and plate category, paint (swatches or any custom colour), second livery colour, rims, livery, tint, spoiler, lowered, stripes; call the tow truck.
+- **Peta:** a live map centred on the car, search and navigate, open the full map.
+- **Dompet:** cash and e-Toll balance, top up e-Toll, a history of every earning and payment.
+- **Telepon, Pesan, Kontak (multiplayer):** every player has their own number (0800-XXXX-XXXX, +62 800-XXXX-XXXX). With Multiplayer connected you can call other players (ringing, answer/decline, mute, speaker, call timer; the voice goes directly between the two phones), send SMS with delivery receipts (Terkirim, Diterima), see who is online in Kontak and save names, and chat with everyone in the group "Semua pemain", which replaces the old multiplayer chat panel. Without Multiplayer these apps ask you to connect; the service numbers 133 (Info Tol, sends the tow truck), 110 and 118 always work. Calling a number that is not online gives "Nomor yang Anda tuju tidak aktif".
+- **Kamera & Galeri:** take pictures of the road, view them, save them or set one as wallpaper.
+- **Cuaca, Musik, Pengaturan:** change the weather and time; open the music player; customise the phone: wallpaper, case colour, accent colour, dark or light theme, icon shape, the name on the lock screen, a new number.
+- Using the phone while driving fast by hand shows a warning (as in real life it is dangerous and not allowed): pull over or switch on Autopilot.
 
 ### Jobs (Kerja, key J)
 Pick a job and the vehicle is swapped for the right one on the spot.

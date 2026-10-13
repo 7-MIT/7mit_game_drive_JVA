@@ -9,6 +9,7 @@ import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
 import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
 import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 import {mergeGeometries, toCreasedNormals} from 'three/addons/utils/BufferGeometryUtils.js';
+import {initPhone} from './phone.js';
 import {altAt, ALT_KM, CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, walkFree, choicesAt, edgesFrom, turnDeg, fmtKm, nodeLabel, JAVA, MADURA, corrGeo, corrLL, RULES} from './network.js';
 
 const MOBILE = matchMedia('(pointer:coarse)').matches || innerWidth < 700;
@@ -2524,7 +2525,11 @@ function driveEarn(dt, km){
   if (E.b >= 300) { E.b -= 300; earn(50000, 'berkendara 5 menit'); }
   if (E.km >= 2) { E.km -= 2; earn(100000, 'menempuh 2 km'); }
 }
-function earn(n, why){ WAL.cash += n; stats.earned = (stats.earned || 0) + n; toast(`+${rp$(n)} · ${why}`); uiNeeds(); sfxCoin(); }
+function earn(n, why){ WAL.cash += n; stats.earned = (stats.earned || 0) + n; toast(`+${rp$(n)} · ${why}`); uiNeeds(); sfxCoin(); walLog(n, why); }
+// the wallet's history (shown in the phone's Dompet app) and the phone's notifications
+const WLOG = []; let PHONE = null;
+function walLog(n, why){ WLOG.unshift({t: hhmm(gameH), n, why}); if (WLOG.length > 60) WLOG.length = 60; if (PHONE) PHONE.notify(n >= 0 ? 'dompet' : 'dompet', n >= 0 ? `+${rp$(n)}` : `−${rp$(-n)}`, why); }
+function pay(n, why){ WAL.cash -= n; uiNeeds(); walLog(-n, why); }
 function uiNeeds(){
   if (WAL.fuel == null || WAL.fuel > tankOf()) WAL.fuel = tankOf();
   const f = Math.round(WAL.fuel/tankOf()*100), fb = $('fuelb'), sb = $('sleepb');
@@ -2678,13 +2683,23 @@ function liveryTex(kind, c1, c2){
   LIVTEX.set(k, t); return t;
 }
 // applies the mods to a vehicle model (own copies of the shared materials, so nothing else changes)
+// the player's own number plate when none is set: made once and kept (per plate category)
+function autoPlate(cat){ cfg.plateAuto = cfg.plateAuto || {}; if (!cfg.plateAuto[cat]) { cfg.plateAuto[cat] = randPlate(cat, 'B')[0]; saveCfg(); } return cfg.plateAuto[cat]; }
+const COLOR_NAME = {'#ec3013': 'Merah', '#f4f4f2': 'Putih', '#1b1c1f': 'Hitam', '#8d939a': 'Silver', '#1f3f73': 'Biru tua', '#2f5a4a': 'Hijau tua', '#e0a020': 'Kuning', '#6a1d2b': 'Merah marun', '#3a9fd8': 'Biru muda', '#f07a1a': 'Oranye',
+  '#c9ccd0': 'Krom', '#d4af37': 'Emas', '#b02020': 'Merah', '#3a6fd8': 'Biru'};
+function vehInfo(){ const m = MODS(), t = PLR ? PLR.type : cfg.veh, cat = m.plateCat || plateCatOf(t), d = new Date(), fixed = ['taxi', 'police', 'ambulance', 'damkar', 'angkot'].includes(t);
+  return {type: t, label: (VEH[t] || VEH.car).label, gol: (VEH[t] || VEH.car).gol, plate: (m.plate || autoPlate(cat)).toUpperCase(), plateCat: cat, plateName: PLATE_NAME[cat], plateStyle: PLATE_STYLE[cat],
+    valid: `${String(d.getMonth() + 1).padStart(2, '0')} · ${String((d.getFullYear() + 5) % 100).padStart(2, '0')}`, paint: fixed ? 'Warna dinas / armada' : (COLOR_NAME[m.paint] || 'Kustom ' + m.paint), paintHex: fixed ? '#f4f4f2' : m.paint,
+    paint2: COLOR_NAME[m.paint2] || m.paint2, rim: COLOR_NAME[m.rim] || m.rim, livery: LIVERY[m.livery] || 'Polos', tint: m.tint ? 'Gelap' : 'Standar', spoiler: m.spoiler, low: m.low, stripe: m.stripe,
+    vmax: Math.round(((VEH[t] || VEH.car).vmax)*3.6), tank: TANK[t] || 42, kml: KM_L[t] || 12, km: EV.length && PLR ? Math.round(rkAt(uOfV(PLR)) + (stats.km0 || 0)) : 0, dmg: Math.round(PLR && PLR.dmg || 0),
+    year: 2018 + (parseInt(cfg.mpId || '7', 36) % 7 || 3), cats: Object.entries(PLATE_NAME)}; }
 function applyMods(v, m){
   if (!v || !m) return; const g = v.g; let rimM = null, glassM = null, plateM = null;
   g.traverse(o => { if (!o.isMesh) return;
     if (o.material === rimMat) { rimM = rimM || Object.assign(rimMat.clone(), {userData: {own: true}}); rimM.color.set(m.rim); o.material = rimM; }
     else if (o.material === glassMat && m.tint) { glassM = glassM || Object.assign(glassMat.clone(), {userData: {own: true}}); glassM.color.set(m.tint > 1 ? 0x05070a : 0x10161c); glassM.metalness = 0.8; o.material = glassM; }
     else if (o.material && o.material.userData && o.material.userData.plate) {
-      if (!plateM) { const cat = m.plateCat || plateCatOf(v.type), d = new Date(), def = randPlate(cat, 'B');
+      if (!plateM) { const cat = m.plateCat || plateCatOf(v.type), d = new Date(), def = [autoPlate(cat)];
         plateM = new THREE.MeshStandardMaterial({map: plateCanvas((m.plate || def[0]).toUpperCase(), cat === 'polri' ? 'POLRI' : cat === 'dinas' ? 'DINAS' : cat === 'diplomatik' ? '' : `${String(d.getMonth() + 1).padStart(2, '0')} · ${String((d.getFullYear() + 5) % 100).padStart(2, '0')}`, cat), roughness: 0.45});
         plateM.userData.own = true; } o.material = plateM; } });
   // livery on the body paint
@@ -2726,12 +2741,13 @@ const mpName = () => (cfg.name || '').trim() || 'Pemain-' + (mp.id || '0000').sl
 const mpEsc = t => String(t).slice(0, 200);
 function mpStatus(t){ $('mp-stat').textContent = t; }
 function mpLine(txt, cls){ const d = document.createElement('div'); d.textContent = txt; if (cls) d.className = cls; const L = $('mp-log'); L.append(d); while (L.children.length > 60) L.firstChild.remove(); L.scrollTop = L.scrollHeight; }
-function mpMe(){ return {name: mpName(), type: PLR ? PLR.type : cfg.veh, mod: MODS()}; }
+function mpMe(){ return {name: mpName(), type: PLR ? PLR.type : cfg.veh, mod: MODS(), no: PHONE ? PHONE.number : ''}; }
 async function mpConnect(){
   if (mp.on) return; mp.on = true;
   if (!cfg.mpId || !/^[a-z0-9]{6,40}$/i.test(cfg.mpId)) { cfg.mpId = (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : Math.random().toString(36).slice(2) + Date.now().toString(36)).slice(0, 12); saveCfg(); }
   mp.id = cfg.mpId;
-  $('mpbox').hidden = false; mpStatus('Menghubungkan ke server.7mit…'); mpLine(`Anda: ${mpName()} · mulai di GT Semanggi`, 'sys');
+  // chat, contacts and calls between players live in the phone (the old chat panel stays hidden)
+  if (!PHONE) $('mpbox').hidden = false; else toast('Menghubungkan multiplayer · chat, SMS dan telepon ada di HP (O)'); mpStatus('Menghubungkan ke server.7mit…'); mpLine(`Anda: ${mpName()} · mulai di GT Semanggi`, 'sys');
   let ch;
   if (window.__mpFake) ch = mp.fake = window.__mpFake(mp);                 // test transport
   else { try { const {createClient} = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm');
@@ -2741,12 +2757,13 @@ async function mpConnect(){
   const pres = await mpPresence('join'); if (pres && pres.banned) { mp.on = false; mpKicked(true, pres.reason); return; }
   ch.on('broadcast', {event: 'kickhint'}, ({payload}) => { if (payload && payload.id === mp.id) mpCheckKick(); });
   ch.on('broadcast', {event: 'st'}, ({payload}) => mpState(payload));
-  ch.on('broadcast', {event: 'chat'}, ({payload}) => { if (payload && payload.id !== mp.id) mpLine(`${mpEsc(payload.name)}: ${mpEsc(payload.text)}`); });
+  ch.on('broadcast', {event: 'chat'}, ({payload}) => { if (payload && payload.id !== mp.id) { mpLine(`${mpEsc(payload.name)}: ${mpEsc(payload.text)}`); if (PHONE) PHONE.groupIn(mpEsc(payload.name), mpEsc(payload.text)); } });
+  ch.on('broadcast', {event: 'ph'}, ({payload}) => { if (PHONE) PHONE.netIn(payload); });
   ch.on('broadcast', {event: 'rtc'}, ({payload}) => mpRtc(payload));
   ch.on('broadcast', {event: 'srv'}, ({payload}) => srvApply(payload));
   ch.on('presence', {event: 'sync'}, () => mpSync());
-  ch.on('presence', {event: 'join'}, ({key, newPresences}) => { if (key !== mp.id) mpLine(`${mpEsc((newPresences[0] || {}).name || 'Pemain')} bergabung`, 'sys'); });
-  ch.on('presence', {event: 'leave'}, ({key, leftPresences}) => { if (key !== mp.id) { mpLine(`${mpEsc((leftPresences[0] || {}).name || 'Pemain')} keluar`, 'sys'); mpDrop(key); } });
+  ch.on('presence', {event: 'join'}, ({key, newPresences}) => { if (key !== mp.id) { const nm = mpEsc((newPresences[0] || {}).name || 'Pemain'); mpLine(`${nm} bergabung`, 'sys'); if (PHONE) PHONE.groupIn(nm, `${nm} bergabung`, true); } });
+  ch.on('presence', {event: 'leave'}, ({key, leftPresences}) => { if (key !== mp.id) { const nm = mpEsc((leftPresences[0] || {}).name || 'Pemain'); mpLine(`${nm} keluar`, 'sys'); if (PHONE) PHONE.groupIn(nm, `${nm} keluar`, true); mpDrop(key); } });
   ch.subscribe(async st => { if (st === 'SUBSCRIBED') { mp.ready = true; mpStatus('Online'); await ch.track(mpMe()); mpSync(); setTimeout(mpSlot, 600); srvPull(); renderUI(); }
     else if (st === 'CHANNEL_ERROR' || st === 'TIMED_OUT') { mp.ready = false; mpStatus('Koneksi terputus, mencoba lagi…'); } });
 }
@@ -2772,11 +2789,11 @@ function mpPeer(id){ let p = mp.peers.get(id); if (!p) { p = {id, name: 'Pemain'
 function mpSync(){
   const ps = mp.ch.presenceState ? mp.ch.presenceState() : {}, seen = new Set();
   for (const [key, arr] of Object.entries(ps)) { if (key === mp.id || !arr.length) continue; seen.add(key); const m = arr[0], p = mpPeer(key);
-    if (p.type !== m.type || JSON.stringify(p.mod) !== JSON.stringify(m.mod)) mpModel(p, null); p.name = String(m.name || 'Pemain').slice(0, 16); p.type = VEH[m.type] ? m.type : 'car'; p.mod = m.mod || null;
+    if (p.type !== m.type || JSON.stringify(p.mod) !== JSON.stringify(m.mod)) mpModel(p, null); p.name = String(m.name || 'Pemain').slice(0, 16); p.type = VEH[m.type] ? m.type : 'car'; p.mod = m.mod || null; if (/^0800\d{8}$/.test(m.no || '')) p.no = m.no;
     if (mp.voice && mp.id < key && !p.pc && mp.peers.size <= MP_MAX) mpPc(p, true); }
   for (const id of [...mp.peers.keys()]) if (!seen.has(id)) mpDrop(id);
   const names = [mpName() + ' (Anda)', ...[...mp.peers.values()].map(p => p.name)];
-  $('mp-list').textContent = `${names.length} online: ${names.join(', ')}`; if (mp.ready) mpStatus(`Online · ${names.length} pemain`);
+  $('mp-list').textContent = `${names.length} online: ${names.join(', ')}`; if (mp.ready) mpStatus(`Online · ${names.length} pemain`); if (PHONE) PHONE.peersChanged();
 }
 function mpDrop(id){ const p = mp.peers.get(id); if (!p) return; mpModel(p, null); if (p.pc) { try { p.pc.close(); } catch (e) {} } if (p.audio) { p.audio.pause(); p.audio.srcObject = null; } mp.peers.delete(id); }
 // where is my car, in shared terms
@@ -2786,9 +2803,9 @@ function mpTick(dt){
   if ((mp.sendT -= dt) > 0) return; mp.sendT = 0.25;
   const u = foot ? foot.u : (PLR.rp ? PLR.rp.sd*PLR.p : uOfV(PLR)), i = clamp(evAt(u), 0, EV.length - 2), a = EV[i], b = EV[i + 1], ll = latLonAt(u);
   mp.ch.send({type: 'broadcast', event: 'st', payload: {id: mp.id, name: mpName(), type: PLR.type, c: a.cNext, km: +kmAt(u).toFixed(4), dir: (Math.sign(b.km - a.kmOut) || 1)*(PLR.sd || 1),
-    lx: +(PLR.lx || 0).toFixed(2), v: +(foot ? 0 : PLR.vel).toFixed(1), lat: +ll.lat.toFixed(5), lon: +ll.lon.toFixed(5), em: sirenOn(PLR)}});
+    lx: +(PLR.lx || 0).toFixed(2), v: +(foot ? 0 : PLR.vel).toFixed(1), lat: +ll.lat.toFixed(5), lon: +ll.lon.toFixed(5), em: sirenOn(PLR), no: PHONE ? PHONE.number : ''}});
 }
-function mpState(p){ if (!p || p.id === mp.id || typeof p.km !== 'number') return; const q = mpPeer(p.id); q.st = p; q.rt = performance.now(); if (p.name) q.name = String(p.name).slice(0, 16);
+function mpState(p){ if (!p || p.id === mp.id || typeof p.km !== 'number') return; const q = mpPeer(p.id); q.st = p; q.rt = performance.now(); if (p.name) q.name = String(p.name).slice(0, 16); if (/^0800\d{8}$/.test(p.no || '')) q.no = p.no;
   if (p.type && p.type !== q.type && VEH[p.type]) { q.type = p.type; mpModel(q, null); } }
 // the place on my route that corresponds to a road + km, and whether they drive my way (sd = 1) or towards me
 function uForCK(c, km){ for (let i = 0; i < EV.length - 1; i++) { const a = EV[i], b = EV[i + 1]; if (a.cNext !== c) continue; const k0 = a.kmOut, k1 = b.km;
@@ -3349,6 +3366,34 @@ function jobDrop(J, a){ if (!J.minKm) return jobSpot(a + rnd(600, 1500));
   const u0 = a + J.minKm*1000/cfg.scale + rnd(0, 600), last = EV[EV.length - 1].u - 120;
   for (let u = u0; u < Math.min(last, u0 + 30000/cfg.scale); u += 200) if (!isToll(u)) { const v = jobSpot(u, true); if (!isToll(v) && v < last) return v; }
   return jobSpot(u0); }
+// ---------- phone services: ride as a passenger (ojek or taksi, on autopilot), order food, send a parcel ----------
+let ride = null, rideBack = null; const FOOD = [], PARCELS = [];
+const RIDE = {ojek: {veh: 'moto', base: 10000, perKm: 2500, name: 'Ojek'}, taksi: {veh: 'taxi', base: 7500, perKm: 6500, name: 'Taksi Blue'}};
+function rideStart(app, dest){
+  const R = RIDE[app], P = PLR; if (!R || !P || !trip) return 'Belum bisa memesan sekarang';
+  if (P.rp || foot || tow) return 'Kembali ke jalan utama dulu';
+  if (ride) return 'Masih ada perjalanan yang berjalan';
+  if (job) jobStop();
+  const prev = cfg.veh; if (prev !== R.veh && !swapPlayerVeh(R.veh)) return 'Tidak bisa sekarang';
+  if (!setNav(dest, true)) { if (prev !== R.veh) swapPlayerVeh(prev); return 'Rute ke tujuan tidak ditemukan' + (app === 'ojek' ? ' (ojek tidak lewat tol)' : ''); }
+  ride = {app, dest, rk0: rkAt(uOfV(P)), prev, R, t0: clock}; cfg.auto = true; hudAuto();
+  toast(`${R.name}: menuju ${NODES.get(dest).name} · kamu penumpang`); return null; }
+function rideFare(r = ride){ if (!r || !PLR) return 0; const km = Math.max(0, rkAt(uOfV(PLR)) - r.rk0); return Math.round((r.R.base + r.R.perKm*km)/500)*500; }
+function rideFinish(site){ const r = ride; if (!r) return; const km = Math.max(0, rkAt(site.u) - r.rk0), fare = Math.round((r.R.base + r.R.perKm*km)/500)*500;
+  pay(fare, `${r.R.name} ke ${site.name} · ${fmtKm(km)}`); ride = null; rideBack = r.prev !== r.R.veh ? r.prev : null; cfg.auto = false; hudAuto();
+  toast(`Tiba · bayar ${rp$(fare)} · terima kasih!`); }
+function rideCancel(){ const r = ride; if (!r) return; const fare = rideFare(r); if (fare > r.R.base) pay(fare, `${r.R.name} dibatalkan di jalan`); ride = null; rideBack = r.prev !== r.R.veh ? r.prev : null; cfg.auto = false; hudAuto(); toast('Perjalanan dibatalkan'); }
+function orderFood(item){ if (WAL.cash < item.price) return 'Uang tunai tidak cukup'; pay(item.price, `Pesan ${item.name}`); FOOD.push({...item, t: clock, eta: clock + rnd(45, 90)}); return null; }
+function sendParcel(dest, kg){ const n = NODES.get(dest), P = PLR; if (!n || !P) return 'Tujuan tidak dikenal';
+  const here = latLonAt(uOfV(P)), km = Math.max(5, 1.3*haversine(here.lat, here.lon, n.lat, n.lon)), fee = Math.round((15000 + km*350*(1 + kg/10))/500)*500;
+  if (WAL.cash < fee) return 'Uang tunai tidak cukup'; pay(fee, `Kirim paket ${kg} kg ke ${n.name}`);
+  PARCELS.unshift({to: n.name, kg, km, fee, t0: clock, dur: 90 + km*1.2, id: 'BLU' + Math.floor(1e6 + Math.random()*8e6)}); return null; }
+const haversine = (a1, o1, a2, o2) => { const r = Math.PI/180, x = (o2 - o1)*r*Math.cos((a1 + a2)/2*r), y = (a2 - a1)*r; return 6371*Math.hypot(x, y); };
+function phoneTick(dt){
+  if (rideBack && PLR && !PLR.rp && !foot && !tow) { swapPlayerVeh(rideBack); rideBack = null; }
+  for (let i = FOOD.length - 1; i >= 0; i--) if (clock >= FOOD[i].eta) { const f = FOOD.splice(i, 1)[0]; WAL.sleep = Math.max(0, WAL.sleep - f.fresh); uiNeeds(); toast(`${f.name} tiba · lebih segar`); if (PHONE) PHONE.notify('ojek', 'Pesanan tiba', `${f.name} sudah diantar · kantuk −${f.fresh}%`); }
+  for (const pc of PARCELS) if (!pc.done && clock - pc.t0 >= pc.dur) { pc.done = true; if (PHONE) PHONE.notify('blue', 'Paket terkirim', `${pc.id} tiba di ${pc.to}`); }
+  if (PHONE) PHONE.tick(dt); }
 function jobStart(k){
   const J = JOBS[k], P = PLR; if (!J || !P || !trip) return;
   if (P.rp || foot || tow) return toast('Kembali ke jalan utama dulu', 'warn');
@@ -4173,15 +4218,15 @@ $('lanes').addEventListener('click', e => { const b = e.target.closest('i[data-l
 // ---------- mini-map ----------
 const map = $('map'), mctx = map.getContext('2d');
 let mapBig = false;
-function drawMap(){
-  const dpr = Math.min(2, devicePixelRatio), W = map.clientWidth, H = map.clientHeight; if (!W) return;
-  if (map.width !== Math.round(W*dpr)) { map.width = Math.round(W*dpr); map.height = Math.round(H*dpr); }
-  const x = mctx; x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, W, H);
+function drawMap(cv = map, big = mapBig){
+  const dpr = Math.min(2, devicePixelRatio), W = cv.clientWidth, H = cv.clientHeight; if (!W) return;
+  if (cv.width !== Math.round(W*dpr)) { cv.width = Math.round(W*dpr); cv.height = Math.round(H*dpr); }
+  const x = cv === map ? mctx : cv.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, W, H);
   const cs = getComputedStyle(document.body), ink = cs.getPropertyValue('--color-text').trim() || '#201e1d', acc = cs.getPropertyValue('--color-accent').trim() || '#ec3013';
   let lon0 = 105.2, lon1 = 114.7, lat0 = -5.7, lat1 = -8.9;
   // live map: centred on the car and moving with it (about 15 km across, 60 km when enlarged)
   const follow = !!(PLR && trip && EV.length);
-  if (follow) { const u = uOfV(PLR), p = latLonAt(u), span = mapBig ? 0.55 : 0.14; lon0 = p.lon - span/2; lon1 = p.lon + span/2; const h = span*H/W; lat0 = p.lat + h/2; lat1 = p.lat - h/2; }
+  if (follow) { const u = uOfV(PLR), p = latLonAt(u), span = big ? 0.55 : 0.14; lon0 = p.lon - span/2; lon1 = p.lon + span/2; const h = span*H/W; lat0 = p.lat + h/2; lat1 = p.lat - h/2; }
   const sx = Math.min(W/(lon1 - lon0), H/Math.abs(lat1 - lat0)), ox = (W - sx*(lon1 - lon0))/2, oy = (H - sx*Math.abs(lat1 - lat0))/2;
   const P = (lat, lon) => [ox + (lon - lon0)*sx, oy + (lat0 - lat)*sx];
   // the island and its roads: drawn once into a cached layer for the whole-island view, every time when zoomed in on the car
@@ -4561,6 +4606,7 @@ function finishExit(site){
   continueFrom(site, ed);
 }
 function arrive(site, onward){
+  if (ride) rideFinish(site);
   stats.done = true; const d = $('done'), mins = Math.round((clock - stats.t0)/60), routeTrip = !!trip.home && trip.home !== site.key;
   $('done-title').textContent = `Tiba di ${site.name}`;
   $('done-body').textContent = `${fmtKm(rkAt(site.u) + (stats.km0 || 0))} ditempuh dalam ${mins} menit simulasi. Tarif tol (perkiraan): Rp ${stats.toll.toLocaleString('id-ID')}. Pelanggaran: ${stats.viol}. Tabrakan: ${stats.crashes}.`;
@@ -4576,7 +4622,8 @@ $('done-new').onclick = () => { $('done').hidden = true; openPlanner(); };
 $('resume').onclick = () => { if (PLR && PLR.rp && PLR.rp.parked) PLR.rp.park.t = 0; };
 
 // ---------- driving controls ----------
-function manualNow(){ if (cfg.auto) { cfg.auto = false; saveCfg(); hudAuto(); toast('Kemudi manual: bebas, pelanggaran tetap dicatat'); } }
+function manualNow(){ if (ride) { if (clock - (ride.warnT || -9) > 4) { ride.warnT = clock; toast('Kamu penumpang: batalkan perjalanan di aplikasi HP untuk menyetir sendiri', 'warn'); } return; }
+  if (cfg.auto) { cfg.auto = false; saveCfg(); hudAuto(); toast('Kemudi manual: bebas, pelanggaran tetap dicatat'); } }
 const hold = (el, k) => { const on = e => { e.preventDefault(); input[k] = true; manualNow(); }, off = () => input[k] = false;
   el.addEventListener('pointerdown', on); for (const ev of ['pointerup','pointerleave','pointercancel']) el.addEventListener(ev, off); };
 hold($('gas'), 'gas'); hold($('brake'), 'brake'); hold($('lft'), 'left'); hold($('rgt'), 'right');
@@ -4634,6 +4681,7 @@ addEventListener('keydown', e => { if (e.key === 'Escape' && !$('atlas').hidden)
   else if (k === 'arrowright' || k === 'd') { input.right = true; manualNow(); e.preventDefault(); }
   else if (k === 'p' && !e.repeat) $('auto').click();
   else if (k === 'g' && !e.repeat) $('hudb').click();
+  else if (k === 'o' && !e.repeat) { if (PHONE) PHONE.toggle(); }
   else if (k === 'c' && !e.repeat) $('camb').click();
   else if (k === 'v' && !e.repeat) $('mirb').click();
   else if (k === 'u' && !e.repeat) $('musb').click();
@@ -4907,6 +4955,53 @@ function tutTick(dt){ const st = TUT_STEPS[tutI]; if (!st || !PLR || st.btn || s
   if (st.ok && st.ok()) tutNext(); }
 if (TUT) $('tutb').hidden = true;
 
+// ---------- the phone: everything its apps can read and do ----------
+function phoneSfx(k){ if (k === 'coin') return sfxCoin();
+  const T = {tap: [[1400], 0.03, 0.025], key: [[900, 1300], 0.07, 0.03], open: [[520, 780], 0.12, 0.04], close: [[700, 460], 0.1, 0.035], unlock: [[660, 990], 0.12, 0.04], ok: [[880, 1320], 0.16, 0.05],
+    err: [[300, 220], 0.18, 0.05], ring: [[440, 480], 0.5, 0.04], shutter: [[2400, 1200], 0.06, 0.06]}[k]; if (T) tone({fs: T[0], type: 'sine', dur: T[1], gain: T[2]}); }
+const placeSub = n => (KIND_NAME[n.kind] || '') + (n.city && n.city !== n.name ? ' · ' + n.city : '');
+PHONE = TUT ? null : initPhone({cfg, saveCfg, toast, rp: rp$, rpS, sfx: phoneSfx, btn: $('phbtn'), MP_URL, MP_KEY, ICE,
+  onToggle: on => $('phbtn').setAttribute('aria-pressed', on ? 'true' : 'false'),
+  state(){ const P = PLR, u = P ? uOfV(P) : 0, d = trip && trip.destIdx >= 0 ? EV[trip.destIdx] : null, r = ride;
+    const left = d && P ? Math.max(0, d.rk - rkAt(u)) : 0, el = P && EV.length ? altAt(latLonAt(u).lat, latLonAt(u).lon) : 20;
+    return {cash: WAL.cash, etoll: WAL.etoll, earned: stats.earned || 0, time: hhmm(gameH), kmh: P ? Math.abs(KMH(P.vel)) : 0, fuel: Math.round((WAL.fuel ?? tankOf())/tankOf()*100), dmg: Math.round(P && P.dmg || 0),
+      veh: P ? P.type : cfg.veh, plate: vehInfo().plate, place: P && EV.length ? (CORR[corrAt(u)] || {}).name || '' : '', auto: cfg.auto,
+      job: job ? job.J.name : '', jobKey: job ? job.k : null, jobGoal: job ? jobGoal() : '', jobEarned: job ? job.earned : 0,
+      ride: r ? r.R.name : '', rideInfo: r && P ? {dest: NODES.get(r.dest).name, left: fmtKm(left), f: clamp((rkAt(u) - r.rk0)/Math.max(0.1, (d ? d.rk : rkAt(u)) - r.rk0), 0, 1), fare: rideFare(r)} : null,
+      dest: d ? d.name : '', left: fmtKm(left), weather: cfg.weather, temp: Math.round(31 - el/160 - (gameH < 6 || gameH > 19 ? 5 : gameH < 9 || gameH > 16 ? 2 : 0) - (cfg.weather === 'hujan' ? 4 : 0))}; },
+  places(qs, filter){ const P = PLR, here = P && EV.length ? latLonAt(uOfV(P)) : {lat: -6.2, lon: 106.8}, qq = norm(qs || '');
+    return NAVABLE.filter(n => n.lat != null && (filter === 'kota' || filter === 'nontol' ? n.kind === 'k' : n.kind !== 'r') && (!qq || norm(n.name).includes(qq) || norm(n.city || '').includes(qq)))
+      .map(n => ({key: n.key, name: n.kind === 'j' ? nodeLabel(n) : n.name, kind: n.kind, sub: placeSub(n), km: Math.round(1.25*haversine(here.lat, here.lon, n.lat, n.lon))})).sort((a, b) => a.km - b.km); },
+  placeName: k => (NODES.get(k) || {}).name || k,
+  orderFood: f => orderFood(f), foodPending: () => FOOD.map(f => ({em: f.em, name: f.name, eta: Math.max(0, Math.round(f.eta - clock))})),
+  sendParcel: (k, kg) => sendParcel(k, kg), parcels: () => PARCELS.map(p => ({...p, f: clamp((clock - p.t0)/p.dur, 0, 1)})),
+  jobs: {list: JOBS, start(k){ jobStart(k); return job && job.k === k ? null : ''; }, stop(){ jobStop(); }},
+  ride: {start: (a, k) => rideStart(a, k), cancel: () => rideCancel(), driver: ''},
+  veh: {types: Object.entries(VEH).map(([k, v]) => [k, v.label]), label: k => (VEH[k] || VEH.car).label, gol: k => (VEH[k] || VEH.car).gol, mods: () => MODS(), paints: PAINTS, rims: RIMS, liveries: LIVERY,
+    swap(t){ if (ride) return 'Sedang jadi penumpang'; if (job) jobStop(); if (!PLR || PLR.rp || foot || tow) return 'Kembali ke jalan utama dulu';
+      if (t === 'moto' && isToll(uOfV(PLR))) return 'Motor tidak boleh di jalan tol'; if (corrAt(uOfV(PLR)) === 'mbz' && !MBZ_OK.has(t)) return 'Kendaraan ini dilarang di Tol Layang MBZ';
+      if (!swapPlayerVeh(t)) return 'Tidak bisa sekarang'; toast(`Kendaraan: ${VEH[t].label}`); return null; },
+    setMod(k, v){ cfg.mod = {...MODS(), [k]: v}; saveCfg(); if (PLR && !PLR.rp && !foot && !tow && !ride) swapPlayerVeh(PLR.type); },
+    info: () => vehInfo(),
+    setPlate(txt, cat){ const t = String(txt || '').toUpperCase().replace(/[^A-Z0-9 ]/g, '').replace(/\s+/g, ' ').trim().slice(0, 11);
+      if (t && !/^[A-Z]{1,2} \d{1,4}( [A-Z]{1,3})?$/.test(t)) return 'Format plat: huruf wilayah, angka, huruf (mis. B 1234 XYZ)';
+      cfg.mod = {...MODS(), plate: t, plateCat: cat || MODS().plateCat}; saveCfg(); if (PLR && !PLR.rp && !foot && !tow && !ride) swapPlayerVeh(PLR.type); return null; }},
+  tow: () => callTow(), svc: () => { if ($('svcb').hidden) toast('Layanan SPBU dan bengkel ada di rest area: masuk rest area dulu', 'warn'); else openSvc(); },
+  drawMap: cv => drawMap(cv, false), nav: {set: k => setNav(k), clear: () => clearNav()}, openAtlas: () => openAtlas(),
+  openChat: () => { if (mp.on) PHONE.openGroup(); else { $('toggle').click(); toast('Sambungkan multiplayer di Pengaturan untuk chat', 'warn'); } },
+  mp: {ready: () => !!(mp.on && mp.ready && mp.ch), peers: () => [...mp.peers.values()].map(p => ({no: p.no, name: p.name})),
+    send: payload => mp.ch.send({type: 'broadcast', event: 'ph', payload}), say(t){ if (!mp.ready) return false; const c0 = mp.chatT; mpSay(t); return mp.chatT !== c0; }},
+  openMusic: () => $('musb').click(), openSettings: () => $('toggle').click(),
+  topUp(n){ if (WAL.cash < n) return 'Uang tunai tidak cukup'; WAL.cash -= n; WAL.etoll += n; uiNeeds(); walLog(-n, 'Isi saldo e-Toll'); toast(`Saldo e-Toll +${rp$(n)}`); return null; },
+  walletLog: () => WLOG,
+  callNumber(n){ if (n === '133' || n === '14080') { if (PLR && !tow && !PLR.rp) { callTow(); return 'Petugas: derek dikirim ke lokasi Anda'; } return 'Petugas: jalan tol aman, terima kasih'; }
+    if (n === '110') return 'Polisi: laporan diterima, petugas PJR berpatroli'; if (n === '118') return 'Ambulans: siaga, sebutkan lokasi KM'; return ''; },
+  view: () => renderer.domElement,
+  snap(){ const src = renderer.domElement, c = document.createElement('canvas'), w = 720, h = Math.round(w*src.height/src.width); c.width = w; c.height = h; c.getContext('2d').drawImage(src, 0, 0, w, h); return c.toDataURL('image/jpeg', 0.82); },
+  setWeather: w => apply('weather', w), setTod: t => apply('tod', t)});
+$('phbtn').onclick = () => PHONE && PHONE.toggle();
+if (TUT) $('phbtn').hidden = true;
+
 try { await Promise.race([Promise.all(['700 64px Archivo', '600 64px Overpass', '700 64px Overpass', '800 64px Overpass'].map(f => document.fonts.load(f))), new Promise(r => setTimeout(r, 2500))]); } catch(e) {}
 setRoadStyle(); setView(); setClean(); setTod(null);
 if (cfg.trip === 'free' || cfg.trip === 'santai') startDrive({from: NODES.has(cfg.from) ? cfg.from : DEF.from}); else startTrip(NODES.has(cfg.from) ? cfg.from : DEF.from, NODES.has(cfg.to) ? cfg.to : DEF.to);
@@ -4915,7 +5010,7 @@ window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ ret
 
 let last = performance.now(), mapT = 0, frames = 0;
 function tick(dt){
-  clock += dt; if (TUT) tutTick(dt);
+  clock += dt; if (TUT) tutTick(dt); phoneTick(dt);
   if (PLR && PLR.wantU) { PLR.wantU = false; uTurn(PLR); }
   stepFoot(dt); tickNeeds(dt); stepTow(dt); stepAngry(dt); mpTick(dt); sim(dt); mbzTraffic(); rampStep(dt); jobTick(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt); tickClock(dt);
   if (PLR) camU = foot ? foot.u : uOfV(PLR);
