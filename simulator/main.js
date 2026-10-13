@@ -16,8 +16,11 @@ const LW = 3.6, MED = 1.2, CH = 120, OPEN_HW = 35, OVH = 7.5, PRC = 328, BACK = 
 let VIEWX = 0;   // extra metres of road and scenery built ahead (Jarak pandang: jauh)
 const DEF = {mode:'mix', gfx:'auto', cam:'chase', den:1, tod:'day', lanes:'auto', closed:{'1':[1], '-1':[]}, cf:0, cfk:2, ovl:2, scale:5, veh:'car', tspd:1, steerAssist:false, weather:'cerah', roadStyle:'data', view:'normal', autoSteer:false, sound:true, clean:false,
   from:'Bekasi Barat', to:'Pasteur', auto:false, trip:'route'};
+// tutorial mode (the /tutorial page, or ?tutorial): a fixed short drive with a coach, the player's own settings left untouched
+const TUT = !!window.TJ_TUTORIAL || /\/tutorial\/?(index\.html)?$/.test(location.pathname) || new URLSearchParams(location.search).has('tutorial');
 let cfg; try { cfg = {...DEF, ...JSON.parse(localStorage.getItem('tj_cfg1') || '{}')}; } catch(e) { cfg = {...DEF}; }
-const saveCfg = () => { try { localStorage.setItem('tj_cfg1', JSON.stringify(cfg)); } catch(e) {} };
+if (TUT) cfg = {...DEF, gfx: cfg.gfx, sound: cfg.sound, veh: 'car', mod: cfg.mod, den: 0.7, tod: 'day', gh: 9, cam: 'chase', auto: false, trip: 'route', from: 'Bekasi Barat', to: 'Cikarang Timur', mirror: cfg.mirror};
+const saveCfg = () => { if (TUT) return; try { localStorage.setItem('tj_cfg1', JSON.stringify(cfg)); } catch(e) {} };
 const mod = (a, n) => ((a % n) + n) % n;
 const rnd = (a, b) => a + Math.random()*(b - a);
 const pick = a => a[Math.floor(Math.random()*a.length)];
@@ -3850,7 +3853,7 @@ function updateSound(){
 }
 // the player's own horn: sounds as long as K or the Klakson button is held; drivers ahead in the lane move over if they can
 let myHorn = null;
-function playerHorn(on = true){
+function playerHorn(on = true){ if (on) TUTF.horn = true;
   audioStart(); if (!snd || !PLR) return;
   if (!on) { if (myHorn) { const t = AC.currentTime; myHorn.g.gain.setTargetAtTime(0, t, 0.02); myHorn.os.forEach(o => o.stop(t + 0.15)); myHorn = null; } return; }
   if (myHorn) return;
@@ -4191,12 +4194,12 @@ function playerLL(){ if (!PLR || !trip) return null; const u = uOfV(PLR), p = la
   return {...p, hd: Math.atan2((nx.lon - p.lon)*COSL, nx.lat - p.lat)}; }
 let atT = 0;
 function atFollow(){ if (!AT.follow) return; const p = playerLL(); if (p) { AT.lon = p.lon; AT.lat = p.lat; } }
-function openAtlas(){
+function openAtlas(){ TUTF.mapOpen = true;
   atlas.hidden = false; atSize(); AT.follow = true; $('at-me').setAttribute('aria-pressed', 'true');
   if (!AT.opened) { AT.opened = true; AT.k = clamp(AT.W/(0.6*COSL), AT.kMin, AT.kMax); } atFollow();
   legendText(); drawAtlas();
 }
-function closeAtlas(){ atlas.hidden = true; $('at-res').hidden = true; $('at-q').blur(); }
+function closeAtlas(){ if (TUTF.mapOpen) TUTF.mapClosed = true; atlas.hidden = true; $('at-res').hidden = true; $('at-q').blur(); }
 function legendText(){
   $('lg-t').textContent = `Jalan tol · ${NET.t.length} ruas`; $('lg-n').textContent = `Jalan nasional · ${NET.n.filter(c => !c.prov).length} ruas · provinsi/kabupaten · ${NET.n.filter(c => c.prov).length} ruas`; $('lg-a').textContent = `Jalan akses gerbang tol · ${NET.a.length}`;
   const d = trip && EV[trip.destIdx];
@@ -4333,7 +4336,7 @@ function rowsSpec(){
     ['gfx', 'Grafis', [['auto','Otomatis'],['hemat','Hemat (paling ringan)'],['sedang','Sedang'],['tinggi','Tinggi']]],
     ['autoSteer', 'Setir otomatis', [[false,'Mati'],[true,'Aktif (gas & rem tetap manual)']]],
     ['sound', 'Suara', [[true,'Nyala'],[false,'Mati']]],
-    ['clean', 'Tampilan HUD', [[false,'Normal'],[true,'Ringkas (lebih kecil, tekan H)']]],
+    ['clean', 'Tampilan HUD', [[false,'Normal'],[true,'Ringkas (lebih kecil, tekan G)']]],
     ['tod', 'Atur jam', [['morning','Pagi 07:00'],['day','Siang 12:00'],['dusk','Sore 17:48'],['night','Malam 21:00']]],
     ['steerAssist', 'Asisten setir', [[false,'Mati (setir penuh, harus balas setir)'],[true,'Aktif (mobil lurus lagi saat setir dilepas)']]],
     ['tspd', 'Jalannya jam', [[0,'Berhenti'],[0.5,'1 jam = 2 menit'],[1,'1 jam = 1 menit'],[6,'1 jam = 10 detik']]],
@@ -4454,7 +4457,7 @@ function planPreview(){
     const t = tripFromLegs(from, walkFree(from, null, null, firstPick, 60, 'mix'), null, 'mix'); $('go').disabled = !t;
     el.innerHTML = '';
     const d = document.createElement('div'); d.className = 'big'; d.textContent = cfg.trip === 'santai' ? 'Santai' : 'Keliling bebas'; el.append(d);
-    if (cfg.trip === 'santai') { const s0 = document.createElement('div'); s0.textContent = 'Jalan tanpa ujung untuk bersantai: autopilot, HUD ringkas (tekan H), jalan lebih berkelok dan berbukit, jarak pandang jauh, lalu lintas sepi, sore hari. Cuaca bisa diganti di Pengaturan.'; el.append(s0); }
+    if (cfg.trip === 'santai') { const s0 = document.createElement('div'); s0.textContent = 'Jalan tanpa ujung untuk bersantai: autopilot, HUD ringkas (tekan G), jalan lebih berkelok dan berbukit, jarak pandang jauh, lalu lintas sepi, sore hari. Cuaca bisa diganti di Pengaturan.'; el.append(s0); }
     const s1 = document.createElement('div'); s1.textContent = `Mulai dari ${NODES.get(from).name}${t ? ' lewat ' + CORR[t.legs[0].c].name : ''}. Tanpa tujuan: jalan terus mengikuti jalan, dan Anda memilih arah di tiap simpang susun, exit atau persimpangan (panel "Arah di").`; el.append(s1);
     const s2 = document.createElement('div'); s2.className = 'path'; s2.textContent = `Buka Peta (tombol Peta / tombol M) untuk navigasi ke salah satu dari ${NAV_COUNT} tempat: ${NET_SUMMARY}.`; el.append(s2);
     return;
@@ -4577,20 +4580,20 @@ addEventListener('keydown', e => { if (e.key === 'Escape' && !$('atlas').hidden)
   else if (k === 'arrowleft' || k === 'a') { input.left = true; manualNow(); e.preventDefault(); }
   else if (k === 'arrowright' || k === 'd') { input.right = true; manualNow(); e.preventDefault(); }
   else if (k === 'p' && !e.repeat) $('auto').click();
-  else if (k === 'h' && !e.repeat) $('hudb').click();
+  else if (k === 'g' && !e.repeat) $('hudb').click();
   else if (k === 'c' && !e.repeat) $('camb').click();
   else if (k === 'v' && !e.repeat) $('mirb').click();
   else if (k === 'u' && !e.repeat) $('musb').click();
   else if (k === 'j' && !e.repeat) { if ($('jobdlg').hidden) openJobs(); else $('jobdlg').hidden = true; }
   else if (k === 'l' && !e.repeat && !$('svcb').hidden) openSvc();
   else if (k === 't' && !e.repeat && !$('towb').hidden) callTow();
-  else if (k === 'k' && !e.repeat) playerHorn(true);
+  else if ((k === 'h' || k === 'k') && !e.repeat) playerHorn(true);
   else if (k === 'e' && !e.repeat) footToggle();
   else if (k === 'shift') input.run = true;
   else if (k === 'f' && !e.repeat && fsOK) toggleFull();
   else if (k === 'n' && !e.repeat && PLR && EMERG.has(PLR.type)) $('sirb').click();
   else if (k === 'm' && !e.repeat) { if ($('atlas').hidden) openAtlas(); else closeAtlas(); } });
-addEventListener('keyup', e => { const k = e.key.toLowerCase(); if (k === 'k') playerHorn(false); if (k === 'shift') input.run = false; if (k === 'arrowup' || k === 'w') input.gas = false; if (k === 'arrowdown' || k === 's') input.brake = false;
+addEventListener('keyup', e => { const k = e.key.toLowerCase(); if (k === 'h' || k === 'k') playerHorn(false); if (k === 'shift') input.run = false; if (k === 'arrowup' || k === 'w') input.gas = false; if (k === 'arrowdown' || k === 's') input.brake = false;
   if (k === 'arrowleft' || k === 'a') input.left = false; if (k === 'arrowright' || k === 'd') input.right = false; });
 addEventListener('blur', () => { input.gas = input.brake = input.left = input.right = false; playerHorn(false); });
 renderer.domElement.addEventListener('pointerdown', () => { if (MOBILE && camMode !== 'orbit') hud.classList.remove('open'); });
@@ -4819,15 +4822,47 @@ function updateChoice(u){
   el.hidden = false;
 }
 
+// ---------- tutorial: one step at a time, each done by actually doing it; the control it is about is highlighted ----------
+const TUTF = {};
+const TUT_STEPS = [
+  {t: 'Selamat datang di driving.7mit', d: 'Tutorial singkat ini mengajarkan cara mengemudi di Simulator Tol Trans-Jawa: gas, rem, setir, klakson, kamera, peta, keluar tol dan bayar e-Toll. Rute latihan: Bekasi Barat → Cikarang Timur di Tol Jakarta–Cikampek.', btn: 'Mulai'},
+  {t: 'Gas', d: 'Tekan dan tahan tombol GAS (kanan bawah) atau ↑ / W sampai kecepatan 50 km/jam.', hl: ['gas'], ok: () => KMH(PLR.vel) >= 50},
+  {t: 'Rem', d: 'Sekarang tekan REM atau ↓ / S sampai di bawah 30 km/jam. Rem ditekan bertahap, seperti mobil sungguhan.', hl: ['brake'], ok: () => KMH(PLR.vel) < 30},
+  {t: 'Setir & pindah lajur', d: 'Tahan ◀ atau ▶ (← / → atau A / D) sebentar untuk pindah satu lajur, lalu lepaskan. Indonesia lajur kiri: lajur kanan untuk mendahului.', hl: ['lft', 'rgt'], start: () => { TUTF.lane0 = PLR.lane; }, ok: () => PLR.lane !== TUTF.lane0 && Math.abs(PLR.lx - PLR.lane) < 0.3},
+  {t: 'Jaga kecepatan', d: 'Lihat rambu batas di panel kecepatan. Jaga 50–100 km/jam selama 6 detik (kalau di depan macet, pindah lajur dulu). Melebihi batas dicatat sebagai pelanggaran.', hl: ['spdbox'], start: () => { TUTF.keep = 0; }, tick: dt => { const k = KMH(PLR.vel); TUTF.keep = k >= 50 && k <= 100 ? TUTF.keep + dt : Math.max(0, TUTF.keep - dt*0.5); }, ok: () => TUTF.keep >= 6, prog: () => `${Math.min(6, Math.floor(TUTF.keep))} / 6 detik`},
+  {t: 'Klakson', d: 'Bunyikan klakson: tombol Klakson atau tekan H.', hl: ['hornb'], start: () => { TUTF.horn = false; }, ok: () => TUTF.horn},
+  {t: 'Kamera', d: 'Ganti sudut pandang: tombol Kamera atau C (Belakang, Kokpit, Drone, …). Pilih yang paling nyaman.', hl: ['camb'], start: () => { TUTF.cam0 = camMode; }, ok: () => camMode !== TUTF.cam0},
+  {t: 'Peta', d: 'Buka peta dengan tombol Peta atau M. Mobilmu terlihat bergerak di peta. Tutup lagi untuk melanjutkan.', hl: ['mapb'], start: () => { TUTF.mapOpen = TUTF.mapClosed = false; }, ok: () => TUTF.mapClosed},
+  {t: 'Keluar tol', d: 'Ikuti panel LAJUR di kiri atas: ambil lajur paling kiri sebelum exit Cikarang Timur, lalu arahkan ke kiri saat ramp keluar muncul.', hl: ['lg', 'next'], ok: () => (PLR.rp && PLR.rp.kind === 'x') || stats.done},
+  {t: 'Bayar e-Toll', d: 'Pelan-pelan di ramp (batas 40 km/jam), lalu berhenti tepat di depan palang gerbang. Tap e-Toll terjadi otomatis.', hl: ['gas', 'brake'], ok: () => stats.toll > 0 || stats.done},
+  {t: 'Tutorial selesai!', d: 'Kamu siap bermain. Coba juga: Autopilot (P), Kerja (J) untuk mode ojek/bus/truk, rest area untuk isi BBM dan istirahat, serta multiplayer di Pengaturan.', end: true}];
+let tutI = -1;
+function tutShow(){ const st = TUT_STEPS[tutI], el = $('tut'); if (!st) return;
+  document.querySelectorAll('.tut-hl').forEach(e => e.classList.remove('tut-hl'));
+  for (const id of st.hl || []) { const e = $(id); if (e) e.classList.add('tut-hl'); }
+  $('tut-n').textContent = st.end ? 'Selesai' : tutI === 0 ? 'Tutorial' : `Langkah ${tutI} dari ${TUT_STEPS.length - 2}`;
+  $('tut-t').textContent = st.t; $('tut-d').textContent = st.d; $('tut-p').textContent = '';
+  $('tut-go').hidden = !st.btn; $('tut-go').textContent = st.btn || ''; $('tut-skip').hidden = !!(st.btn || st.end); $('tut-end').hidden = !st.end; $('tut-again').hidden = !st.end;
+  $('tut-bar').style.width = `${Math.round(100*tutI/(TUT_STEPS.length - 1))}%`; el.hidden = false; }
+function tutNext(){ tutI = Math.min(TUT_STEPS.length - 1, tutI + 1); const st = TUT_STEPS[tutI]; if (st.start && PLR) st.start(); tutShow();
+  if (tutI > 1) tone({fs: [880, 1320], type: 'sine', dur: 0.18, gain: 0.05}); }
+function tutStart(){ tutI = -1; tutNext(); $('tut-go').onclick = tutNext; $('tut-skip').onclick = tutNext; $('tut-again').onclick = () => location.reload(); }
+function tutTick(dt){ const st = TUT_STEPS[tutI]; if (!st || !PLR || st.btn || st.end) return;
+  // reaching the exit early finishes the drive steps
+  if (stats.done) { tutI = TUT_STEPS.length - 2; tutNext(); return; }
+  if (st.tick) st.tick(dt); if (st.prog) $('tut-p').textContent = st.prog();
+  if (st.ok && st.ok()) tutNext(); }
+if (TUT) $('tutb').hidden = true;
+
 try { await Promise.race([Promise.all(['700 64px Archivo', '600 64px Overpass', '700 64px Overpass', '800 64px Overpass'].map(f => document.fonts.load(f))), new Promise(r => setTimeout(r, 2500))]); } catch(e) {}
 setRoadStyle(); setView(); setClean(); setTod(null);
 if (cfg.trip === 'free' || cfg.trip === 'santai') startDrive({from: NODES.has(cfg.from) ? cfg.from : DEF.from}); else startTrip(NODES.has(cfg.from) ? cfg.from : DEF.from, NODES.has(cfg.to) ? cfg.to : DEF.to);
-if (!localStorage.getItem('tj_seen')) { try { localStorage.setItem('tj_seen', '1'); } catch(e) {} openPlanner(); }
+if (TUT) tutStart(); else if (!localStorage.getItem('tj_seen')) { try { localStorage.setItem('tj_seen', '1'); } catch(e) {} openPlanner(); }
 window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam, startDrive, setNav, clearNav, chooseAt, replanIdx, openAtlas, closeAtlas, atTap, AT, get chunks(){ return chunks; }, get OBJ(){ return OBJ; }, sutetTower, setHour: h => { gameH = h; todT = 0; lastSign = -1; tickClock(0); }, get gameH(){ return gameH; }, volcanoes, updateVolcanoes, regionAt, latLonAt, get ELV(){ return ELV; }, elU, elevAt, get LMS(){ return LMS; }, angry, startAngry, mp, mpConnect, mpSay, get render(){ return {...renderer.info.render}; }, get QUAL(){ return QUAL; }, get mem(){ return {...renderer.info.memory, veh: vehicles.length, ramp: rampers.length, loc: locals.length, chunks: chunks.size, built: built.size}; }, callTow, get tow(){ return tow; }, WAL, openSvc, updateLandmarks, updateRoadSigns, RSIGNS, FX, footToggle, get foot(){ return foot; }};
 
 let last = performance.now(), mapT = 0, frames = 0;
 function tick(dt){
-  clock += dt;
+  clock += dt; if (TUT) tutTick(dt);
   if (PLR && PLR.wantU) { PLR.wantU = false; uTurn(PLR); }
   stepFoot(dt); tickNeeds(dt); stepTow(dt); stepAngry(dt); mpTick(dt); sim(dt); mbzTraffic(); rampStep(dt); jobTick(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt); tickClock(dt);
   if (PLR) camU = foot ? foot.u : uOfV(PLR);

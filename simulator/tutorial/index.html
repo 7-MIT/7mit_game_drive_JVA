@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tutorial · driving.7mit</title>
+<style>html,body{margin:0;height:100%;background:#b9c8d3;font:600 14px system-ui,sans-serif;color:#201e1d;display:grid;place-items:center}</style>
+</head>
+<body>
+<p id="msg">Memuat tutorial…</p>
+<script>
+// The tutorial is the game itself in tutorial mode: load the game page from the folder above, keep this address (/tutorial)
+window.TJ_TUTORIAL = true;
+(async () => {
+  for (const url of ['../index.html', '../']) {
+    try { const r = await fetch(url, {cache: 'no-cache'}); if (!r.ok) continue; let h = await r.text(); if (!h.includes('main.js')) continue;
+      h = h.replace(/<head>/i, '<head><base href="../"><script>window.TJ_TUTORIAL = true;<\/script>').replace(/<title>[^<]*<\/title>/i, '<title>Tutorial · driving.7mit</title>');
+      document.open(); document.write(h); document.close(); return; } catch (e) {}
+  }
+  location.replace('../?tutorial');
+})();
+</script>
+</body>
+</html>

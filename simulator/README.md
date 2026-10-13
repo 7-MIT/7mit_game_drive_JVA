@@ -41,7 +41,8 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
   - A hit never throws the car through the median barrier or the guard rail into the other carriageway, and does not spin it right round. Slopes never roll a stopped car backwards; it only reverses when you hold the brake.
   - Crash effects: debris in the car's colour, glass shards, sparks (also when scraping a barrier), dust, a dented body (shorter at the front or back, narrower at the side), crash and glass sounds.
   - Damage (shown as % next to the crash count): it cuts engine power and top speed, reduces grip and pulls the car to one side. Above 35 % the engine smokes, above 85 % it burns, and at 100 % the engine dies; after a short wait for the tow truck the car is patched up so you can carry on slowly.
-- **Drive it.** ↑/W gas, ↓/S brake (hold it at a standstill to reverse), hold ←/→ to steer, K horn (hold), N siren (emergency vehicles), E get out of / back into the car, F full screen, P autopilot, C camera, M map. On phones, tablets and desktops the on-screen controls sit like a phone's: ◀ ▶ bottom-left, REM and GAS bottom-right. As soon as you drive with the keyboard they hide; touching the screen brings them back.
+- **Tutorial.** The small "Tutorial" button under Pengaturan opens /tutorial: a short practice drive (Bekasi Barat → Cikarang Timur) with a coach card that teaches one thing at a time and moves on when you have done it: gas, brake, changing lanes, holding the speed limit, horn, camera, map, taking the exit by the lane panel and paying e-Toll at the gate. The control being taught is highlighted; any step can be skipped. Your own settings are not changed.
+- **Drive it.** ↑/W gas, ↓/S brake (hold it at a standstill to reverse), hold ←/→ to steer, H horn (hold; K also works), N siren (emergency vehicles), E get out of / back into the car, F full screen, P autopilot, C camera, M map. On phones, tablets and desktops the on-screen controls sit like a phone's: ◀ ▶ bottom-left, REM and GAS bottom-right. As soon as you drive with the keyboard they hide; touching the screen brings them back.
   - **Manual driving is free.** Steering is continuous, so you can drive anywhere the road physically allows: the shoulder, off the road, closed lanes, or the oncoming lane on national roads (to overtake, or head-on into traffic). The toll road's median barrier and guard rail stop you except at openings. Collisions come from real vehicle positions (rear-end, side swipe, head-on). Running red lights or toll gates is possible; it's recorded as a violation, not prevented.
   - **Autopilot always follows the route and the rules.** Turning it on hands the car back into a legal lane.
   - To leave the toll road, steer left onto the ramp when the EXIT sign appears, then stop at the toll gate to tap e-Toll. Junction ramps work too, with no reload. The left-hand ramp takes the road to the left; when the plan turns right there, you get the loop ramp instead. The ramp carries you over the crossing road and back onto the main road, which from that junction on is the toll road you chose; with navigation on, the route is recalculated. Leaving at an exit takes you straight onto the road into town, and a left turn at an intersection carries on along the new road, both without reloading the world.
@@ -140,7 +141,7 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
   Region codes follow where a vehicle appears: A, B, F, T, D, Z, E, G, R, AA, H, K, AB, AD, AE, AG, S, L, W, N, P, M.
 - **Mirrors (spion).** Working mirrors: rear-facing cameras shown mirror-reversed. In the chase view there is the interior mirror at the top (looking out through the rear window); in the cockpit view also the left and right door mirrors. Toggle with V or the Spion button.
 - **Full screen.** The "Layar penuh" button (or F) switches to full screen and, on phones, tries to lock landscape. It is hidden where the browser does not support it.
-- **Horn.** Hold K or the Klakson button. Drivers ahead in your lane move over when they can.
+- **Horn.** Hold H (or K) or the Klakson button. Drivers ahead in your lane move over when they can.
 - **Landmarks.** Monuments, temples, mosques, towers and bridges stand beside the road at their real place when the route passes within 9 km, on the correct side, and a message names them as you approach:
   - Jakarta and around: Monas, Masjid Istiqlal, Bundaran HI, Masjid Kubah Emas, Tugu Kujang, Istana Bogor;
   - Banten and West Java: Masjid Agung Banten, Keraton Kasepuhan, Masjid Raya Al Jabbar, Gedung Sate;
@@ -187,7 +188,7 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
     - Jarak pandang: normal or far.
     - Setir otomatis: lane keeping while you work the pedals. Steering by hand picks the next lane.
     - Suara: engine pitch follows speed and gear, plus wind and rain.
-    - Tampilan HUD: normal or compact (every instrument stays, about 20% smaller and lighter); H or the HUD button switches.
+    - Tampilan HUD: normal or compact (every instrument stays, about 20% smaller and lighter); G or the HUD button switches.
   - The sky is a gradient dome with the sun, drifting clouds that follow the weather, and stars at night.
 - **Power lines.**
   - Every PLN electricity pole along the national roads (in towns and outside) carries its wires: three phase wires on the cross-arm, the neutral and a telecom cable, sagging between poles. Poles skip intersections, and you can crash into them.
