@@ -4305,7 +4305,7 @@ function drawMap(cv = map, big = mapBig){
   const sx = Math.min(W/(lon1 - lon0), H/Math.abs(lat1 - lat0)), ox = (W - sx*(lon1 - lon0))/2, oy = (H - sx*Math.abs(lat1 - lat0))/2;
   const P = (lat, lon) => [ox + (lon - lon0)*sx, oy + (lat0 - lat)*sx];
   // the island and its roads: drawn once into a cached layer for the whole-island view, every time when zoomed in on the car
-  const base = y => { y.fillStyle = 'rgba(32,30,29,0.06)'; for (const isl of [JAVA, MADURA]) { y.beginPath(); isl.forEach(([lo, la], i) => { const [a, b] = P(la, lo); i ? y.lineTo(a, b) : y.moveTo(a, b); }); y.closePath(); y.fill(); }
+  const base = y => { y.fillStyle = 'rgba(32,30,29,0.06)'; paintLand(y, P, lat0, lon0, lat1, lon1);
     y.lineJoin = 'round';
     const zk = follow ? 2 : 1;
     if (OSM.ready) { const vis = OSM.inBox(Math.min(lat0, lat1), lon0, Math.max(lat0, lat1), lon1);
@@ -4396,13 +4396,15 @@ function latLonMap(u){ return onOSM(latLonAt(u), corrIdAt(u), Math.round(kmAt(u)
 function routeMap(u0, i1){ const pts = routeLL(u0, i1), i0 = Math.max(0, evAt(u0)); if (!OSM.ready) return pts;
   let i = i0; return pts.map((q, j) => { while (i < i1 && EV[i + 1] && Math.abs(EV[i + 1].lat - q.lat) < 1e-9 && Math.abs(EV[i + 1].lon - q.lon) < 1e-9) i++; return j ? onOSM(q, EV[Math.min(i, EV.length - 1)].cNext, null) : latLonMap(u0); }); }
 const OSM_STYLE = {t: '#201e1d', n: '#a0682e', p: '#c49a62', s: 'rgba(80,88,94,0.6)'};
+function paintLand(x, P, la0, lo0, la1, lo1){ if (OSM.coastReady) return OSM.fillLand(x, P, Math.min(la0, la1), Math.min(lo0, lo1), Math.max(la0, la1), Math.max(lo0, lo1));
+  x.beginPath(); for (const isl of [COAST.JAVA, COAST.MADURA, ...COAST.ISL]) { isl.forEach(([lo, la], i) => { const [a, b] = P(la, lo); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.closePath(); } x.fill(); }
 function osmAttrib(x, W, H){ x.save(); x.font = '600 9px Archivo, sans-serif'; x.textAlign = 'right'; x.textBaseline = 'bottom'; x.fillStyle = 'rgba(255,255,255,0.75)'; const t = '© OpenStreetMap', w = x.measureText(t).width + 6;
   x.fillRect(W - w - 2, H - 13, w + 2, 13); x.fillStyle = '#3c4043'; x.fillText(t, W - 4, H - 2); x.restore(); }
 function drawAtlas(){
   if (atlas.hidden) return;
   const dpr = atSize(), x = actx, W = AT.W, H = AT.H, k = AT.k; x.setTransform(dpr, 0, 0, dpr, 0, 0);
   x.fillStyle = '#d5e2ea'; x.fillRect(0, 0, W, H);
-  x.fillStyle = '#f4f1ea'; x.strokeStyle = '#9fb3bf'; x.lineWidth = 1.2; for (const isl of [JAVA, MADURA]) { x.beginPath(); isl.forEach(([lo, la], i) => { const [a, b] = atP(la, lo); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.closePath(); x.fill(); x.stroke(); }
+  x.fillStyle = '#f4f1ea'; { const [la1, lo0] = atLL(0, 0), [la0, lo1] = atLL(W, H); paintLand(x, atP, la0, lo0, la1, lo1); }
   const inView = (a, b, m = 40) => a > -m && b > -m && a < W + m && b < H + m;
   const line = c => { if (roadInView(c.id, atP, W, H)) strokeRoad(x, atP, c.id); };
   x.lineCap = 'round'; x.lineJoin = 'round';
@@ -5071,7 +5073,7 @@ function drawGMap(cv, view){
   if (cv.width !== Math.round(W*dpr) || cv.height !== Math.round(H*dpr)) { cv.width = Math.round(W*dpr); cv.height = Math.round(H*dpr); }
   const x = cv.getContext('2d'), k = view.z, P = (lat, lon) => [W/2 + (lon - view.lon)*k*COSL, H/2 - (lat - view.lat)*k];
   x.setTransform(dpr, 0, 0, dpr, 0, 0); x.fillStyle = GM.sea; x.fillRect(0, 0, W, H);
-  x.fillStyle = GM.land; for (const isl of [COAST.JAVA, COAST.MADURA, ...COAST.ISL]) { x.beginPath(); isl.forEach(([lo, la], i) => { const [a, b] = P(la, lo); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.closePath(); x.fill(); }
+  x.fillStyle = GM.land; paintLand(x, P, view.lat - H/2/k, view.lon - W/2/(k*COSL), view.lat + H/2/k, view.lon + W/2/(k*COSL));
   const z = Math.log2(k/100), inV = (a, b, m = 60) => a > -m && b > -m && a < W + m && b < H + m;
   // mountains as green park areas, towns as built-up areas
   x.fillStyle = GM.green; for (const v of VOLCANO) { const [a, b] = P(v[1], v[2]); const r = 0.07*k; if (inV(a, b, r)) { x.beginPath(); x.arc(a, b, r, 0, Math.PI*2); x.fill(); } }

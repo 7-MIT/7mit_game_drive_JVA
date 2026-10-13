@@ -60,11 +60,15 @@ export function initFly(A){
     gridH = new Float32Array(GX*GY); const pos = new Float32Array(GX*GY*3), col = new Float32Array(GX*GY*3);
     const C = {sea: new THREE.Color(0x1b4f72), shore: new THREE.Color(0xc9b98a), rice: new THREE.Color(0x6e9a3e), rice2: new THREE.Color(0x87a94a), forest: new THREE.Color(0x3f6b2f), high: new THREE.Color(0x5a6b3a), rock: new THREE.Color(0x7a6a58), peak: new THREE.Color(0x8d8478), town: new THREE.Color(0xb3a28f)};
     const tmp = new THREE.Color(), towns = A.towns.map(t => ({x: toX(t.lon), z: toZ(t.lat)}));
-    const isl = [A.coast.JAVA, A.coast.MADURA, ...A.coast.ISL].map(p => ({p, x0: Math.min(...p.map(q => q[0])), x1: Math.max(...p.map(q => q[0])), y0: Math.min(...p.map(q => q[1])), y1: Math.max(...p.map(q => q[1]))}));
-    const onLand = (lat, lon) => isl.some(o => lon >= o.x0 && lon <= o.x1 && lat >= o.y0 && lat <= o.y1 && inPoly(o.p, lon, lat));
+    // land mask: the coastline (OpenStreetMap when loaded, Natural Earth otherwise) painted once onto a grid-sized canvas
+    const mc = document.createElement('canvas'); mc.width = GX; mc.height = GY; const mx = mc.getContext('2d', {willReadFrequently: true}); mx.fillStyle = '#fff';
+    const MP = (lat, lon) => [(lon - LONA)/STEP + 0.5, (LATN - lat)/STEP + 0.5];
+    if (A.osm && A.osm.coastReady) A.osm.fillLand(mx, MP, -9.5, 104, -5, 116);
+    else { mx.beginPath(); for (const p of [A.coast.JAVA, A.coast.MADURA, ...A.coast.ISL]) { p.forEach(([lo, la], i) => { const [u, v] = MP(la, lo); i ? mx.lineTo(u, v) : mx.moveTo(u, v); }); mx.closePath(); } mx.fill(); }
+    const md = mx.getImageData(0, 0, GX, GY).data, onLandK = k => md[k*4 + 3] > 100;
     for (let j = 0; j < GY; j++) { const lat = LATN - j*STEP;
       for (let i = 0; i < GX; i++) { const lon = LONA + i*STEP, k = j*GX + i, x = toX(lon), z = toZ(lat);
-        const hh = heightAt(lat, lon), land = hh.land || onLand(lat, lon);
+        const hh = heightAt(lat, lon), land = hh.land || onLandK(k);
         const h = land ? Math.max(3, hh.h) : -45 - 30*Math.abs(noise(x*3, z*3)); gridH[k] = h;
         pos[k*3] = x; pos[k*3 + 1] = h; pos[k*3 + 2] = z;
         if (!land) tmp.copy(C.sea);
