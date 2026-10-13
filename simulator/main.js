@@ -23,7 +23,7 @@ const DEF = {mode:'mix', gfx:'auto', cam:'chase', den:1, tod:'day', lanes:'auto'
 const FLYPAGE = !!window.TJ_FLY || /\/terbang\/?(index\.html)?$/.test(location.pathname) || new URLSearchParams(location.search).has('terbang');
 const TUT = !!window.TJ_TUTORIAL || /\/tutorial\/?(index\.html)?$/.test(location.pathname) || new URLSearchParams(location.search).has('tutorial');
 // real roads from OpenStreetMap (osm.js), loaded a moment after the start
-const OSM = initOSM({onUpdate: st => { OSNAP.clear(); drawMap.cache = null; try { drawMap(); reqAtlas(); } catch (e) {} if (FLY) FLY.roadsChanged();
+const OSM = initOSM({onUpdate: st => { OSNAP.clear(); LAT = null; segT = 0; drawMap.cache = null; try { drawMap(); reqAtlas(); } catch (e) {} if (FLY) FLY.roadsChanged();
     if (st === 'ok') toast(`Data jalan OpenStreetMap dimuat: ${OSM.S.n.toLocaleString('id-ID')} ruas tol & arteri (${Math.round(OSM.S.km).toLocaleString('id-ID')} km)`);
     else if (st === 'fail') toast('Data OpenStreetMap belum bisa dimuat (internet/server sibuk) · memakai data bawaan', 'warn'); }});
 setTimeout(() => OSM.loadBase(), 2500);
@@ -81,22 +81,29 @@ const EL_N = 3, elU = Array.from({length: EL_N}, () => new THREE.Vector4(0, -1, 
 // the real height profile of the road (tanjakan & turunan): samples every PR_S metres of route, heights scaled like distances so grades are real;
 // the shader gets the PR_N samples around the camera (height, slope) and draws a smooth Hermite curve through them
 const PR_S = 400, PR_N = 14; let PROF = null; const prW = Array.from({length: PR_N}, () => new THREE.Vector2());
-const CU = {uW:{value:0}, uCz:{value:0}, uB0:{value:0}, uB1:{value:0}, vB0:{value:0}, vB1:{value:0}, uSeg:{value:segU}, uX:{value:new THREE.Vector3(1, 0, 0)}, uEl:{value:elU}, uPrB:{value:0}, uPr:{value:prW}};   // uX: base bend × , extra winding, extra hills
+// the real curves of the road (kelokan): the lateral offset of the route in the car's own frame, from the real road geometry
+// (OpenStreetMap once loaded); samples every LT_S metres around the camera (offset, slope), a Hermite curve in the shader too
+const LT_S = 100, LT_N = 44; const ltW = Array.from({length: LT_N}, () => new THREE.Vector2()); let LAT = null;
+const CU = {uLatB:{value:0}, uLatK:{value:0}, uLat:{value:ltW}, uW:{value:0}, uCz:{value:0}, uB0:{value:0}, uB1:{value:0}, vB0:{value:0}, vB1:{value:0}, uSeg:{value:segU}, uX:{value:new THREE.Vector3(1, 0, 0)}, uEl:{value:elU}, uPrB:{value:0}, uPr:{value:prW}};   // uX: base bend × , extra winding, extra hills
 const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a)/(b - a))); return t*t*(3 - 2*t); };
 function segAmp(u){ let w = CU.uX.value.y, h = CU.uX.value.z; for (const q of segU) { if (q.y <= q.x) continue; const k = sstep(q.x, q.x + 400, u)*(1 - sstep(q.y - 400, q.y, u)); w += k*q.z; h += k*q.w; } return [w, h]; }
-const gC = u => { const w = segAmp(u)[0]; return CU.uX.value.x*(45*Math.sin(u/450) + 20*Math.sin(u/200+1.3)) + w*(Math.sin(u/80 + 0.7) + 0.45*Math.sin(u/45 + 2.1)); };
+function latY(u){ if (!LAT) return 0; const t = clamp((u - LAT.b)/LT_S, 0, LT_N - 1.0001), i = Math.floor(t), f = t - i, a = LAT.h[i], b = LAT.h[i + 1], ma = LAT.m[i]*LT_S, mb = LAT.m[i + 1]*LT_S, f2 = f*f, f3 = f2*f;
+  return (2*f3 - 3*f2 + 1)*a + (f3 - 2*f2 + f)*ma + (-2*f3 + 3*f2)*b + (f3 - f2)*mb; }
+const gC = u => { const w = segAmp(u)[0]; return CU.uLatK.value*latY(u) + CU.uX.value.x*(45*Math.sin(u/450) + 20*Math.sin(u/200+1.3)) + w*(Math.sin(u/80 + 0.7) + 0.45*Math.sin(u/45 + 2.1)); };
 function profY(u){ if (!PROF) return 0; const t = clamp((u - PROF.u0)/PR_S, 0, PROF.h.length - 1.0001), i = Math.floor(t), f = t - i, a = PROF.h[i], b = PROF.h[i + 1], ma = PROF.m[i]*PR_S, mb = PROF.m[i + 1]*PR_S, f2 = f*f, f3 = f2*f;
   return (2*f3 - 3*f2 + 1)*a + (f3 - 2*f2 + f)*ma + (-2*f3 + 3*f2)*b + (f3 - f2)*mb; }
 const gY = u => { const h = segAmp(u)[1]; return h*(0.7*Math.sin(u/520) + 0.3*Math.sin(u/230 + 2)) + profY(u); };
 // height of the road at view z relative to the car (the world is drawn with the car's spot of road at y = 0)
 const roadY = z => gY(camU - z) - gY(camU);
 const gD = u => gC(u + 0.5) - gC(u - 0.5), gYD = u => gY(u + 0.5) - gY(u - 0.5);
-const BEND_HEAD = `uniform float uW; uniform float uCz; uniform float uB0; uniform float uB1; uniform float vB0; uniform float vB1; uniform vec4 uSeg[${SEG_N}]; uniform vec3 uX; uniform vec4 uEl[${EL_N}]; uniform float uPrB; uniform vec2 uPr[${PR_N}];
+const BEND_HEAD = `uniform float uLatB; uniform float uLatK; uniform vec2 uLat[${LT_N}]; uniform float uW; uniform float uCz; uniform float uB0; uniform float uB1; uniform float vB0; uniform float vB1; uniform vec4 uSeg[${SEG_N}]; uniform vec3 uX; uniform vec4 uEl[${EL_N}]; uniform float uPrB; uniform vec2 uPr[${PR_N}];
 float profY(float u){ float t = clamp((u - uPrB)/${PR_S}.0, 0.0, ${PR_N - 1}.0 - 0.0001); int i = int(floor(t)); float f = t - float(i), f2 = f*f, f3 = f2*f; vec2 a = uPr[i], b = uPr[i + 1];
   return (2.0*f3 - 3.0*f2 + 1.0)*a.x + (f3 - 2.0*f2 + f)*a.y*${PR_S}.0 + (-2.0*f3 + 3.0*f2)*b.x + (f3 - f2)*b.y*${PR_S}.0; }
+float latY(float u){ float t = clamp((u - uLatB)/${LT_S}.0, 0.0, ${LT_N - 1}.0 - 0.0001); int i = int(floor(t)); float f = t - float(i), f2 = f*f, f3 = f2*f; vec2 a = uLat[i], b = uLat[i + 1];
+  return (2.0*f3 - 3.0*f2 + 1.0)*a.x + (f3 - 2.0*f2 + f)*a.y*${LT_S}.0 + (-2.0*f3 + 3.0*f2)*b.x + (f3 - f2)*b.y*${LT_S}.0; }
 float segK(vec4 q, float u){ if (q.y <= q.x) return 0.0; return smoothstep(q.x, q.x + 400.0, u)*(1.0 - smoothstep(q.y - 400.0, q.y, u)); }
 float bendX(float z){ float u = uW - z, w = uX.y; for (int i = 0; i < ${SEG_N}; i++) w += segK(uSeg[i], u)*uSeg[i].z;
-  return uX.x*(45.0*sin(u/450.0) + 20.0*sin(u/200.0 + 1.3)) + w*(sin(u/80.0 + 0.7) + 0.45*sin(u/45.0 + 2.1)) - uB0 - uB1*(z - uCz); }
+  return uLatK*latY(u) + uX.x*(45.0*sin(u/450.0) + 20.0*sin(u/200.0 + 1.3)) + w*(sin(u/80.0 + 0.7) + 0.45*sin(u/45.0 + 2.1)) - uB0 - uB1*(z - uCz); }
 float bendY(float z){ float u = uW - z, h = uX.z; for (int i = 0; i < ${SEG_N}; i++) h += segK(uSeg[i], u)*uSeg[i].w;
   return h*(0.7*sin(u/520.0) + 0.3*sin(u/230.0 + 2.0)) + profY(u) - vB0 - vB1*(z - uCz); }
 float elevY(float z){ float u = uW - z, e = 0.0; for (int i = 0; i < ${EL_N}; i++){ vec4 q = uEl[i]; if (q.y > q.x) e += q.z*smoothstep(q.x, q.x + q.w, u)*(1.0 - smoothstep(q.y - q.w, q.y, u)); } return e; }
@@ -146,7 +153,8 @@ function updateSegs(){
   if (!EV.length) return;
   const out = []; let i0 = Math.max(0, evAt(camU - 2600)), i1 = Math.min(EV.length - 1, evAt(camU + 3200) + 1);
   for (let i = i0; i < i1; i++) { const f = ROADFORM[EV[i].cNext]; if (!f) continue; const a = EV[i].u, b = EV[i + 1].u, last = out[out.length - 1];
-    if (last && Math.abs(last[1] - a) < 1 && last[2] === f[0] && last[3] === f[1]) last[1] = b; else out.push([a, b, f[0], f[1]]); }
+    const wk = OSM.ready ? 0 : 0.5;    // the real geometry carries the bends now: the made-up winding only fills in until OpenStreetMap is loaded
+    if (last && Math.abs(last[1] - a) < 1 && last[2] === f[0]*wk && last[3] === f[1]) last[1] = b; else out.push([a, b, f[0]*wk, f[1]]); }
   out.sort((p, q) => Math.abs((p[0] + p[1])/2 - camU) - Math.abs((q[0] + q[1])/2 - camU)).slice(0, SEG_N).forEach((q, j) => segU[j].set(...q));
 }
 function patchMat(m){ if (!m || m.userData.bent) return; m.userData.bent = true; if (m.userData.terrain) m.defines = {...(m.defines || {}), TERRAIN: ''};
@@ -157,7 +165,27 @@ const depthMat = new THREE.MeshDepthMaterial({depthPacking: THREE.RGBADepthPacki
 const depthMatT = new THREE.MeshDepthMaterial({depthPacking: THREE.RGBADepthPacking}); depthMatT.userData.terrain = true; patchMat(depthMatT);
 const bendAt = z => gC(camU - z) - CU.uB0.value - CU.uB1.value*(z - CU.uCz.value);
 function bendObj(g){ g.traverse(o => { if (!o.isMesh) return; o.frustumCulled = false; (Array.isArray(o.material) ? o.material : [o.material]).forEach(patchMat); if (o.castShadow) o.customDepthMaterial = (Array.isArray(o.material) ? o.material[0] : o.material).userData.terrain ? depthMatT : depthMat; }); }
-function updateBend(){ const cz = camera.position.z; if (--segT <= 0) { segT = 20; updateSegs(); }
+// lateral offsets of the route around the camera from its real heading (θ): x(u) = ∫ sin(θ(s) − θ(camU)) ds, the turn eased past ~40°
+// so a bend far ahead still reads as a bend; rebuilt every 40 m (the change of reference is linear, the shader's B0/B1 take it out)
+function buildLat(force){
+  if (!EV.length || !PLR) { LAT = null; return; } if (!force && LAT && Math.abs(camU - LAT.at) < 40) return;
+  const b = Math.floor((camU - 1400)/LT_S)*LT_S, end = b + (LT_N - 1)*LT_S, STEP = 20, n = Math.round((end - b)/STEP) + 1, u0 = EV[0].u, u1 = EV[EV.length - 1].u;
+  // follow one real road: each point is looked for next to where the previous one moved to (so a crossing or parallel road never steals it)
+  const P = []; let prev = null, prevRaw = null;
+  for (let i = -4; i < n + 4; i++) { const u = clamp(b + i*STEP, u0, u1), raw = latLonAt(u); let q = raw;
+    if (OSM.ready) { const cid = corrIdAt(u), c = CORR[cid], kinds = !c ? ['t', 'n', 'p'] : c.cls === 't' ? OSM_KINDS.t : c.cls === 'a' ? OSM_KINDS.a : c.prov ? ['p', 'n', 's'] : OSM_KINDS.n;
+      const pred = prev ? {lat: prev.lat + raw.lat - prevRaw.lat, lon: prev.lon + raw.lon - prevRaw.lon} : raw;
+      let r = OSM.snap(pred.lat, pred.lon, kinds, 0.35); if (r && Math.hypot((r.lon - raw.lon)*COSL, r.lat - raw.lat)*111 > 3) r = null;
+      if (!r) r = OSM.snap(raw.lat, raw.lon, kinds, c && c.cls === 't' ? 2.5 : 1.2); if (r) q = {lat: r.lat, lon: r.lon}; }
+    prev = q; prevRaw = raw; P.push([q.lon*COSL, q.lat]); }
+  const S = P.map((_, i) => { let x = 0, y = 0, w = 0; for (let k = -3; k <= 3; k++) { const q = P[clamp(i + k, 0, P.length - 1)], wk = 4 - Math.abs(k); x += q[0]*wk; y += q[1]*wk; w += wk; } return [x/w, y/w]; });
+  const th = []; for (let i = 0; i < n; i++) { const a = S[i + 2], c = S[i + 6]; th.push(Math.hypot(c[0] - a[0], c[1] - a[1]) > 1e-7 ? Math.atan2(c[0] - a[0], c[1] - a[1]) : (th[i - 1] ?? 0)); }
+  const ic = clamp(Math.round((camU - b)/STEP), 0, n - 1), ref = th[ic], d = i => { let x = th[i] - ref; x = ((x + Math.PI*3) % (Math.PI*2)) - Math.PI; return 0.7*Math.tanh(x/0.7); };
+  const off = new Float32Array(n); for (let i = ic + 1; i < n; i++) off[i] = off[i - 1] + STEP*0.5*(Math.sin(d(i)) + Math.sin(d(i - 1))); for (let i = ic - 1; i >= 0; i--) off[i] = off[i + 1] - STEP*0.5*(Math.sin(d(i)) + Math.sin(d(i + 1)));
+  const k = LT_S/STEP, h = new Float32Array(LT_N), m = new Float32Array(LT_N);
+  for (let j = 0; j < LT_N; j++) { const i = j*k; h[j] = off[i]; m[j] = Math.sin(d(i)); }
+  LAT = {b, h, m, at: camU}; CU.uLatB.value = b; for (let j = 0; j < LT_N; j++) ltW[j].set(h[j], m[j]); }
+function updateBend(){ const cz = camera.position.z; if (--segT <= 0) { segT = 20; updateSegs(); } buildLat();
   CU.uW.value = camU; CU.uCz.value = cz; CU.uB0.value = gC(camU - cz); CU.uB1.value = -gD(camU - cz); CU.vB0.value = gY(camU); CU.vB1.value = 0;
   if (PROF) { const k = Math.floor((camU - 1200 - PROF.u0)/PR_S), n = PROF.h.length; CU.uPrB.value = PROF.u0 + k*PR_S;
     for (let j = 0; j < PR_N; j++) { const q = clamp(k + j, 0, n - 1); prW[j].set(PROF.h[q], PROF.m[q]); } } }
@@ -3861,7 +3889,7 @@ function updateSky(dt){
     rainPos[k + 1] = y; rainPos[k + 2] = z; rainPos[k + 3] = rainPos[k] + 0.05; rainPos[k + 4] = y + 0.9; rainPos[k + 5] = z - 0.25 - v*0.6; }
   rainGeo.attributes.position.needsUpdate = true; rain.position.set(camera.position.x, camera.position.y - 6, camera.position.z);
 }
-function setRoadStyle(){ const k = {data: [1, 0, 0], kelok: [1.25, 16, 9], lurus: [0.35, 0, 0]}[cfg.roadStyle] || [1, 0, 0]; CU.uX.value.set(...k); }
+function setRoadStyle(){ const k = {data: [0, 0, 0, 1], kelok: [0.6, 12, 9, 1], lurus: [0, 0, 0, 0.35]}[cfg.roadStyle] || [0, 0, 0, 1]; CU.uX.value.set(k[0], k[1], k[2]); CU.uLatK.value = k[3]; LAT = null; }
 function setView(){ VIEWX = cfg.view === 'jauh' ? 900 : 0; }
 function setClean(){ document.body.classList.toggle('clean', !!cfg.clean); $('hudb').setAttribute('aria-pressed', cfg.clean ? 'true' : 'false'); }
 
@@ -4503,7 +4531,7 @@ function rowsSpec(){
     ['cam', 'Kamera', [['chase','Belakang'],['cockpit','Kokpit'],['drone','Drone'],['ic','Simpang susun'],['orbit','Orbit']]],
     ['den', 'Lalu lintas', [[0.6,'Sepi'],[1,'Normal'],[1.7,'Padat'],[2.6,'Macet']]],
     ['weather', 'Cuaca', [['cerah','Cerah'],['berawan','Berawan'],['hujan','Hujan'],['kabut','Kabut']]],
-    ['roadStyle', 'Gaya jalan', [['data','Sesuai medan'],['kelok','Lebih berkelok & berbukit'],['lurus','Lebih lurus']]],
+    ['roadStyle', 'Bentuk jalan', [['data','Sesuai aslinya (OpenStreetMap)'],['kelok','Lebih berkelok & berbukit'],['lurus','Lebih lurus']]],
     ['view', 'Jarak pandang', [['normal','Normal'],['jauh','Jauh (lebih berat)']]],
     ['gfx', 'Grafis', [['auto','Otomatis'],['hemat','Hemat (paling ringan)'],['sedang','Sedang'],['tinggi','Tinggi']]],
     ['autoSteer', 'Setir otomatis', [[false,'Mati'],[true,'Aktif (gas & rem tetap manual)']]],
@@ -5176,7 +5204,7 @@ function tick(dt){
   ensureAhead();
   setupBlocks(false); updateWorld(true); updateSignals(); animGhosts();
 }
-window.__tj.fly = () => FLY; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
+window.__tj.fly = () => FLY; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering
 window.__tj.step = (n, dt = 1/20) => { for (let i = 0; i < n; i++) tick(dt); updateSegs(); placeGroups(); place(); for (let k = 0; k < 40; k++) updateCam(dt); updateBend(); hudT = 0; updateHud(dt); drawMap(); };
