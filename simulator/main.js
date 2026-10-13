@@ -4472,7 +4472,7 @@ function rowsSpec(){
     ['clean', 'Tampilan HUD', [[false,'Normal'],[true,'Ringkas (lebih kecil, tekan G)']]],
     ['tod', 'Atur jam', [['morning','Pagi 07:00'],['day','Siang 12:00'],['dusk','Sore 17:48'],['night','Malam 21:00']]],
     ['steerAssist', 'Asisten setir', [[false,'Mati (setir penuh, harus balas setir)'],[true,'Aktif (mobil lurus lagi saat setir dilepas)']]],
-    ['tspd', 'Jalannya jam', [[0,'Berhenti'],[0.5,'1 jam = 2 menit'],[1,'1 jam = 1 menit'],[6,'1 jam = 10 detik']]],
+    ['tspd', 'Jalannya jam', [[0,'Berhenti'],[1/60,'1 jam = 60 menit (waktu nyata)'],[0.5,'1 jam = 2 menit'],[1,'1 jam = 1 menit'],[6,'1 jam = 10 detik']]],
     ['lanes', 'Jumlah lajur per arah (semua jalan)', [['auto','Sesuai data'],['1','1'],['2','2'],['3','3'],['4','4'],['5','5']]],
     ['close:1', 'Tutup lajur · arah saya', laneOpts, true],
     ['close:-1', 'Tutup lajur · arah lawan', laneOpts, true],

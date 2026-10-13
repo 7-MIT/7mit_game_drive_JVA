@@ -20,7 +20,7 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
 - **Day and night.** The game has its own clock, shown on the dashboard. Light follows the in-game hour, blending smoothly through dawn (about 05:45), morning, noon, afternoon, sunset (about 18:00) and night.
   - The sun moves across the sky, so shadows change.
   - Street lights, headlights and illuminated signs switch on as it gets dark.
-  - "Jalannya jam" sets how fast the clock runs (stopped, 1 hour = 2 min, 1 hour = 1 min, 1 hour = 10 s).
+  - "Jalannya jam" sets how fast the clock runs (stopped, real time: 1 hour = 60 min, 1 hour = 2 min, 1 hour = 1 min, 1 hour = 10 s).
   - "Atur jam" jumps to morning, noon, evening or night.
 - **Lane guidance (panduan lajur).** Before an exit you need, a closed lane or a lane that ends, a panel shows every lane with its arrow. The lanes to be in are highlighted and animated, closed lanes are hatched, and a marker slides along with your car's real position. A hint tells you which way to move, or confirms you're in the right lane. Trucks and buses are kept in the left lanes.
   - Tap a lane, in the panel or in the small lane strip on the dashboard, to pick it. Autopilot moves there and holds it for a while; in manual driving the lane stays marked until you reach it.
