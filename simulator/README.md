@@ -375,3 +375,13 @@ Under Modifikasi, choose a pattern for the body in the paint colour and a second
 - **Shaders.** They are compiled up front, so new objects do not stutter the first time they appear.
 - **Mini map.** The island and its roads are cached and not redrawn every half second.
 
+
+### Map positioning and traffic
+
+All map POIs (mini-map, atlas, phone and flight map) resolve through one cached corridor-aware position. Toll gates, junctions and rest areas use their toll membership, with a matching named OSM motorway preferred over neighbouring toll roads; access roads do not pull toll POIs onto city streets. Selection hit targets and destination pins use the same positions. OSM updates invalidate these positions. Planned roads and offline mode retain the built-in corridor geometry. Coordinates remain approximate where no matching OSM road is available within the search radius.
+
+The maps show live **game simulation** traffic per direction: red at ≤30% of the posted speed, yellow at ≤65%, blue above that. A segment needs two AI vehicle observations. Unobserved roads keep their normal road style. Parked players, ramps, shoulders and contraflow vehicles are excluded from the mainline sample. Telemetry and overlay geometry refresh once per simulation second. This does not use real-world traffic data.
+
+Active nearby roadworks and contraflow, crashed AI vehicles, and player crashes appear as map markers. The phone shows the nearest two incidents ahead, their route distance, affected lanes and opposite-direction labels. Player crash reports expire after 45 simulation seconds or a route replacement; AI reports disappear when their crash state expires.
+
+Run map regression checks with `node --test simulator/tests/map-data.test.mjs`.
