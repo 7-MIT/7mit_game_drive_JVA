@@ -112,7 +112,7 @@ const CSS = `
 #phone .gm .fab button{width:42px;height:42px;border-radius:50%;border:0;background:#fff;color:#1a73e8;display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.28);cursor:pointer;transition:transform .15s}
 #phone .gm .fab button:active{transform:scale(.9)} #phone .gm .fab button svg{width:20px;height:20px} #phone .gm .fab button.on{background:#1a73e8;color:#fff} #phone .gm .fab .zb{color:#3c4043;font-size:22px;font-weight:500}
 #phone .gm .sheet{position:absolute;left:0;right:0;bottom:0;z-index:3;background:#fff;color:#202124;border-radius:22px 22px 0 0;padding:8px 14px 24px;box-shadow:0 -4px 16px rgba(0,0,0,.18);animation:phUp .4s cubic-bezier(.2,1,.3,1) both}
-#phone .gm .sheet::before{content:'';display:block;width:36px;height:4px;border-radius:2px;background:#dadce0;margin:0 auto 8px}
+#phone .gm .traffic-key{display:flex;flex-wrap:wrap;gap:4px 9px;font-size:9px;color:#5f6368;margin:6px 0} #phone .gm .traffic-key i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:3px} #phone .gm .traffic-alert{font-size:10px;margin:5px 0;color:#a13b00} #phone .gm .traffic-alert svg{width:12px;height:12px;vertical-align:middle} #phone .gm .traffic-source{font-size:9px;color:#70757a;margin-bottom:5px} #phone .gm .sheet{max-height:46%;overflow-y:auto} #phone .gm .sheet::before{content:'';display:block;width:36px;height:4px;border-radius:2px;background:#dadce0;margin:0 auto 8px}
 #phone .gm .sheet .eta{display:flex;align-items:baseline;gap:6px} #phone .gm .sheet .eta b{font-size:22px;color:#188038;font-weight:800} #phone .gm .sheet .eta span{font-size:13px;color:#5f6368;font-weight:600}
 #phone .gm .sheet p{margin:2px 0 8px;font-size:12px;color:#5f6368} #phone .gm .sheet .acts{display:flex;gap:8px}
 #phone .gm .sheet .acts button{flex:1;border-radius:20px;border:1px solid #dadce0;background:#fff;color:#1a73e8;font:inherit;font-size:12.5px;font-weight:700;padding:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px}
@@ -416,6 +416,11 @@ export function initPhone(A){
         sh.querySelector('.xn').onclick = () => { A.nav.clear(); A.sfx('tap'); fillUI(); }; }
       else { sh.innerHTML = `<div class="eta"><b style="color:#202124;font-size:17px">${esc(t.place || 'Lokasimu')}</b></div><p>${t.kmh} km/jam · ${esc(t.km)}</p><div class="acts"><button class="p g">${ic('Navigation')} Rute</button><button class="f">${ic('Maximize2')} Peta penuh</button></div>`;
         sh.querySelector('.g').onclick = () => pickDest('Navigasi ke', key => { A.nav.set(key); A.sfx('ok'); back(); }); }
+      const traffic = A.traffic(), alerts = traffic.incidents.filter(e => e.ahead).slice(0, 2);
+      const info = document.createElement('div');
+      info.innerHTML = `<div class="traffic-key"><span><i style="background:#d93025"></i>Macet sekali</span><span><i style="background:#fbbc04"></i>Sedikit macet</span><span><i style="background:#1a73e8"></i>Lancar</span></div><div class="traffic-source">Lalu lintas simulasi · ruas tanpa warna: belum ada data</div>` + alerts.map(e => `<div class="traffic-alert">${ic(e.type === 'crash' ? 'TriangleAlert' : e.type === 'works' ? 'Construction' : 'ArrowLeftRight')} ${esc(e.title)} · ${e.distanceKm < 1 ? Math.round(e.distanceKm*1000) + ' m' : e.distanceKm.toFixed(1).replace('.', ',') + ' km'}${e.sd !== traffic.sd ? ' · arah berlawanan' : ''}</div>`).join('');
+      sh.insertBefore(info, sh.querySelector('.acts'));
+      pg.querySelector('.fab').style.bottom = `${sh.offsetHeight + 10}px`;
       sh.querySelector('.f').onclick = () => { toggle(false); A.openAtlas(); }; };
     requestAnimationFrame(() => { paint(); fillUI(); }); let ui = 0; live(() => { paint(); if (++ui % 2 === 0) fillUI(); });
     pg.querySelector('.sb').onclick = () => pickDest('Cari tempat', key => { A.nav.set(key); A.sfx('ok'); back(); });

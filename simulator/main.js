@@ -12,6 +12,7 @@ import {mergeGeometries, toCreasedNormals} from 'three/addons/utils/BufferGeomet
 import {initPhone, phIcon} from './phone.js';
 import {initFly} from './fly.js';
 import {initOSM} from './osm.js';
+import {snapCorridor, createMapNodes, collectMapTraffic, TRAFFIC_COLORS} from './map-data.js';
 import {COAST, altAt, ALT_KM, CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, walkFree, choicesAt, edgesFrom, turnDeg, fmtKm, nodeLabel, JAVA, MADURA, corrGeo, corrLL, RULES} from './network.js';
 
 const MOBILE = matchMedia('(pointer:coarse)').matches || innerWidth < 700;
@@ -23,7 +24,7 @@ const DEF = {mode:'mix', gfx:'auto', cam:'chase', den:1, tod:'day', lanes:'auto'
 const FLYPAGE = !!window.TJ_FLY || /\/terbang\/?(index\.html)?$/.test(location.pathname) || new URLSearchParams(location.search).has('terbang');
 const TUT = !!window.TJ_TUTORIAL || /\/tutorial\/?(index\.html)?$/.test(location.pathname) || new URLSearchParams(location.search).has('tutorial');
 // real roads from OpenStreetMap (osm.js), loaded a moment after the start
-const OSM = initOSM({onUpdate: st => { OSNAP.clear(); LAT = null; segT = 0; drawMap.cache = null; OSMV++; JCACHE.clear(); try { for (const [i, g] of chunks) if (i*CH > camU + 350) { dropSolids([g]); dispose(g); chunks.delete(i); } } catch (e) {} try { drawMap(); reqAtlas(); } catch (e) {} if (FLY) FLY.roadsChanged();
+const OSM = initOSM({onUpdate: st => { OSNAP.clear(); MAP_NODES.clear(); LAT = null; segT = 0; drawMap.cache = null; OSMV++; JCACHE.clear(); try { for (const [i, g] of chunks) if (i*CH > camU + 350) { dropSolids([g]); dispose(g); chunks.delete(i); } } catch (e) {} try { drawMap(); reqAtlas(); } catch (e) {} if (FLY) FLY.roadsChanged();
     if (st === 'ok') toast(`Data jalan OpenStreetMap dimuat: ${OSM.S.n.toLocaleString('id-ID')} ruas tol & arteri (${Math.round(OSM.S.km).toLocaleString('id-ID')} km)`);
     else if (st === 'fail') toast('Data OpenStreetMap belum bisa dimuat (internet/server sibuk) · memakai data bawaan', 'warn'); }});
 setTimeout(() => OSM.loadBase(), 2500);
@@ -3748,7 +3749,9 @@ function playerCollide(v){
       if (latV > 0.3) { v.vel *= 1 - Math.min(0.3, latV*0.06); v.hd = (v.hd || 0)*0.15; } hitFx(latV*1.3, so.name, 'side'); }
     else { const dv = Math.abs(v.vel); pushBack(pu + 0.05); v.vel = 0; hitFx(dv, so.name); } }
 }
-function crash(msg){ if (crashCd > 0) return; crashCd = 3; stats.crashes++; shake = 0.6; toast(msg, 'bad'); stats.log.push(msg); }
+function crash(msg){ if (crashCd > 0) return; crashCd = 3; stats.crashes++; shake = 0.6; toast(msg, 'bad'); stats.log.push(msg);
+  if (PLR && !PLR.rp) { MAP_CRASHES.push({u: uOfV(PLR), sd: PLR.sd, type: 'crash', title: 'Kecelakaan', until: clock + 45, route: EV}); TRAFFIC_CACHE = null; }
+}
 const violAt = new Map();
 function violation(msg){ const k = msg.split(' ')[0] + msg.length; if (clock - (violAt.get(k) ?? -99) < 10) return; violAt.set(k, clock); stats.viol++; toast('Pelanggaran: ' + msg, 'bad'); stats.log.push(msg); }
 function payToll(s){
@@ -4313,8 +4316,8 @@ function drawMap(cv = map, big = mapBig){
       const y = c.getContext('2d'); y.setTransform(dpr, 0, 0, dpr, 0, 0); base(y); drawMap.cache = c; drawMap.key = k; }
     x.drawImage(drawMap.cache, 0, 0, W, H); }
   if (trip) { const u0 = PLR ? uOfV(PLR) : 0, i0 = Math.max(0, evAt(u0)), i1 = trip.destIdx >= 0 ? trip.destIdx : Math.min(EV.length - 1, i0 + 60);
-    x.lineWidth = 3; x.strokeStyle = acc; x.beginPath(); routeMap(u0, i1).forEach((e, i) => { const [a, b] = P(e.lat, e.lon); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke();
-    const d = EV[trip.destIdx]; if (d) { const [dx, dy] = P(d.lat, d.lon); x.fillStyle = ink; x.fillRect(dx - 3, dy - 3, 6, 6); }
+    x.lineWidth = 3; x.strokeStyle = '#6b7280'; x.beginPath(); routeMap(u0, i1).forEach((e, i) => { const [a, b] = P(e.lat, e.lon); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke();
+    const d = EV[trip.destIdx]; if (d) { const [dx, dy] = P(mapNode(d).lat, mapNode(d).lon); x.fillStyle = ink; x.fillRect(dx - 3, dy - 3, 6, 6); }
     if (PLR) { const u = uOfV(PLR), p = latLonMap(u), [px, py] = P(p.lat, p.lon), fw = (PLR.rp ? PLR.rp.sd : PLR.sd)*(PLR.vel < -0.5 ? -1 : 1), q = latLonMap(u + fw*250), [qx, qy] = P(q.lat, q.lon);
       if (Math.hypot(qx - px, qy - py) > 0.3) drawMap.hd = Math.atan2(qx - px, py - qy);
       // the car: an arrow pointing the way it is driving
@@ -4322,9 +4325,10 @@ function drawMap(cv = map, big = mapBig){
       x.beginPath(); x.moveTo(0, -8); x.lineTo(6, 7); x.lineTo(0, 3); x.lineTo(-6, 7); x.closePath(); x.stroke(); x.fill(); x.restore(); } }
   x.fillStyle = ink; x.font = '600 9px Archivo, sans-serif';
   const labels = follow ? [...new Set(EV.filter(e => e.kind !== 'n0' && e.lat != null).map(e => e.key))].map(k => NODES.get(k)) : ['JCT Cawang','GT Banyumanik','JCT Waru','Merak','JCT Pasir Koja','GT Palimanan','Colomadu','Malang','Ketapang'].map(k => NODES.get(k));
-  for (const n of labels) { if (!n) continue; const [a, b] = P(n.lat, n.lon); if (a < 0 || b < 0 || a > W || b > H) continue;
+  for (const n of labels) { if (!n) continue; const [a, b] = P(mapNode(n).lat, mapNode(n).lon); if (a < 0 || b < 0 || a > W || b > H) continue;
     if (follow) { x.fillRect(a - 2, b - 2, 4, 4); x.lineWidth = 3; x.strokeStyle = 'rgba(255,255,255,0.85)'; x.strokeText(n.name, a + 5, b - 3); }
     x.fillText(follow ? n.name : n.city || n.name, a + 5, b - 3); }
+  drawMapTraffic(x, P, W, H);
   mpDrawMap(x, P); towOnMap(x, P, false); if (OSM.ready && follow) osmAttrib(x, W, H);
 }
 // where u is on the map: along the curve of the road it is on
@@ -4356,7 +4360,9 @@ const AT = {lon: 110, lat: -7.2, k: 100, sel: null, W: 0, H: 0, kMin: 40, kMax: 
 const atP = (lat, lon) => [AT.W/2 + (lon - AT.lon)*AT.k*COSL, AT.H/2 + (AT.lat - lat)*AT.k];
 const atLL = (px, py) => [AT.lat - (py - AT.H/2)/AT.k, AT.lon + (px - AT.W/2)/(AT.k*COSL)];
 const atInv = (x, y) => ({lon: AT.lon + (x - AT.W/2)/(AT.k*COSL), lat: AT.lat - (y - AT.H/2)/AT.k});
-const nodeLL = key => NODES.get(key);
+const MAP_NODES = createMapNodes({nodes: NODES, corridors: CORR, corrLL, snap: onOSM});
+const mapNode = n => MAP_NODES.point(n);
+const nodeLL = key => mapNode(NODES.get(key));
 let atRaf = 0;
 const reqAtlas = () => { if (!atRaf) atRaf = requestAnimationFrame(() => { atRaf = 0; drawAtlas(); }); };
 function atSize(){ const W = acv.clientWidth, H = acv.clientHeight, dpr = Math.min(2, devicePixelRatio);
@@ -4384,7 +4390,7 @@ function zoomAt(x, y, f){ if (AT.follow) { x = AT.W/2; y = AT.H/2; } const p = a
 // a point of road `cid` at `lat, lon` moved onto the matching real road (unchanged when OSM is not loaded or nothing is near)
 function onOSM(q, cid, keyKm){ if (!OSM.ready || !q) return q; const c = CORR[cid], kinds = !c ? ['t', 'n', 'p'] : c.cls === 't' ? OSM_KINDS.t : c.cls === 'a' ? OSM_KINDS.a : c.prov ? ['p', 'n', 's'] : OSM_KINDS.n;
   const key = keyKm != null ? cid + ':' + keyKm.toFixed(2) : null; if (key && OSNAP.has(key)) return OSNAP.get(key);
-  const r = OSM.snap(q.lat, q.lon, kinds, c && c.cls === 't' ? 3 : 1.5), out = r ? {lat: r.lat, lon: r.lon} : q; if (key) { if (OSNAP.size > 20000) OSNAP.clear(); OSNAP.set(key, out); } return out; }
+  const r = snapCorridor(OSM, q, c, kinds, c && c.cls === 't' ? 5 : 1.5), out = r ? {lat: r.lat, lon: r.lon} : q; if (key) { if (OSNAP.size > 20000) OSNAP.clear(); OSNAP.set(key, out); } return out; }
 function corrIdAt(u){ const i = evAt(u); return i >= 0 && EV[i] ? EV[i].cNext : null; }
 function latLonMap(u){ return onOSM(latLonAt(u), corrIdAt(u), Math.round(kmAt(u)*20)/20); }
 // the route followed along one real road: every point looked for next to where the previous one moved to, so a crossing
@@ -4394,8 +4400,8 @@ function trackLL(ua, ub, step){ const out = [], u0 = EV[0].u, u1 = EV[EV.length 
   for (let u = ua; u <= ub + 1e-6; u += step) { const uu = clamp(u, u0, u1), raw = latLonAt(uu); let q = {u: uu, lat: raw.lat, lon: raw.lon, r: null, j: -1};
     if (OSM.ready) { const cid = corrIdAt(uu), c = CORR[cid], kinds = kindsFor(cid);
       const pred = prev ? {lat: prev.lat + raw.lat - prevRaw.lat, lon: prev.lon + raw.lon - prevRaw.lon} : raw;
-      let r = OSM.snap(pred.lat, pred.lon, kinds, 0.35); if (r && Math.hypot((r.lon - raw.lon)*COSL, r.lat - raw.lat)*111 > 3) r = null;
-      if (!r) r = OSM.snap(raw.lat, raw.lon, kinds, c && c.cls === 't' ? 2.5 : 1.2); if (r) q = {u: uu, lat: r.lat, lon: r.lon, r: r.road, j: r.j}; }
+      let r = snapCorridor(OSM, pred, c, kinds, 0.35); if (!r.road) r = null; if (r && Math.hypot((r.lon - raw.lon)*COSL, r.lat - raw.lat)*111 > 3) r = null;
+      if (!r) r = snapCorridor(OSM, raw, c, kinds, c && c.cls === 't' ? 5 : 1.2); if (r) q = {u: uu, lat: r.lat, lon: r.lon, r: r.road, j: r.j}; }
     prev = q; prevRaw = raw; out.push(q); }
   return out; }
 // the route line on the maps: along the real roads, with every bend of the road between two tracked points
@@ -4409,6 +4415,61 @@ function routeMap(u0, i1){ if (!OSM.ready || !EV.length) return routeLL(u0, i1);
       pts.push({u: b.u, lat: b.lat, lon: b.lon}); }
     RCACHE = {key, ua, pts}; }
   const out = [latLonMap(u0)]; for (const q of RCACHE.pts) if (q.u > u0) out.push(q); return out; }
+// Live traffic is limited to vehicles currently simulated, separated by direction.
+let TRAFFIC_CACHE = null;
+const MAP_CRASHES = [];
+function mapTraffic(){
+  if (!trip || !PLR || !EV.length) return {segments: [], incidents: []};
+  const sig = `${Math.floor(clock)}|${EV[0].u}|${EV.length}|${OSMV}|${cfg.scale}|${JSON.stringify(cfg.closed)}|${cfg.cf}|${cfg.cfk}`;
+  if (TRAFFIC_CACHE?.route === EV && TRAFFIC_CACHE?.sig === sig) return TRAFFIC_CACHE.data;
+  const minU = EV[0].u, maxU = EV[EV.length - 1].u;
+  const data = collectMapTraffic({vehicles, clock, minU, maxU, limitAt, corridorAt: corrIdAt});
+  const near = uOfV(PLR);
+  for (let i = MAP_CRASHES.length - 1; i >= 0; i--) {
+    const e = MAP_CRASHES[i]; if (e.until <= clock || e.route !== EV) MAP_CRASHES.splice(i, 1);
+    else data.incidents.push({...e});
+  }
+  for (const z of ZONES) {
+    if (z.u < minU || z.u > maxU || Math.abs(z.u - near) > 4000) continue;
+    if (z.type === 'rw') for (const sd of [1, -1]) {
+      const n = Math.round(nAt(z.u)), lanes = closedBlocks(sd, n).flatMap(b => b.order.map(l => n - l));
+      if (lanes.length) data.incidents.push({u: z.u, sd, type: 'works', title: `Lajur ${lanes.sort((a,b) => a-b).join(', ')} ditutup · pekerjaan jalan`});
+    }
+    if (z.type === 'cf' && cfg.cf) data.incidents.push({u: z.u, sd: cfg.cf, type: 'contraflow', title: `Contraflow ${cfg.cfk} lajur`});
+  }
+  // Geometry is cached with the telemetry, not rebuilt for each map/frame.
+  for (const seg of data.segments) {
+    const i = Math.max(0, evAt(seg.u));
+    seg.a = Math.max(seg.a, EV[i].u); seg.b = Math.min(seg.b, EV[Math.min(i + 1, EV.length - 1)].u);
+    seg.points = trackLL(seg.a, seg.b, Math.max(20/cfg.scale, (seg.b - seg.a)/80));
+    seg.points.push(latLonMap(seg.b));
+  }
+  // Merge nearby crash reports from the same collision.
+  data.incidents = data.incidents.filter((e, i, all) => !all.slice(0, i).some(p => p.type === e.type && p.sd === e.sd && Math.abs(p.u - e.u) < 50));
+  for (const e of data.incidents) { e.point = latLonMap(e.u); e.distanceKm = Math.abs(rkAt(e.u) - rkAt(near)); e.ahead = (e.u - near)*PLR.sd >= 0; }
+  data.incidents.sort((a,b) => a.distanceKm - b.distanceKm);
+  TRAFFIC_CACHE = {sig, data, route: EV}; return data;
+}
+function drawMapTraffic(x, P, W, H, detailed = false){
+  const {segments, incidents} = mapTraffic(); x.save(); x.setLineDash([]); x.lineJoin = x.lineCap = 'round';
+  for (const seg of segments) {
+    const pts = seg.points.map(p => P(p.lat, p.lon)); if (pts.length < 2) continue;
+    if (!pts.some(([a,b]) => a > -30 && b > -30 && a < W + 30 && b < H + 30)) continue;
+    // A small screen-space offset distinguishes the two carriageways.
+    const dx = pts[pts.length-1][0] - pts[0][0], dy = pts[pts.length-1][1] - pts[0][1], len = Math.hypot(dx,dy) || 1;
+    const ox = -dy/len*seg.sd*3, oy = dx/len*seg.sd*3;
+    x.lineWidth = detailed ? 4 : 2.5; x.strokeStyle = TRAFFIC_COLORS[seg.level]; x.beginPath();
+    pts.forEach(([a,b], i) => i ? x.lineTo(a + ox,b + oy) : x.moveTo(a + ox,b + oy)); x.stroke();
+  }
+  for (const e of incidents) {
+    const [a,b] = P(e.point.lat,e.point.lon); if (a < -20 || b < -20 || a > W + 20 || b > H + 20) continue;
+    x.fillStyle = e.type === 'crash' ? '#d93025' : '#e8710a'; x.strokeStyle = '#fff'; x.lineWidth = 2;
+    x.beginPath(); x.arc(a,b, detailed ? 10 : 6,0,Math.PI*2); x.fill(); x.stroke();
+    x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = `800 ${detailed ? 12 : 9}px sans-serif`;
+    x.fillText(e.type === 'crash' ? '!' : e.type === 'works' ? '×' : '↔',a,b);
+  }
+  x.restore();
+}
 // side streets in the 3D world where real roads (OpenStreetMap) meet the route: [{u, s: side, ang, k: kind, name}] for a chunk of national road
 const JCACHE = new Map();
 function osmJunctions(ua, ub){ if (!OSM.ready || !EV.length) return []; const key = `${Math.round(ua)}|${OSMV}`; if (JCACHE.has(key)) return JCACHE.get(key);
@@ -4482,12 +4543,13 @@ function drawAtlas(){
   // the route ahead (navigation or free driving plan)
   const acc = '#ec3013';
   if (trip && PLR) { const u = uOfV(PLR), i0 = Math.max(0, evAt(u)), i1 = trip.destIdx >= 0 ? trip.destIdx : Math.min(EV.length - 1, i0 + 80), p = latLonMap(u);
-    x.strokeStyle = acc; x.globalAlpha = 0.85; x.lineWidth = clamp(3 + z*0.8, 3, 9); x.beginPath();
+    x.strokeStyle = '#6b7280'; x.globalAlpha = 0.85; x.lineWidth = clamp(3 + z*0.8, 3, 9); x.beginPath();
     routeMap(u, i1).forEach((e, j) => { const [a, b] = atP(e.lat, e.lon); j ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke(); x.globalAlpha = 1; }
+  drawMapTraffic(x, atP, W, H, true);
   // nodes + labels (priority order, no overlaps)
   const show = n => n.kind === 'j' ? z > 0.6 : n.kind === 'k' ? (n.city && n.city === n.name ? true : z > 0.9) : n.kind === 'r' ? z > 3.2 : z > 1.6;
   const pts = [];
-  for (const n of NODES.values()) { if (n.lat == null || !show(n)) continue; const [a, b] = atP(n.lat, n.lon); if (!inView(a, b)) continue; pts.push({n, a, b}); }
+  for (const n of NODES.values()) { if (n.lat == null || !show(n)) continue; const [a, b] = atP(mapNode(n).lat, mapNode(n).lon); if (!inView(a, b)) continue; pts.push({n, a, b}); }
   for (const {n, a, b} of pts) { x.fillStyle = n.kind === 'k' ? '#fff' : n.kind === 'j' ? '#0c6a3c' : n.kind === 'r' ? '#0d3b7a' : '#f2c230'; x.strokeStyle = '#201e1d'; x.lineWidth = 1.2;
     const r = n.kind === 'k' ? clamp(2.5 + z*0.6, 2.5, 5.5) : clamp(2 + z*0.5, 2, 5);
     x.beginPath(); if (n.kind === 'j') x.rect(a - r, b - r, 2*r, 2*r); else x.arc(a, b, r, 0, Math.PI*2); x.fill(); x.stroke(); }
@@ -4500,7 +4562,7 @@ function drawAtlas(){
     if (boxes.some(q => bx[0] < q[0] + q[2] && bx[0] + bx[2] > q[0] && bx[1] < q[1] + q[3] && bx[1] + bx[3] > q[1])) continue;
     boxes.push(bx); x.lineWidth = 3; x.strokeStyle = 'rgba(244,241,234,0.92)'; x.strokeText(txt, a + 8, b); x.fillStyle = n.kind === 'j' ? '#0c6a3c' : '#201e1d'; x.fillText(txt, a + 8, b); }
   // destination and player
-  const d = trip && EV[trip.destIdx]; if (d) { const [a, b] = atP(d.lat, d.lon); x.fillStyle = acc; x.strokeStyle = '#fff'; x.lineWidth = 2; x.beginPath(); x.moveTo(a, b); x.lineTo(a, b - 22); x.lineTo(a + 13, b - 17); x.lineTo(a, b - 12); x.stroke(); x.fill(); }
+  const d = trip && EV[trip.destIdx]; if (d) { const [a, b] = atP(mapNode(d).lat, mapNode(d).lon); x.fillStyle = acc; x.strokeStyle = '#fff'; x.lineWidth = 2; x.beginPath(); x.moveTo(a, b); x.lineTo(a, b - 22); x.lineTo(a + 13, b - 17); x.lineTo(a, b - 12); x.stroke(); x.fill(); }
   const sel = AT.sel && nodeLL(AT.sel); if (sel) { const [a, b] = atP(sel.lat, sel.lon); x.strokeStyle = acc; x.lineWidth = 3; x.beginPath(); x.arc(a, b, 11, 0, Math.PI*2); x.stroke(); }
   const pl = playerLL(); if (pl) { const [a, b] = atP(pl.lat, pl.lon); x.save(); x.translate(a, b); x.rotate(pl.hd); x.fillStyle = acc; x.strokeStyle = '#fff'; x.lineWidth = 2.5;
     x.beginPath(); x.moveTo(0, -12); x.lineTo(8, 9); x.lineTo(0, 4); x.lineTo(-8, 9); x.closePath(); x.stroke(); x.fill(); x.restore(); }
@@ -4514,7 +4576,7 @@ function drawAtlas(){
 // tap: nearest place, otherwise nearest road
 function atTap(px, py){
   let best = null, bd = 18;
-  for (const n of NODES.values()) { if (n.lat == null) continue; const [a, b] = atP(n.lat, n.lon), d = Math.hypot(a - px, b - py); if (d < bd) { bd = d; best = n; } }
+  for (const n of NODES.values()) { if (n.lat == null) continue; const [a, b] = atP(mapNode(n).lat, mapNode(n).lon), d = Math.hypot(a - px, b - py); if (d < bd) { bd = d; best = n; } }
   if (best) return showNode(best.key);
   let road = null, rd = 10, near = null;
   for (const c of CORRIDORS) for (let i = 0; i < c.nodes.length - 1; i++) { const A = nodeLL(c.nodes[i].key), B = nodeLL(c.nodes[i+1].key);
@@ -5120,7 +5182,7 @@ if (TUT) $('tutb').hidden = true;
 // ---------- maps in the style of a phone navigation app: sea, land, town areas, roads with casings by class, the route in blue,
 // the car as a blue dot with a heading cone, other players, the tow truck, labels with halos. view = {lat, lon, z (px per degree)} ----------
 const GM = {sea: '#a8d4f5', land: '#f3f1ec', town: '#e6e1d8', green: '#cfe6c4', ink: '#3c4043', sub: '#70757a',
-  toll: ['#f6ad43', '#d4861c'], nat: ['#fde58a', '#e3c35e'], prov: ['#ffffff', '#cfcac2'], acc: ['#ffffff', '#d7d2ca'], route: ['#4285f4', '#1a5fc8'], done: '#9aa0a6'};
+  toll: ['#f6ad43', '#d4861c'], nat: ['#fde58a', '#e3c35e'], prov: ['#ffffff', '#cfcac2'], acc: ['#ffffff', '#d7d2ca'], route: ['#9aa0a6', '#5f6368'], done: '#9aa0a6'};
 const TOWNS = [...NODES.values()].filter(n => n.kind === 'k' && n.lat != null && n.city && n.city === n.name);
 function gmapView(){ const p = PLR && EV.length ? latLonMap(uOfV(PLR)) : {lat: -6.2, lon: 106.82}; let hd = 0;
   if (PLR && EV.length) { const u = uOfV(PLR), fw = (PLR.rp ? PLR.rp.sd : PLR.sd)*(PLR.vel < -0.5 ? -1 : 1), q = latLonMap(u + fw*250); hd = Math.atan2((q.lon - p.lon)*COSL, q.lat - p.lat); }
@@ -5152,16 +5214,17 @@ function drawGMap(cv, view){
   // the route ahead
   if (!view.noRoute && trip && PLR && EV.length) { const u = uOfV(PLR), i1 = trip.destIdx >= 0 ? trip.destIdx : Math.min(EV.length - 1, Math.max(0, evAt(u)) + 60), pts = routeMap(u, i1);
     for (const [lw, col] of [[Math.max(5, 4 + z*1.2) + 3, GM.route[1]], [Math.max(5, 4 + z*1.2), GM.route[0]]]) { x.lineWidth = lw; x.strokeStyle = col; x.beginPath(); pts.forEach((e, j) => { const [a, b] = P(e.lat, e.lon); j ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke(); }
-    const d = trip.destIdx >= 0 && EV[trip.destIdx]; if (d) { const [a, b] = P(d.lat, d.lon); x.fillStyle = '#ea4335'; x.strokeStyle = '#a50e0e'; x.lineWidth = 1.5;
+    const d = trip.destIdx >= 0 && EV[trip.destIdx]; if (d) { const [a, b] = P(mapNode(d).lat, mapNode(d).lon); x.fillStyle = '#ea4335'; x.strokeStyle = '#a50e0e'; x.lineWidth = 1.5;
       x.beginPath(); x.moveTo(a, b); x.bezierCurveTo(a - 11, b - 14, a - 9, b - 26, a, b - 27); x.bezierCurveTo(a + 9, b - 26, a + 11, b - 14, a, b); x.fill(); x.stroke(); x.fillStyle = '#7d0a0a'; x.beginPath(); x.arc(a, b - 18, 3.5, 0, Math.PI*2); x.fill(); } }
+  if (!view.noRoute) drawMapTraffic(x, P, W, H, true);
   // labels: towns (bold, bigger when zoomed in), gates and junctions when close
   x.textAlign = 'center'; x.textBaseline = 'middle'; const boxes = [];
   const label = (t, a, b, size, wt, col) => { x.font = `${wt} ${size}px Archivo, sans-serif`; const w = x.measureText(t).width + 6, bx = [a - w/2, b - size/2 - 2, w, size + 4];
     if (boxes.some(q => bx[0] < q[0] + q[2] && bx[0] + bx[2] > q[0] && bx[1] < q[1] + q[3] && bx[1] + bx[3] > q[1])) return; boxes.push(bx);
     x.lineWidth = 3.5; x.strokeStyle = 'rgba(255,255,255,0.95)'; x.strokeText(t, a, b); x.fillStyle = col; x.fillText(t, a, b); };
   for (const n of TOWNS) { const [a, b] = P(n.lat, n.lon); if (inV(a, b, 0)) label(n.name, a, b, z > 2 ? 13 : 11, 700, GM.ink); }
-  if (z > 2.4) for (const n of NODES.values()) { if (n.lat == null || n.kind === 'k' || n.kind === 'r') continue; const [a, b] = P(n.lat, n.lon); if (!inV(a, b, 0)) continue;
-    x.fillStyle = n.kind === 'j' ? '#188038' : '#80868b'; x.beginPath(); x.arc(a, b, 2.5, 0, Math.PI*2); x.fill(); label(n.kind === 'j' ? n.name : 'GT ' + n.name.replace(/^GT /, ''), a, b + 11, 10, 600, GM.sub); }
+  if (z > 2.4) for (const n of NODES.values()) { if (n.lat == null || n.kind === 'k') continue; const [a, b] = P(mapNode(n).lat, mapNode(n).lon); if (!inV(a, b, 0)) continue;
+    x.fillStyle = n.kind === 'j' ? '#188038' : n.kind === 'r' ? '#0d3b7a' : '#80868b'; x.beginPath(); x.arc(a, b, 2.5, 0, Math.PI*2); x.fill(); label(n.kind === 'j' || n.kind === 'r' ? n.name : 'GT ' + n.name.replace(/^GT /, ''), a, b + 11, 10, 600, GM.sub); }
   // other players and the tow truck
   mpDrawMap(x, P, true); towOnMap(x, P, true);
   // the car: accuracy halo, heading cone, blue dot with a white ring
@@ -5219,7 +5282,7 @@ PHONE = TUT ? null : initPhone({cfg, saveCfg, toast, rp: rp$, rpS, sfx: phoneSfx
       if (t && !/^[A-Z]{1,2} \d{1,4}( [A-Z]{1,3})?$/.test(t)) return 'Format plat: huruf wilayah, angka, huruf (mis. B 1234 XYZ)';
       cfg.mod = {...MODS(), plate: t, plateCat: cat || MODS().plateCat}; saveCfg(); if (PLR && !PLR.rp && !foot && !tow && !ride) swapPlayerVeh(PLR.type); return null; }},
   tow: () => callTow(), svc: () => { if ($('svcb').hidden) toast('Layanan SPBU dan bengkel ada di rest area: masuk rest area dulu', 'warn'); else openSvc(); },
-  drawMap: cv => drawMap(cv, false), gmap: (cv, view) => drawGMap(cv, view), here: () => gmapView(), next: () => nextMove(), nav: {set: k => setNav(k), clear: () => clearNav()}, openAtlas: () => openAtlas(),
+  traffic: () => ({...mapTraffic(), sd: PLR?.sd || 1}), drawMap: cv => drawMap(cv, false), gmap: (cv, view) => drawGMap(cv, view), here: () => gmapView(), next: () => nextMove(), nav: {set: k => setNav(k), clear: () => clearNav()}, openAtlas: () => openAtlas(),
   openChat: () => { if (mp.on) PHONE.openGroup(); else { $('toggle').click(); toast('Sambungkan multiplayer di Pengaturan untuk chat', 'warn'); } },
   mp: {ready: () => !!(mp.on && mp.ready && mp.ch), peers: () => [...mp.peers.values()].map(p => ({no: p.no, name: p.name})),
     send: payload => mp.ch.send({type: 'broadcast', event: 'ph', payload}), say(t){ if (!mp.ready) return false; const c0 = mp.chatT; mpSay(t); return mp.chatT !== c0; }},
@@ -5264,7 +5327,7 @@ function tick(dt){
   ensureAhead();
   setupBlocks(false); updateWorld(true); updateSignals(); animGhosts();
 }
-window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
+window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering
 window.__tj.step = (n, dt = 1/20) => { for (let i = 0; i < n; i++) tick(dt); updateSegs(); placeGroups(); place(); for (let k = 0; k < 40; k++) updateCam(dt); updateBend(); hudT = 0; updateHud(dt); drawMap(); };

@@ -109,8 +109,8 @@ export function initOSM({onUpdate = () => {}, log = () => {}} = {}){
       for (let j = 2; j < xy.length; j += 2) { [a, b] = P(xy[j + 1], xy[j]); x.lineTo(a, b); } }
     x.stroke(); }
   // the nearest point on a road of the given kinds (within maxKm), for putting the car and the route on the real road
-  function snap(lat, lon, kinds, maxKm = 2){ const r0 = Math.ceil(maxKm/111/CELL), ca = Math.floor(lat/CELL), cb = Math.floor(lon/CELL); let best = null, bd = (maxKm/111)**2, seen = new Set();
-    for (let a = ca - r0; a <= ca + r0; a++) for (let b = cb - r0; b <= cb + r0; b++) for (const i of grid.get(a + ',' + b) || []) { if (seen.has(i)) continue; seen.add(i); const r = roads[i]; if (!kinds.includes(r.k)) continue;
+  function snap(lat, lon, kinds, maxKm = 2, accept = () => true){ const r0 = Math.ceil(maxKm/111/CELL), ca = Math.floor(lat/CELL), cb = Math.floor(lon/CELL); let best = null, bd = (maxKm/111)**2, seen = new Set();
+    for (let a = ca - r0; a <= ca + r0; a++) for (let b = cb - r0; b <= cb + r0; b++) for (const i of grid.get(a + ',' + b) || []) { if (seen.has(i)) continue; seen.add(i); const r = roads[i]; if (!kinds.includes(r.k) || !accept(r)) continue;
       const xy = r.xy; for (let j = 2; j < xy.length; j += 2) { const x0 = xy[j - 2]*COSL, y0 = xy[j - 1], x1 = xy[j]*COSL, y1 = xy[j + 1], px = lon*COSL, dx = x1 - x0, dy = y1 - y0, L = dx*dx + dy*dy;
         const t = L ? Math.max(0, Math.min(1, ((px - x0)*dx + (lat - y0)*dy)/L)) : 0, qx = x0 + dx*t, qy = y0 + dy*t, d = (qx - px)**2 + (qy - lat)**2;
         if (d < bd) { bd = d; best = {lat: qy, lon: qx/COSL, road: r, j: j/2 - 1, t, km: Math.sqrt(d)*111}; } } }
