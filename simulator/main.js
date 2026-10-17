@@ -19,6 +19,8 @@ import {buildRoadVehicle, MODEL_MATERIALS} from './road-vehicle-models.js';
 import {buildHuman} from './human-model.js';
 import {buildArchitecture, architectureMaterials} from './architecture-models.js';
 import {foliageGeometry,shrubGeometry} from './natural-models.js';
+import {initialQuality,qualityProfile,createQualityGovernor,createSimulationClock} from './adaptive-performance.js';
+import {attachVehicleLOD,setVehicleLOD,distantOpaqueMaterial} from './vehicle-lod.js';
 import {createLawAuditor, LAW_BY_ID, inferLaw, mustStop, safeStep, followSeconds} from './traffic-law.js';
 import {makeEtleCameras, createEtle} from './etle.js';
 import {initTrafficPanel} from './traffic-panel.js';
@@ -58,7 +60,9 @@ function posX(side, lx){ const c = MED + LW/2;
 
 // ---------- renderer ----------
 const renderer = new THREE.WebGLRenderer({antialias:!MOBILE, preserveDrawingBuffer:true});
-renderer.setPixelRatio(Math.min(devicePixelRatio, MOBILE ? 1.5 : 2));
+// Cap total render pixels as well as DPR on high-resolution screens.
+const basePixelRatio=()=>Math.min(devicePixelRatio||1,MOBILE?1.5:2,Math.sqrt((MOBILE?1800000:3000000)/(innerWidth*innerHeight)));
+renderer.setPixelRatio(basePixelRatio());
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -495,7 +499,7 @@ function plateVehicle(g, type){
 const mergeCache = new Map(), _mInv = new THREE.Matrix4(), _mRel = new THREE.Matrix4();
 // small dark/trim parts share one vertex-coloured material, so they cost a single draw call per vehicle
 const detailVCMat = vEnv(new THREE.MeshStandardMaterial({vertexColors: true, roughness: 0.22, metalness: 0.6}), 0.9); SHARED.add(detailVCMat);   // trim and chrome merged: glossy
-MODEL_MATERIALS.forEach(m=>SHARED.add(m));
+MODEL_MATERIALS.forEach(m=>SHARED.add(m));SHARED.add(distantOpaqueMaterial);
 const DETAIL = new Set([ trimMat, grilleMat, chromeMat, lbOff, angkotStripe, ladderMat, ambStripe, ambOrange, polStripe, signBackMat]);
 function mergeVehicle(v){
   const g = v.g, keep = new Set([...(v.wh || []), ...(v.lights || []), ...(v.lampM ? [v.lampM.brk, v.lampM.l, v.lampM.r] : [])]); g.updateMatrixWorld(true); _mInv.copy(g.matrixWorld).invert();
@@ -549,7 +553,7 @@ function makeVehicle(type, color, noMerge = false){
   plateVehicle(body,type);
   const bounds=new THREE.Box3().setFromObject(body),width=Math.min(bounds.max.x-bounds.min.x,2.6),hv=res.len>7;
   res.lampM=type==='moto'?addLamps(body,{w:.5,zF:.68,zR:-.84,yL:.90,yT:.75,tx:.08}):addLamps(body,{w:width-.06,zF:bounds.max.z-.02,zR:bounds.min.z+.02,yL:hv?res.r+.75:.72,yT:hv?res.r+.9:.95,tx:hv?1.05:width*.36});
-  if(!noMerge&&color==null)mergeVehicle(res);
+  if(!noMerge&&color==null){mergeVehicle(res);attachVehicleLOD(res);}
   bendObj(body);body.rotation.order='YXZ';
   const frontZ=Math.max(...res.wh.map(w=>w.position.z));res.front=res.wh.filter(w=>Math.abs(w.position.z-frontZ)<.01);res.front.forEach(w=>w.rotation.order='YXZ');
   return res;
@@ -557,7 +561,8 @@ function makeVehicle(type, color, noMerge = false){
 // remove a vehicle's own materials from the reflection list when it goes
 const _killV = m => VMATS.delete(m);
 const LEN = t => t === 'truck' ? 16 : t === 'bus' ? 12.5 : t === 'damkar' ? 9 : t === 'derek' ? 8.6 : 6;
-function killVehicle(v){ if (v.g.parent) v.g.parent.remove(v.g); v.g.traverse(o => { if (!o.isMesh) return; if (!SHARED.has(o.material) && o.material.userData.own) { _killV(o.material); if (o.material.map && !o.material.userData.plate) o.material.map.dispose(); o.material.dispose(); } if (o.geometry && !o.geometry.userData.keep) o.geometry.dispose(); }); v.dead = true; }
+function killVehicle(v){ if(v.g.parent)v.g.parent.remove(v.g);const materials=new Set(),geometries=new Set();v.g.traverse(o=>{if(!o.isMesh)return;materials.add(o.material);geometries.add(o.geometry);});for(const m of materials)if(!SHARED.has(m)&&m.userData.own){_killV(m);if(m.map&&!m.userData.plate)m.map.dispose();m.dispose();}for(const g of geometries)if(g&&!g.userData.keep)g.dispose();v.dead=true; }
+
 const rm = (arr, v) => { const i = arr.indexOf(v); if (i >= 0) arr.splice(i, 1); };
 const heavy = v => v.type==='truck' || v.type==='bus';
 const heavyMin = n => n >= 5 ? 2 : n >= 2 ? 1 : 0;
@@ -1197,7 +1202,7 @@ const MIRRORS = ['c', 'l', 'r'].map(k => {
   const face = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({map: rt.texture, toneMapped: false})); face.position.z = 0.1;
   mirScene.add(frame, face); return {k, rt, cam, frame, face, on: false};
 });
-let mirT = 0, mirBox = null, mirN = 0;
+let mirT = 0, mirBox = null;
 function layoutMirrors(){
   const W = innerWidth, H = innerHeight, top = $('top').getBoundingClientRect(), mp = $('map').getBoundingClientRect();
   const midL = top.right < W*0.6 ? top.right : 0, midR = mp.left > W*0.4 ? mp.left : W, cw = Math.min(380, (midR - midL)*0.6, W*0.5), ch = cw*150/512;
@@ -1213,7 +1218,7 @@ function drawMirrors(dt){
   if ((mirT -= dt) < 0) { mirT = 1; layoutMirrors(); }
   const g = v.g, fwd = headV, up = 1.25 + (v.rp && v.q ? v.q.h || 0 : 0) + (heavy(v) ? 1.3 : v.type === 'suv' || v.type === 'van' || v.type === 'angkot' ? 0.35 : 0);
   const right = tmpV2.set(-fwd.z, 0, fwd.x);
-  const W = innerWidth, H = innerHeight, redraw = (mirN = (mirN + 1) % (QUAL.level >= 2 || MOBILE ? 3 : 2)) === 0;
+  mirrorElapsed+=dt;const W=innerWidth,H=innerHeight,redraw=mirrorElapsed>=1/PROFILE.mirrorHz;if(redraw)mirrorElapsed=0;
   const bikeView = camMode === 'cockpit' && PLR && isTwoWheeler(PLR.type);
   for (const m of MIRRORS) { m.on = bikeView ? m.k !== 'c' : m.k === 'c' || camMode === 'cockpit'; m.frame.visible = m.face.visible = m.on; if (!m.on) continue;
     const side = m.k === 'l' ? -1 : m.k === 'r' ? 1 : 0, hw = (HW[v.type] || 0.92) + 0.15;
@@ -2007,21 +2012,23 @@ function freeObj(gs){ dropSolids(gs); for (const g of gs) { g.traverse(m => { if
 // budget: while driving, build at most a couple of chunks and one interchange per frame, nearest first, so the
 // frame rate stays smooth; everything far ahead is built a little later, long before it comes into view
 function updateWorld(budget = false){
+  const began=performance.now();
   const lo = Math.floor((camU - BACK - 140)/CH), hi = Math.floor((camU + FWD + 340 + VIEWX)/CH), c0 = Math.floor(camU/CH);
   for (const [i, g] of chunks) if (i < lo || i > hi) { dropSolids([g]); dispose(g); chunks.delete(i); }
   let nC = budget ? (MOBILE || QUAL.level >= 2 ? 1 : 2) : Infinity;
   for (let d = 0; d <= Math.max(c0 - lo, hi - c0) && nC > 0; d++) for (const i of d ? [c0 + d, c0 - d] : [c0]) {
-    if (i < lo || i > hi || chunks.has(i) || nC <= 0) continue; chunks.set(i, buildChunk(i)); applySign([chunks.get(i)]); nC--; }
+    if (i < lo || i > hi || chunks.has(i) || nC <= 0 || (budget&&performance.now()-began>5)) continue; chunks.set(i, buildChunk(i)); applySign([chunks.get(i)]); nC--; }
   const a = camU - BACK - 200, b = camU + FWD + 500 + VIEWX;
   for (const [o, gs] of built) if (o.u + o.r < a || o.u - o.r > b) { freeObj(gs); built.delete(o); if (o.type === 'site') o.s.bays = {'1': null, '-1': null}; }
   let nO = budget ? 1 : Infinity;
-  for (const o of OBJ) { if (o.u - o.r > b || nO <= 0) break; if (o.u + o.r < a || built.has(o)) continue; built.set(o, buildObj(o)); nO--; }
+  for (const o of OBJ) { if (o.u - o.r > b || nO <= 0 || (budget&&performance.now()-began>7)) break; if (o.u + o.r < a || built.has(o)) continue; built.set(o, buildObj(o)); nO--; }
 }
 function rebuildObjects(types){ for (const [o, gs] of [...built]) if (!types || types.includes(o.type)) { freeObj(gs); built.delete(o); } updateWorld(); }
 function clearWorld(){ SOLIDS = []; for (const [, g] of chunks) dispose(g); chunks.clear(); for (const [, gs] of built) freeObj(gs); built.clear(); }
 function placeGroups(){
-  for (const [, g] of chunks) g.position.z = camU - g.userData.u0;
-  for (const [, gs] of built) for (const g of gs) g.position.z = camU - g.userData.u0;
+  const range=Math.max(360,scene.fog.far*PROFILE.viewScale+180);
+  for (const [, g] of chunks){g.position.z=camU-g.userData.u0;g.visible=Math.abs(g.position.z)<range+CH;}
+  for (const [o, gs] of built) for (const g of gs){g.position.z=camU-g.userData.u0;g.visible=Math.abs(camU-o.u)<range+o.r;}
 }
 
 // ================================================================
@@ -3173,8 +3180,9 @@ function place(){
   for (const v of vehicles.concat(rampers)) if (v.lights) { const on = sirenOn(v); v.lights[0].visible = on && ph < 0.5; v.lights[1].visible = on && ph >= 0.5; }
   for (const v of vehicles){ const u = v.sd*v.p, z = camU - u;
     v.g.position.set(v.x, (v.lift || 0) - (v.lowered || 0) + (v.heave || 0), z); v.g.rotation.y = (v.sd > 0 ? Math.PI : 0) - v.yaw*v.sd; v.g.visible = z < zb && z > -zf && !(v.player && camMode === 'cockpit' && !foot && !tow);
-    // level of detail: far away the wheels are not drawn (hidden under the body at that distance anyway)
-    const near = Math.abs(z) < 140 || v.player; if (v.lod !== near) { v.lod = near; for (const w of v.wh) w.visible = near; }
+    // Realistic wheels stay on distant LOD models; original geometry is kept nearby.
+    setVehicleLOD(v,PROFILE.nearLOD);
+    const near = !!v.distanceLOD || Math.abs(z) < 140 || v.player; if (v.lod !== near) { v.lod = near; for (const w of v.wh) w.visible = near; }
     if (v.g.visible && Math.abs(z) < 300) { v.g.rotation.x = v.pit || 0; v.g.rotation.z = v.rol || 0; for (const w of v.front || []) w.rotation.y = isTwoWheeler(v.type) ? v.stv||0 : ackermannAngle(v.stv||0,w.position.x,wheelbase(v));
       if(v.player&&!isTwoWheeler(v.type))for(const w of v.wh){w.userData.baseY??=w.position.y;w.position.y=w.userData.baseY+(v.pit||0)*w.position.z-(v.rol||0)*w.position.x-(v.heave||0);}
       if (!v.player) { v.ph = v.ph ?? Math.random()*100;
@@ -5192,6 +5200,10 @@ function junctionBlocked(v,s){
   const exit=v.sd*s.u+SL;return vehicles.some(o=>o!==v&&o.sd===v.sd&&Math.abs(o.lx-v.lx)<.65&&o.p>v.sd*s.u&&o.p-o.len/2<exit+v.len+3&&o.vel<2);
 }
 function trafficFacts(v){
+  // Ramp traffic has its own path coordinates, not a mainline lane. Inbound
+  // NPCs may not have a mainline sd/lx until merging, so audit their ramp speed
+  // directly instead of looking up a nonexistent lane and stopping the loop.
+  if(v.rp){const sd=v.rp.sd,u=sd*(v.rp.pc+(v.q?.u||0)-v.rp.shift),id=lawIdentity(v);return {id,plate:v.player?(v.type==='bicycle'?'SEPEDA':vehInfo().plate):`B ${1000+(+id.slice(3)||0)%9000} SIM`,player:!!v.player,type:v.type,u,sd,front:v.rp.d+v.len/2,speed:v.vel,lane:0,lanes:1,route:v.rp,time:clock,priority:sirenOn(v),ramp:true,road:CORR[corrAt(u)].name,limit:rampLimit(v.rp),indicator:0,gap:Infinity,exemptShoulder:true,leftException:true,lights:[],signal:null};}
   const u=uOfV(v),n=nAvail(v.sd,v.p),front=v.p+v.len/2,cf=cfAt(v.sd,v.p),legalCf=cf&&cf.A===v.sd&&v.lx<0&&-v.lx<=cf.k,sa=siteAhead(v.sd,v.p),g=gapInfo(v,laneList(v.sd,Math.round(v.lx))),priority=sirenOn(v),indicator=v.player&&!cfg.auto?v.indicator||0:v.lawSignal||0;
   const emergency=EMS.find(e=>e!==v&&e.sd===v.sd&&v.p-e.p>0&&v.p-e.p<70&&Math.abs(e.x-v.x)<2.8);
   const leftRequired=n>1&&v.lx<n-1-.55&&['bicycle','moto','truck','pickup','derek'].includes(v.type);
@@ -5274,52 +5286,64 @@ if (FLYPAGE && FLY) { $('plan').hidden = true; FLY.enter(); } else if (TUT) tutS
 window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam, startDrive, setNav, clearNav, chooseAt, replanIdx, openAtlas, closeAtlas, atTap, AT, get chunks(){ return chunks; }, get OBJ(){ return OBJ; }, sutetTower, setHour: h => { gameH = h; todT = 0; lastSign = -1; tickClock(0); }, get gameH(){ return gameH; }, volcanoes, updateVolcanoes, regionAt, latLonAt, get ELV(){ return ELV; }, elU, elevAt, get LMS(){ return LMS; }, angry, startAngry, mp, mpConnect, mpSay, get render(){ return {...renderer.info.render}; }, get QUAL(){ return QUAL; }, get mem(){ return {...renderer.info.memory, veh: vehicles.length, ramp: rampers.length, loc: locals.length, chunks: chunks.size, built: built.size}; }, callTow, get tow(){ return tow; }, WAL, openSvc, updateLandmarks, updateRoadSigns, RSIGNS, FX, footToggle, get foot(){ return foot; }};
 
 let last = performance.now(), mapT = 0, frames = 0;
-function tick(dt){
+function tick(dt,stream=true){
   if(ARREST_DIALOG?.open)return;
   clock += dt; if (TUT) tutTick(dt); phoneTick(dt); osmTick(dt);
   if (PLR && PLR.wantU) { PLR.wantU = false; uTurn(PLR); }
   stepFoot(dt); tickNeeds(dt); stepTow(dt); stepAngry(dt); mpTick(dt); sim(dt); mbzTraffic(); rampStep(dt); jobTick(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt); tickTrafficLaw(dt); tickPursuit(dt); TRAFFIC_PANEL?.tick(dt); tickClock(dt);
   if (PLR) camU = foot ? foot.u : uOfV(PLR);
-  ensureAhead();
-  setupBlocks(false); updateWorld(true); updateSignals(); animGhosts();
+  if(stream)streamWorld();
 }
+function streamWorld(){ensureAhead();setupBlocks(false);updateWorld(true);updateSignals();animGhosts();}
 window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering
 window.__tj.step = (n, dt = 1/20) => { for (let i = 0; i < n; i++) tick(dt); updateSegs(); placeGroups(); place(); for (let k = 0; k < 40; k++) updateCam(dt); updateBend(); hudT = 0; updateHud(dt); drawMap(); };
-// automatic quality: if the frame rate stays low, step down (shadows less often, lower resolution, no bloom, shorter view)
-const QUAL = {level: 0, acc: 0, n: 0, slow: 0, t: 0, pr0: renderer.getPixelRatio()};
-function govern(rawDt, force = false){
-  if (!force) { QUAL.acc += rawDt; QUAL.n++; QUAL.t += rawDt; } if (QUAL.t < 1) return;
-  const fps = force ? 0 : QUAL.n/QUAL.acc; QUAL.acc = QUAL.n = QUAL.t = 0; if (document.hidden && !force) return;
-  if (cfg.gfx === 'tinggi' && !force) return;
-  QUAL.slow = fps < 38 ? QUAL.slow + 1 : 0; if (QUAL.slow < 3 || QUAL.level >= 5) return; QUAL.slow = 0; const L = ++QUAL.level;
-  if (L === 1) { renderer.shadowMap.autoUpdate = false; }
-  if (L === 2) { renderer.setPixelRatio(Math.max(0.75, QUAL.pr0*0.7)); composer.setSize(innerWidth, innerHeight); }
-  if (L === 3) { bloom.enabled = false; }
-  if (L === 4) { sun.castShadow = false; renderer.shadowMap.enabled = false; scene.traverse(o => { if (o.material) o.material.needsUpdate = true; }); }
-  if (L === 5) { renderer.setPixelRatio(Math.max(0.6, QUAL.pr0*0.5)); composer.setSize(innerWidth, innerHeight); scene.fog.far *= 0.8; }
-  if (!force) toast(`Grafis diturunkan otomatis agar lancar (tingkat ${L})`);
+// Adaptive quality affects rendering only; traffic density and enforcement stay intact.
+const DEVICE_QUALITY=initialQuality({mobile:MOBILE,memory:navigator.deviceMemory??8,cores:navigator.hardwareConcurrency??8});
+const GOVERNOR=createQualityGovernor(DEVICE_QUALITY),QUAL=GOVERNOR.state;
+let PROFILE=qualityProfile(QUAL.level);
+function syncQuality(){
+  PROFILE=qualityProfile(QUAL.level);
+  renderer.setPixelRatio(Math.max(.4,basePixelRatio()*PROFILE.scale));
+  composer.setPixelRatio(renderer.getPixelRatio());composer.setSize(innerWidth,innerHeight);
+  const shadowsChanged=renderer.shadowMap.enabled!==PROFILE.shadows;
+  bloom.enabled=PROFILE.bloom;renderer.shadowMap.enabled=PROFILE.shadows;sun.castShadow=PROFILE.shadows;
+  renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
+  const size=MOBILE?Math.min(1024,PROFILE.shadowSize):PROFILE.shadowSize;
+  if(sun.shadow.mapSize.x!==size){sun.shadow.mapSize.set(size,size);sun.shadow.map?.dispose();sun.shadow.map=null;}
+  // Refresh materials after toggling the shadow shader variant.
+  if(shadowsChanged){const mats=new Set();scene.traverse(o=>{if(o.material)for(const m of Array.isArray(o.material)?o.material:[o.material])mats.add(m);});for(const m of mats)m.needsUpdate=true;}
 }
-// graphics preset (a personal setting): Hemat starts at the lightest level, Sedang in the middle; Otomatis / Tinggi let the governor decide
-function applyGfx(){ const want = {hemat: 5, sedang: 2}[cfg.gfx] || 0;
-  if (want > QUAL.level) { while (QUAL.level < want) { QUAL.slow = 3; QUAL.t = 1; govern(0, true); } } }
+function govern(rawDt){if(GOVERNOR.sample(rawDt))syncQuality();}
+function applyGfx(){GOVERNOR.reset(({hemat:5,sedang:2,tinggi:0})[cfg.gfx]??DEVICE_QUALITY);syncQuality();}
 applyGfx();
+window.__tj.performance={preset:mode=>apply('gfx',mode),draw:()=>renderWorld(),get metrics(){return {level:QUAL.level,fps:Math.round(QUAL.fps),pixelRatio:renderer.getPixelRatio(),bloom:bloom.enabled,shadows:renderer.shadowMap.enabled,shadowSize:sun.shadow.mapSize.x,nearLOD:PROFILE.nearLOD,mirrorHz:PROFILE.mirrorHz};}};
+const simClock=createSimulationClock();
+let renderLast=0,mirrorElapsed=0;
+document.addEventListener('visibilitychange',()=>{last=performance.now();renderLast=last;simClock.reset();GOVERNOR.reset(QUAL.level);});
+function renderWorld(){
+  const far=scene.fog.far;scene.fog.far=far*PROFILE.viewScale;
+  if(bloom.enabled)composer.render();else renderer.render(scene,camera);
+  scene.fog.far=far;
+}
 // shaders compiled up front, so new objects do not stutter the first time they appear
 let precompiled = false;
 function precompile(){ if (precompiled) return; precompiled = true; try { renderer.compile(scene, camera); } catch (e) {} }
 let shadowFrame = 0;
 renderer.setAnimationLoop(now => {
-  if (FLY && FLY.on) { last = now; return; }                                   // flying: the drive waits underneath
-  const rawDt = (now - last)/1000, dt = Math.min(0.05, rawDt); last = now; frames++; if (rawDt > 0 && rawDt < 1) govern(rawDt);
-  if (QUAL.level >= 1 && renderer.shadowMap.enabled) renderer.shadowMap.needsUpdate = (shadowFrame = (shadowFrame + 1) % 3) === 0;
-  if (ARREST_DIALOG?.open) { composer.render();return; }
-  if (!$('plan').hidden && trip && !stats.done) { composer.render(); return; }
-  tick(dt);
+  if (document.hidden || (FLY && FLY.on)) { last = now;renderLast=now;simClock.reset();return; }                                   // flying: the drive waits underneath
+  // Do not render twice on 120/144 Hz screens; keep accumulated elapsed time.
+  if(now-renderLast<1000/60-.5)return;renderLast=now;
+  const rawDt = (now - last)/1000, dt = Math.min(0.067, rawDt); last = now; frames++; if (rawDt > 0 && rawDt < 1) govern(rawDt);
+  if(renderer.shadowMap.enabled)renderer.shadowMap.needsUpdate=(shadowFrame=(shadowFrame+1)%PROFILE.shadowEvery)===0;
+  if (ARREST_DIALOG?.open) { renderWorld();return; }
+  if (!$('plan').hidden && trip && !stats.done) { renderWorld(); return; }
+  simClock.advance(dt,d=>tick(d,false));streamWorld();
   // the full map is open: the drive goes on underneath (autopilot keeps driving), the map follows the car live
   if (!atlas.hidden) { placeGroups(); place(); updateCam(dt); updateHud(dt); atT -= dt; if (atT <= 0) { atT = 0.15; atFollow(); drawAtlas(); } return; }
   placeGroups(); place(); placeFoot(); placeTow(); placeJob(); mpPlace(); placeBeams(); placeAngry(); updateCam(dt); updateVolcanoes(dt); updateLandmarks(); updateRoadSigns(); updateFx(dt); updateSky(dt); updateSound(); flash(); updateBend(); updateHud(dt);
   mapT -= dt; if (mapT <= 0) { mapT = 0.2; drawMap(); }
-  composer.render(); drawMirrors(dt);captureEtleImages();
+  renderWorld(); drawMirrors(dt);captureEtleImages();
 });
-addEventListener('resize', () => { camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); composer.setSize(innerWidth,innerHeight); drawMap(); reqAtlas(); });
+addEventListener('resize', () => { camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); syncQuality(); drawMap(); reqAtlas(); });
