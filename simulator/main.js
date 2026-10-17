@@ -2953,8 +2953,10 @@ function placeBeams(){
 // ANGRY DRIVERS: after you hit a car, it pulls over onto the shoulder; the driver gets out and lets you know,
 // with a speech bubble. Stop nearby and apologise (pay for the damage) to settle it.
 // ================================================================
-const RANTS = ['Woi! Bisa nyetir gak sih?!', 'Mata ditaruh di mana?!', 'Mobil saya penyok nih!', 'Ganti rugi pokoknya!', 'Jangan kabur ya!', 'Astaga… baru keluar bengkel!',
-  'Turun! Tanggung jawab!', 'Saya foto plat nomornya!', 'Ngebut terus sih!', 'Lihat nih, lecet semua!', 'SIM-nya nembak ya?!', 'Pelan-pelan dong!'];
+// Keep all collision remarks authored, respectful, and free of insults or threats.
+const COLLISION_REMARKS = ['Mohon lebih berhati-hati.', 'Mari menepi dengan aman.', 'Apakah Anda baik-baik saja?', 'Kendaraan saya terkena benturan.',
+  'Mari periksa kerusakannya.', 'Tolong jaga jarak kendaraan.', 'Mohon kurangi kecepatan.', 'Mari selesaikan dengan baik.',
+  'Tolong berhenti di tempat aman.', 'Mari bicarakan ganti ruginya.', 'Keselamatan kita yang utama.', 'Mohon perhatikan jalan.'];
 const angry = [];
 function bubbleTex(text){ const c = document.createElement('canvas'); c.width = 512; c.height = 160; const x = c.getContext('2d');
   x.fillStyle = '#ffffff'; x.strokeStyle = '#1b1b1b'; x.lineWidth = 6; x.beginPath(); x.roundRect(8, 8, 496, 112, 26); x.fill(); x.stroke();
@@ -2975,12 +2977,12 @@ function stepAngry(dt){
     if (a.phase === 'pull') { if ((o.vel < 0.3 && Math.abs(o.lx - o.escX) < 0.12) || a.t > 8) {
         const m = makePerson(), side = -o.sd;                      // out of the door on the shoulder side
         a.person = {...m, u: ou + o.sd*0.6, x: o.x + side*((HW[o.type] || 1) + 0.7), hd: 0, ph: 0};
-        const bt = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.81), new THREE.MeshBasicMaterial({map: bubbleTex(pick(RANTS)), transparent: true, depthWrite: false}));
+        const bt = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.81), new THREE.MeshBasicMaterial({map: bubbleTex(pick(COLLISION_REMARKS)), transparent: true, depthWrite: false}));
         bt.material.userData.own = true; bt.position.y = 2.6; bt.renderOrder = 6; m.g.add(bt); a.bubble = bt; bendObj(bt); scene.add(m.g);
         a.phase = 'rant'; a.t = 0; a.say = 0; } continue; }
     const pr = a.person; if (!pr) continue;
     if (a.phase === 'rant') {
-      if ((a.say += dt) > 2.6) { a.say = 0; const old = a.bubble.material.map; a.bubble.material.map = bubbleTex(a.calm ? a.calm : pick(RANTS)); old.dispose(); a.bubble.material.needsUpdate = true; }
+      if ((a.say += dt) > 2.6) { a.say = 0; const old = a.bubble.material.map; a.bubble.material.map = bubbleTex(a.calm ? a.calm : pick(COLLISION_REMARKS)); old.dispose(); a.bubble.material.needsUpdate = true; }
       // walk up to the player's car if it stopped close by, otherwise stand by the car and gesture
       const stopped = P && Math.abs(P.vel) < 1 && dist < 45;
       if (stopped && !a.calm) { const tu = pu - o.sd*((P.len || 4)/2 + 1.6), tx = px - o.sd*((HW[P.type] || 1) + 0.9), du = tu - pr.u, dx = tx - pr.x, d = Math.hypot(du, dx);
@@ -3003,7 +3005,7 @@ function placeAngry(){ for (const o of angry) { const a = o.angry, pr = a && a.p
   if (a.bubble) a.bubble.rotation.y = Math.atan2(camera.position.x - pr.g.position.x, camera.position.z - pr.g.position.z) - pr.g.rotation.y; } }
 function makePeace(){ const o = peaceTarget; if (!o || !o.angry) return; const a = o.angry;
   if (WAL.cash < a.cost) { toast(`Uang tunai kurang (perlu ${rp$(a.cost)}): tarik tunai di ATM`, 'warn'); return; }
-  WAL.cash -= a.cost; a.calm = pick(['Ya sudah, saya maafkan.', 'Oke, lain kali hati-hati!', 'Baik, kita damai saja.']); a.t = 0; a.say = 99;
+  WAL.cash -= a.cost; a.calm = pick(['Terima kasih sudah bertanggung jawab.', 'Baik, mari lebih berhati-hati.', 'Terima kasih, kita selesaikan baik-baik.']); a.t = 0; a.say = 99;
   toast(`Anda minta maaf dan membayar ganti rugi ${rp$(a.cost)}`); uiNeeds(); $('peaceb').hidden = true; }
 
 // ---------- multiplayer server settings: one set of weather / time / road settings for everyone, changed only by the admin ----------
