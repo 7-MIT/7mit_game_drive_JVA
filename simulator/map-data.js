@@ -48,3 +48,29 @@ export function collectMapTraffic({vehicles, clock, minU, maxU, limitAt, corrido
   const segments = [...buckets.values()].filter(b => b.n >= 2).map(b => ({...b, level: trafficLevel(b.total/b.n)}));
   return {segments, incidents};
 }
+
+// Split the navigation polyline itself at traffic boundaries. Keep every bend,
+// including OSM vertices sharing the same route distance. Never offset a colour
+// onto a neighbouring road or use traffic travelling against the destination.
+export function navigationStrokes(points, segments, sd = 1) {
+  const traffic = segments.filter(s => s.sd === sd && s.b > s.a);
+  const cuts = [...new Set(traffic.flatMap(s => [s.a, s.b]))].sort((a,b) => a-b);
+  const strokes = [];
+  const add = (a, b, u) => {
+    const level = traffic.find(s => u >= s.a && u < s.b)?.level || 'clear';
+    const last = strokes[strokes.length - 1];
+    if (last?.level === level) last.points.push(b);
+    else strokes.push({level, points: [a, b]});
+  };
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1], b = points[i], du = b.u - a.u;
+    const stops = du > 0 ? cuts.filter(u => u > a.u && u < b.u) : [];
+    let prev = a;
+    for (const u of [...stops, b.u]) {
+      const f = du ? (u - a.u)/du : 1;
+      const q = u === b.u ? b : {u, lat: a.lat + (b.lat - a.lat)*f, lon: a.lon + (b.lon - a.lon)*f};
+      add(prev, q, du ? (prev.u + u)/2 : u); prev = q;
+    }
+  }
+  return strokes;
+}

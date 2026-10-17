@@ -39,3 +39,19 @@ test('speed bands, direction, unknown coverage and accident lifecycle', () => {
   data = collectMapTraffic({...opts, clock:21, vehicles});
   assert.equal(data.incidents.length,0);
 });
+
+test('navigation colours lie on the destination polyline, including boundary cuts and bends', async () => {
+  const {navigationStrokes} = await import('../map-data.js');
+  const points = [{u:0,lat:0,lon:0},{u:100,lat:1,lon:1},{u:100,lat:1.2,lon:1.1},{u:200,lat:1,lon:2}];
+  const segments = [{sd:1,a:50,b:100,level:'slow'},{sd:1,a:100,b:150,level:'heavy'},
+    {sd:-1,a:0,b:200,level:'heavy'},{sd:1,a:250,b:300,level:'heavy'}];
+  const strokes = navigationStrokes(points, segments);
+  assert.deepEqual(strokes.map(s=>s.level), ['clear','slow','heavy','clear']);
+  assert.deepEqual(strokes[0].points, [points[0],{u:50,lat:0.5,lon:0.5}]);
+  assert.equal(strokes[1].points.at(-1), points[1]);
+  assert.ok(strokes[2].points.includes(points[2]), 'OSM bend is preserved');
+  assert.deepEqual(strokes[2].points.at(-1), {u:150,lat:1.1,lon:1.55});
+  assert.equal(strokes.at(-1).points.at(-1),points[3]);
+  assert.deepEqual(navigationStrokes(points, segments.filter(s=>s.sd===-1)).map(s=>s.level), ['clear']);
+  assert.deepEqual(navigationStrokes(points, []).map(s=>s.level), ['clear']);
+});
