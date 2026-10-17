@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import {BICYCLE} from './vehicle-dynamics.js';
+import {humanHead} from './human-model.js';
+import {rounded} from './model-primitives.js';
 
 // A full-size diamond-frame city bicycle, articulated rider and insulated bag.
 export function buildBicycle({paint,tyre,metal,dark,head,tail}){
@@ -10,7 +12,7 @@ export function buildBicycle({paint,tyre,metal,dark,head,tail}){
   // Shapes share geometry inside this model; killVehicle disposes them on removal.
   function tube(parent,a,b,radius,mat){const mesh=new THREE.Mesh(cylinder,mat);parent.add(mesh);poseTube(mesh,a,b,radius);mesh.castShadow=true;return mesh;}
   function ball(parent,p,radius,mat){const mesh=new THREE.Mesh(sphere,mat);mesh.position.set(...p);mesh.scale.setScalar(radius);mesh.castShadow=true;parent.add(mesh);return mesh;}
-  function box(parent,size,p,mat){const mesh=new THREE.Mesh(new THREE.BoxGeometry(...size),mat);mesh.position.set(...p);mesh.castShadow=true;parent.add(mesh);return mesh;}
+  function box(parent,size,p,mat){const mesh=new THREE.Mesh(rounded(...size,0.02),mat);mesh.position.set(...p);mesh.castShadow=true;parent.add(mesh);return mesh;}
   const rear=[0,r,rearZ],bb=[0,0.35,-0.08],seat=[0,0.97,-0.25],neck=[0,1.02,0.36],fork=[0,r,frontZ];
   for(const [a,b] of [[rear,bb],[bb,seat],[seat,rear],[seat,neck],[neck,bb]])tube(g,a,b,0.026,paint);
   for(const side of [-1,1]){tube(g,[side*0.045,r,rearZ],[side*0.045,seat[1],seat[2]],0.014,paint);tube(g,[side*0.045,r,rearZ],[side*0.045,bb[1],bb[2]],0.014,paint);tube(g,[side*0.045,r+0.04,rearZ],[side*0.045,bb[1]+0.04,bb[2]],0.006,dark);}
@@ -36,7 +38,7 @@ export function buildBicycle({paint,tyre,metal,dark,head,tail}){
   const bag=box(g,[0.42,0.47,0.39],[0,1.07,-0.62],cloth);bag.visible=false;box(bag,[0.43,0.025,0.4],[0,0.17,0],dark);
   // Torso and helmet use curved surfaces, arms and legs have real joints.
   const torso=new THREE.Mesh(new THREE.CapsuleGeometry(0.15,0.34,5,12),cloth);torso.position.set(0,1.29,-0.12);torso.rotation.x=0.32;g.add(torso);torso.castShadow=true;
-  ball(g,[0,1.67,0.02],0.115,skin);const helmet=ball(g,[0,1.74,0],0.132,paint);helmet.scale.y*=0.72;
+  const riderHead=humanHead(g,{skin,helmet:paint});riderHead.position.set(0,1.67,.02);
   for(const side of [-1,1]){const shoulder=[side*0.16,1.42,-0.05],elbow=[side*0.22,1.15,0.12],hand=[side*0.3,1.1,0.4];tube(g,shoulder,elbow,0.046,cloth);tube(g,elbow,hand,0.033,skin);ball(g,hand,0.038,dark);
     bones.push({side,hip:[side*0.1,1.02,-0.28],thigh:tube(g,[0,0,0],[0,1,0],0.06,pants),shin:tube(g,[0,0,0],[0,1,0],0.045,pants),shoe:box(g,[0.1,0.06,0.2],[0,0,0],dark)});
   }
