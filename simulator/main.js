@@ -12,7 +12,7 @@ import {mergeGeometries, toCreasedNormals} from 'three/addons/utils/BufferGeomet
 import {initPhone, phIcon} from './phone.js';
 import {initFly} from './fly.js';
 import {initOSM} from './osm.js';
-import {snapCorridor, createMapNodes, collectMapTraffic, TRAFFIC_COLORS} from './map-data.js';
+import {snapCorridor, createMapNodes, collectMapTraffic, TRAFFIC_COLORS, navigationStrokes} from './map-data.js';
 import {COAST, altAt, ALT_KM, CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, walkFree, choicesAt, edgesFrom, turnDeg, fmtKm, nodeLabel, JAVA, MADURA, corrGeo, corrLL, RULES} from './network.js';
 
 const MOBILE = matchMedia('(pointer:coarse)').matches || innerWidth < 700;
@@ -4316,7 +4316,7 @@ function drawMap(cv = map, big = mapBig){
       const y = c.getContext('2d'); y.setTransform(dpr, 0, 0, dpr, 0, 0); base(y); drawMap.cache = c; drawMap.key = k; }
     x.drawImage(drawMap.cache, 0, 0, W, H); }
   if (trip) { const u0 = PLR ? uOfV(PLR) : 0, i0 = Math.max(0, evAt(u0)), i1 = trip.destIdx >= 0 ? trip.destIdx : Math.min(EV.length - 1, i0 + 60);
-    x.lineWidth = 3; x.strokeStyle = '#6b7280'; x.beginPath(); routeMap(u0, i1).forEach((e, i) => { const [a, b] = P(e.lat, e.lon); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke();
+    drawNavigation(x, P, u0, i1, 3);
     const d = EV[trip.destIdx]; if (d) { const [dx, dy] = P(mapNode(d).lat, mapNode(d).lon); x.fillStyle = ink; x.fillRect(dx - 3, dy - 3, 6, 6); }
     if (PLR) { const u = uOfV(PLR), p = latLonMap(u), [px, py] = P(p.lat, p.lon), fw = (PLR.rp ? PLR.rp.sd : PLR.sd)*(PLR.vel < -0.5 ? -1 : 1), q = latLonMap(u + fw*250), [qx, qy] = P(q.lat, q.lon);
       if (Math.hypot(qx - px, qy - py) > 0.3) drawMap.hd = Math.atan2(qx - px, py - qy);
@@ -4341,9 +4341,9 @@ const RBOX = new Map();
 function roadInView(id, P, W, H){ let bb = RBOX.get(id); if (!bb) { const g = corrGeo(id) || []; bb = [Infinity, Infinity, -Infinity, -Infinity];
     for (const q of g) { bb[0] = Math.min(bb[0], q.lat); bb[1] = Math.min(bb[1], q.lon); bb[2] = Math.max(bb[2], q.lat); bb[3] = Math.max(bb[3], q.lon); } RBOX.set(id, bb); }
   const [a0, b0] = P(bb[2], bb[1]), [a1, b1] = P(bb[0], bb[3]); return a1 > -20 && a0 < W + 20 && b1 > -20 && b0 < H + 20; }
-function routeLL(u0, i1){ const out = [latLonAt(u0)], i0 = Math.max(0, evAt(u0));
+function routeLL(u0, i1){ const out = [{...latLonAt(u0), u: u0}], i0 = Math.max(0, evAt(u0));
   for (let i = i0; i < Math.min(i1, EV.length - 1); i++) { const a = EV[i], b = EV[i + 1], ka = i === i0 ? kmAt(u0) : a.kmOut, kb = b.km, n = Math.max(1, Math.ceil(Math.abs(kb - ka)/1.5));
-    for (let k = 1; k <= n; k++) { const q = corrLL(a.cNext, ka + (kb - ka)*k/n); out.push(q && k < n ? q : {lat: b.lat, lon: b.lon}); } }
+    for (let k = 1; k <= n; k++) { const q = corrLL(a.cNext, ka + (kb - ka)*k/n); out.push({...((q && k < n) ? q : {lat: b.lat, lon: b.lon}), u: (i === i0 ? u0 : a.u) + (b.u - (i === i0 ? u0 : a.u))*k/n}); } }
   return out; }
 map.onclick = () => openAtlas();
 
@@ -4408,13 +4408,14 @@ function trackLL(ua, ub, step){ const out = [], u0 = EV[0].u, u1 = EV[EV.length 
 let RCACHE = null, OSMV = 0;
 function routeMap(u0, i1){ if (!OSM.ready || !EV.length) return routeLL(u0, i1);
   const ue = EV[Math.min(i1, EV.length - 1)].u, key = `${EV[0].u}|${EV.length}|${i1}|${OSMV}|${cfg.scale}`;
-  if (!RCACHE || RCACHE.key !== key || u0 < RCACHE.ua - 1 || u0 > ue) { const ua = Math.max(EV[0].u, u0 - 50), step = Math.max(100/cfg.scale, (ue - ua)/5000), tr = trackLL(ua, ue, step), pts = [];
+  if (!RCACHE || RCACHE.route !== EV || RCACHE.key !== key || u0 < RCACHE.ua - 1 || u0 > ue) { const ua = Math.max(EV[0].u, u0 - 50), step = Math.max(100/cfg.scale, (ue - ua)/5000), tr = trackLL(ua, ue, step), pts = [];
     for (let i = 0; i < tr.length; i++) { const a = tr[i - 1], b = tr[i];
       if (a && a.r && a.r === b.r && a.j !== b.j && Math.abs(a.j - b.j) < 400) { const xy = a.r.xy, dj = b.j > a.j ? 1 : -1;
         for (let k = dj > 0 ? a.j + 1 : a.j; dj > 0 ? k <= b.j : k > b.j; k += dj) pts.push({u: a.u, lat: xy[k*2 + 1], lon: xy[k*2]}); }
       pts.push({u: b.u, lat: b.lat, lon: b.lon}); }
-    RCACHE = {key, ua, pts}; }
-  const out = [latLonMap(u0)]; for (const q of RCACHE.pts) if (q.u > u0) out.push(q); return out; }
+    pts.push({...latLonMap(ue), u: ue});
+    RCACHE = {key, ua, pts, route: EV}; }
+  const out = [{...latLonMap(u0), u: u0}]; for (const q of RCACHE.pts) if (q.u > u0) out.push(q); return out; }
 // Live traffic is limited to vehicles currently simulated, separated by direction.
 let TRAFFIC_CACHE = null;
 const MAP_CRASHES = [];
@@ -4437,12 +4438,11 @@ function mapTraffic(){
     }
     if (z.type === 'cf' && cfg.cf) data.incidents.push({u: z.u, sd: cfg.cf, type: 'contraflow', title: `Contraflow ${cfg.cfk} lajur`});
   }
-  // Geometry is cached with the telemetry, not rebuilt for each map/frame.
+  // Clip each observation to its corridor before colouring the navigation path.
   for (const seg of data.segments) {
     const i = Math.max(0, evAt(seg.u));
     seg.a = Math.max(seg.a, EV[i].u); seg.b = Math.min(seg.b, EV[Math.min(i + 1, EV.length - 1)].u);
-    seg.points = trackLL(seg.a, seg.b, Math.max(20/cfg.scale, (seg.b - seg.a)/80));
-    seg.points.push(latLonMap(seg.b));
+
   }
   // Merge nearby crash reports from the same collision.
   data.incidents = data.incidents.filter((e, i, all) => !all.slice(0, i).some(p => p.type === e.type && p.sd === e.sd && Math.abs(p.u - e.u) < 50));
@@ -4450,17 +4450,18 @@ function mapTraffic(){
   data.incidents.sort((a,b) => a.distanceKm - b.distanceKm);
   TRAFFIC_CACHE = {sig, data, route: EV}; return data;
 }
+// All maps paint congestion inside the very same navigation path and width.
+function drawNavigation(x, P, u, i1, width){
+  const pts = routeMap(u, i1), strokes = navigationStrokes(pts, mapTraffic().segments);
+  const path = list => { x.beginPath(); list.forEach((p,i) => { const [a,b] = P(p.lat,p.lon); i ? x.lineTo(a,b) : x.moveTo(a,b); }); x.stroke(); };
+  x.save(); x.setLineDash([]); x.lineJoin = x.lineCap = 'round';
+  x.lineWidth = width + 2; x.strokeStyle = '#174ea6'; path(pts);
+  x.lineWidth = width;
+  for (const s of strokes) { x.strokeStyle = TRAFFIC_COLORS[s.level]; path(s.points); }
+  x.restore();
+}
 function drawMapTraffic(x, P, W, H, detailed = false){
-  const {segments, incidents} = mapTraffic(); x.save(); x.setLineDash([]); x.lineJoin = x.lineCap = 'round';
-  for (const seg of segments) {
-    const pts = seg.points.map(p => P(p.lat, p.lon)); if (pts.length < 2) continue;
-    if (!pts.some(([a,b]) => a > -30 && b > -30 && a < W + 30 && b < H + 30)) continue;
-    // A small screen-space offset distinguishes the two carriageways.
-    const dx = pts[pts.length-1][0] - pts[0][0], dy = pts[pts.length-1][1] - pts[0][1], len = Math.hypot(dx,dy) || 1;
-    const ox = -dy/len*seg.sd*3, oy = dx/len*seg.sd*3;
-    x.lineWidth = detailed ? 4 : 2.5; x.strokeStyle = TRAFFIC_COLORS[seg.level]; x.beginPath();
-    pts.forEach(([a,b], i) => i ? x.lineTo(a + ox,b + oy) : x.moveTo(a + ox,b + oy)); x.stroke();
-  }
+  const {incidents} = mapTraffic(); x.save(); x.setLineDash([]);
   for (const e of incidents) {
     const [a,b] = P(e.point.lat,e.point.lon); if (a < -20 || b < -20 || a > W + 20 || b > H + 20) continue;
     x.fillStyle = e.type === 'crash' ? '#d93025' : '#e8710a'; x.strokeStyle = '#fff'; x.lineWidth = 2;
@@ -4543,8 +4544,7 @@ function drawAtlas(){
   // the route ahead (navigation or free driving plan)
   const acc = '#ec3013';
   if (trip && PLR) { const u = uOfV(PLR), i0 = Math.max(0, evAt(u)), i1 = trip.destIdx >= 0 ? trip.destIdx : Math.min(EV.length - 1, i0 + 80), p = latLonMap(u);
-    x.strokeStyle = '#6b7280'; x.globalAlpha = 0.85; x.lineWidth = clamp(3 + z*0.8, 3, 9); x.beginPath();
-    routeMap(u, i1).forEach((e, j) => { const [a, b] = atP(e.lat, e.lon); j ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke(); x.globalAlpha = 1; }
+    drawNavigation(x, atP, u, i1, clamp(3 + z*0.8, 3, 9)); }
   drawMapTraffic(x, atP, W, H, true);
   // nodes + labels (priority order, no overlaps)
   const show = n => n.kind === 'j' ? z > 0.6 : n.kind === 'k' ? (n.city && n.city === n.name ? true : z > 0.9) : n.kind === 'r' ? z > 3.2 : z > 1.6;
@@ -5182,7 +5182,7 @@ if (TUT) $('tutb').hidden = true;
 // ---------- maps in the style of a phone navigation app: sea, land, town areas, roads with casings by class, the route in blue,
 // the car as a blue dot with a heading cone, other players, the tow truck, labels with halos. view = {lat, lon, z (px per degree)} ----------
 const GM = {sea: '#a8d4f5', land: '#f3f1ec', town: '#e6e1d8', green: '#cfe6c4', ink: '#3c4043', sub: '#70757a',
-  toll: ['#f6ad43', '#d4861c'], nat: ['#fde58a', '#e3c35e'], prov: ['#ffffff', '#cfcac2'], acc: ['#ffffff', '#d7d2ca'], route: ['#9aa0a6', '#5f6368'], done: '#9aa0a6'};
+  toll: ['#f6ad43', '#d4861c'], nat: ['#fde58a', '#e3c35e'], prov: ['#ffffff', '#cfcac2'], acc: ['#ffffff', '#d7d2ca'], done: '#9aa0a6'};
 const TOWNS = [...NODES.values()].filter(n => n.kind === 'k' && n.lat != null && n.city && n.city === n.name);
 function gmapView(){ const p = PLR && EV.length ? latLonMap(uOfV(PLR)) : {lat: -6.2, lon: 106.82}; let hd = 0;
   if (PLR && EV.length) { const u = uOfV(PLR), fw = (PLR.rp ? PLR.rp.sd : PLR.sd)*(PLR.vel < -0.5 ? -1 : 1), q = latLonMap(u + fw*250); hd = Math.atan2((q.lon - p.lon)*COSL, q.lat - p.lat); }
@@ -5212,8 +5212,8 @@ function drawGMap(cv, view){
     for (const c of vis) if (cls(c) === kind) { x.setLineDash(c.planned ? [4, 4] : []); strokeRoad(x, P, c.id); } } }
   x.setLineDash([]);
   // the route ahead
-  if (!view.noRoute && trip && PLR && EV.length) { const u = uOfV(PLR), i1 = trip.destIdx >= 0 ? trip.destIdx : Math.min(EV.length - 1, Math.max(0, evAt(u)) + 60), pts = routeMap(u, i1);
-    for (const [lw, col] of [[Math.max(5, 4 + z*1.2) + 3, GM.route[1]], [Math.max(5, 4 + z*1.2), GM.route[0]]]) { x.lineWidth = lw; x.strokeStyle = col; x.beginPath(); pts.forEach((e, j) => { const [a, b] = P(e.lat, e.lon); j ? x.lineTo(a, b) : x.moveTo(a, b); }); x.stroke(); }
+  if (!view.noRoute && trip && PLR && EV.length) { const u = uOfV(PLR), i1 = trip.destIdx >= 0 ? trip.destIdx : Math.min(EV.length - 1, Math.max(0, evAt(u)) + 60);
+    drawNavigation(x, P, u, i1, Math.max(5, 4 + z*1.2));
     const d = trip.destIdx >= 0 && EV[trip.destIdx]; if (d) { const [a, b] = P(mapNode(d).lat, mapNode(d).lon); x.fillStyle = '#ea4335'; x.strokeStyle = '#a50e0e'; x.lineWidth = 1.5;
       x.beginPath(); x.moveTo(a, b); x.bezierCurveTo(a - 11, b - 14, a - 9, b - 26, a, b - 27); x.bezierCurveTo(a + 9, b - 26, a + 11, b - 14, a, b); x.fill(); x.stroke(); x.fillStyle = '#7d0a0a'; x.beginPath(); x.arc(a, b - 18, 3.5, 0, Math.PI*2); x.fill(); } }
   if (!view.noRoute) drawMapTraffic(x, P, W, H, true);
