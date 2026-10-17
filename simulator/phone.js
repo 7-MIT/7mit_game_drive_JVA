@@ -1,3 +1,4 @@
+import {createPhoneStore, STORE_CSS} from './phone-store.js';
 // ================================================================
 // HANDPHONE: the player's phone, a full GUI with animated screens and apps.
 // Lock screen → home screen (app grid + dock) → apps that open from their icon and close back into it.
@@ -199,11 +200,12 @@ const WALLS = {
 const WALL_NAME = {aurora: 'Aurora', senja: 'Senja', tol: 'Jalan tol', hutan: 'Hutan', malam: 'Malam', merah: 'Merah', pastel: 'Pastel', batik: 'Batik'};
 const CASES = ['#1b1c1f', '#c9ccd0', '#d4af37', '#1f3f73', '#b02020', '#2f5a4a', '#5b3a8a', '#e48aa8', '#f2f2ee', '#f07a1a'];
 const ACCS = ['#0a84ff', '#34c759', '#ff9f0a', '#ff375f', '#bf5af2', '#ec3013'];
-const G = {ojek: 'linear-gradient(145deg,#2fdc6a,#00873a)', blue: 'linear-gradient(145deg,#4aa3ff,#0b3f9e)', kendaraan: 'linear-gradient(145deg,#ff8a4a,#d9361e)', peta: 'linear-gradient(145deg,#6ee7b7,#0e9f6e 55%,#3b82f6)',
+const G = {appstore: 'linear-gradient(145deg,#42b2ff,#1358c8)',ojek: 'linear-gradient(145deg,#2fdc6a,#00873a)', blue: 'linear-gradient(145deg,#4aa3ff,#0b3f9e)', kendaraan: 'linear-gradient(145deg,#ff8a4a,#d9361e)', peta: 'linear-gradient(145deg,#6ee7b7,#0e9f6e 55%,#3b82f6)',
   dompet: 'linear-gradient(145deg,#ffd35a,#e08a00)', telepon: 'linear-gradient(145deg,#5df07a,#18a33a)', pesan: 'linear-gradient(145deg,#66e08a,#1fae4f)', musik: 'linear-gradient(145deg,#ff6a8a,#e3204d)',
   kamera: 'linear-gradient(145deg,#9aa3ad,#3a4048)', kontak: 'linear-gradient(145deg,#a0a7b2,#5f6773)', galeri: 'conic-gradient(from 45deg,#ff5f6d,#ffc371,#47e37a,#3fa9ff,#c26bff,#ff5f6d)', cuaca: 'linear-gradient(145deg,#7cc7ff,#2a6fd8)', terbang: 'linear-gradient(145deg,#8fe0ff,#0d5bd1)', setelan: 'linear-gradient(145deg,#b8bec6,#5d656e)',
   derek: 'linear-gradient(145deg,#ffcf3a,#e58a00)', polisi: 'linear-gradient(145deg,#4a6bd8,#1a2f80)', amb: 'linear-gradient(145deg,#ff6a6a,#c81e1e)'};
 const APPS = [
+  {k: 'appstore', name: 'App Store', icon: 'AppWindow'},
   {k: 'ojek', name: 'Ojek', icon: 'Bike'}, {k: 'blue', name: 'Blue', icon: 'CarTaxiFront'}, {k: 'kendaraan', name: 'Kendaraan', icon: 'Car'}, {k: 'peta', name: 'Peta', icon: 'MapPinned'},
   {k: 'terbang', name: 'Terbang', icon: 'Plane'}, {k: 'dompet', name: 'Dompet', icon: 'Wallet'}, {k: 'cuaca', name: 'Cuaca', icon: 'CloudSun'}, {k: 'kamera', name: 'Kamera', icon: 'Camera'}, {k: 'galeri', name: 'Galeri', icon: 'Images'},
   {k: 'musik', name: 'Musik', icon: 'Music'}, {k: 'kontak', name: 'Kontak', icon: 'Contact'}, {k: 'setelan', name: 'Pengaturan', icon: 'Settings'}];
@@ -222,7 +224,7 @@ function ic(name){ const L = window.lucide && window.lucide.icons, node = L && L
 
 export const phIcon = name => ic(name);
 export function initPhone(A){
-  const st = document.createElement('style'); st.textContent = CSS; document.head.append(st);
+  const st = document.createElement('style'); st.textContent = CSS + STORE_CSS; document.head.append(st);
   const P = Object.assign({wall: 'aurora', case: '#1b1c1f', theme: 'dark', acc: '#0a84ff', shape: 15, owner: 'Pengemudi 7MIT', photoWall: null, warn: true}, A.cfg.phone || {});
   const save = () => { A.cfg.phone = {...P, photoWall: null}; A.saveCfg(); };
   const el = document.createElement('div'); el.id = 'phone'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Handphone');
@@ -230,7 +232,7 @@ export function initPhone(A){
     <div class="case"><div class="scr"><div class="wall"></div><div class="isl"></div>
       <div class="stat"><span class="t">--:--</span><span class="r">${ic('SignalHigh')}${ic('Wifi')}<span class="bt">100%</span>${ic('BatteryFull')}</span></div>
       <div class="lock"><div class="d"></div><div class="t">--:--</div><div class="o"></div><div class="nl"></div><div class="sw">Geser ke atas untuk membuka</div></div>
-      <div class="home"><div class="wid"></div><div class="grid"></div><div class="dock"></div></div>
+      <div class="home"><div class="wid"></div><div class="launcher"><input class="inp home-search" aria-label="Cari aplikasi terpasang" placeholder="Cari aplikasi di HP…" maxlength="100"><div class="grid"></div></div><div class="dock"></div></div>
       <div class="app"></div><div class="ban"></div><div class="flash"></div><div class="hind" title="Layar utama"></div></div></div>`;
   document.body.append(el);
   const q = s => el.querySelector(s), scr = q('.scr'), app = q('.app'), lock = q('.lock'), home = q('.home'), ban = q('.ban'), isl = q('.isl');
@@ -242,12 +244,15 @@ export function initPhone(A){
     const s = Math.min(1, (innerHeight - (innerWidth < 700 || innerHeight < 560 ? 30 : 150))/620, (innerWidth - 24)/300); el.style.setProperty('--ps', Math.max(0.55, s).toFixed(3)); }
   addEventListener('resize', look);
   // ---------- home screen ----------
-  const icon = a => `<button class="ic" data-app="${a.k}" aria-label="${a.name}"><i style="--g:${G[a.k]}">${ic(a.icon)}</i><span>${a.name}</span>${badges[a.k] ? `<b class="bd">${badges[a.k]}</b>` : ''}</button>`;
-  function drawHome(anim){ q('.grid').innerHTML = APPS.map(icon).join(''); q('.dock').innerHTML = DOCK.map(icon).join('');
-    if (anim) { home.classList.remove('in'); void home.offsetWidth; home.classList.add('in'); home.querySelectorAll('.ic').forEach((b, i) => b.style.animationDelay = `${i*28}ms`); }
+  const icon = a => `<button class="ic" data-app="${a.k}" aria-label="${esc(a.name)}"><i style="--g:${a.gradient || G[a.k]}">${ic(a.icon)}</i><span>${esc(a.name)}</span>${badges[a.k] ? `<b class="bd">${badges[a.k]}</b>` : ''}</button>`;
+  function drawHome(anim){ const search = q('.home-search').value.trim().toLocaleLowerCase('id-ID');
+    q('.grid').innerHTML = [...APPS, ...STORE.installed()].filter(a => !search || a.name.toLocaleLowerCase('id-ID').includes(search)).map(icon).join(''); q('.dock').innerHTML = DOCK.map(icon).join('');
+    if (anim) { home.classList.remove('in'); void home.offsetWidth; home.classList.add('in'); home.querySelectorAll('.ic').forEach((b, i) => b.style.animationDelay = `${Math.min(i, 15)*28}ms`); }
     widgets(); }
   function widgets(){ const s = A.state(); q('.wid').innerHTML = `<div><small>Uang tunai</small><b>${A.rpS(s.cash)}</b><small>e-Toll ${A.rpS(s.etoll)}</small></div>
       <div><small>${esc(s.place)}</small><b>${s.kmh} <small style="font-size:11px">km/j</small></b><small>${s.job || (s.ride ? 'Penumpang ' + s.ride : 'BBM ' + s.fuel + '%')}</small></div>`; }
+  q('.home-search').oninput = () => drawHome();
+  el.addEventListener('keydown', e => { if (e.target.closest('input,textarea,select,[contenteditable]')) e.stopPropagation(); });
   home.addEventListener('click', e => { const b = e.target.closest('.ic'); if (b) openApp(b.dataset.app, b); });
   // ---------- lock screen: swipe (or tap) up to unlock ----------
   let lk = null;
@@ -267,7 +272,7 @@ export function initPhone(A){
   function openApp(k, from){ if (k === 'terbang') { A.sfx('tap'); toggle(false); setTimeout(() => A.fly(), 250); return; }
     const r = from ? from.getBoundingClientRect() : null, sr = scr.getBoundingClientRect(), sc = sr.width/scr.offsetWidth;
     if (r) { app.style.setProperty('--ox', `${(r.left + r.width/2 - sr.left)/sc}px`); app.style.setProperty('--oy', `${(r.top + r.height/2 - sr.top)/sc}px`); }
-    cur = k; stack = []; clearBadge(k); app.innerHTML = ''; app.style.setProperty('--g', G[k]); push(APPS_IMPL[k] || APPS_IMPL.stub, true);
+    cur = k; stack = []; clearBadge(k); app.innerHTML = ''; app.style.setProperty('--g', G[k]); push(k.startsWith('store-') ? pg => STORE.renderApp(pg, k) : APPS_IMPL[k] || APPS_IMPL.stub, true);
     el.classList.add('app-open'); requestAnimationFrame(() => app.classList.add('on')); A.sfx('tap'); }
   function closeApp(instant){ if (!cur) return; cur = null; setTimeout(musPos); stack = []; app.classList.remove('on'); el.classList.remove('app-open'); if (instant) app.innerHTML = ''; else setTimeout(() => { if (!cur) app.innerHTML = ''; }, 420); drawHome(); }
   // a stack of pages inside an app: push slides in from the right, back slides it out
@@ -275,7 +280,7 @@ export function initPhone(A){
     const prev = stack[stack.length - 1]; stack.push({pg, render}); draw(pg, render);
     if (!first) requestAnimationFrame(() => { pg.classList.remove('new'); if (prev) prev.pg.classList.add('out'); }); }
   function back(){ if (stack.length < 2) return closeApp(); const top = stack.pop(), prev = stack[stack.length - 1]; top.pg.classList.add('new'); if (top.cmp) top.cmp.remove(); prev.pg.classList.remove('out'); draw(prev.pg, prev.render); setTimeout(() => top.pg.remove(), 380); A.sfx('tap'); }
-  function draw(pg, render){ const keep = pg.scrollTop; pg.innerHTML = ''; render(pg); pg.scrollTop = keep; }
+  function draw(pg, render){ const entry = stack.find(t => t.pg === pg); if (entry) entry.live = null; const keep = pg.scrollTop; pg.innerHTML = ''; render(pg); pg.scrollTop = keep; }
   const redraw = () => { const t = stack[stack.length - 1]; if (t) draw(t.pg, t.render); };
   const head = title => `<div class="ah"><button class="back" data-back>${ic('ChevronLeft')}${stack.length > 1 ? 'Kembali' : 'Beranda'}</button><h2>${esc(title)}</h2></div>`;
   app.addEventListener('click', e => { if (e.target.closest('[data-back]')) back(); });
@@ -313,6 +318,8 @@ export function initPhone(A){
 
   // ---------- the apps ----------
   const APPS_IMPL = {};
+  const STORE = createPhoneStore({A, P, save, head, ic, esc, html, push, redraw, live, drawHome, openApp, setAccent: color => scr.style.setProperty('--acc', color)});
+  APPS_IMPL.appstore = STORE.renderStore;
   APPS_IMPL.stub = pg => { pg.innerHTML = head('Segera hadir'); };
 
   // Ojek: ride as a passenger, order food, or work as an ojol driver / food courier
