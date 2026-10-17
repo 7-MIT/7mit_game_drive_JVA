@@ -59,6 +59,7 @@ function posX(side, lx){ const c = MED + LW/2;
   return -side*(c + (-lx-1)*LW); }
 
 // ---------- renderer ----------
+await window.TJ_BOOT?.stage(25,'Menyiapkan mesin grafis');
 const renderer = new THREE.WebGLRenderer({antialias:!MOBILE, preserveDrawingBuffer:true});
 // Cap total render pixels as well as DPR on high-resolution screens.
 const basePixelRatio=()=>Math.min(devicePixelRatio||1,MOBILE?1.5:2,Math.sqrt((MOBILE?1800000:3000000)/(innerWidth*innerHeight)));
@@ -88,6 +89,8 @@ const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.2, 0.5, 0.9);
 composer.addPass(bloom); composer.addPass(new OutputPass());
+
+await window.TJ_BOOT?.stage(40,'Menyiapkan kendaraan, peta, dan layanan');
 
 // ---------- gentle curves: vertex-shader bend, straight at the camera ----------
 // The road bends sideways (and, in the mountains, up and down) in the vertex shader. uSeg holds up to 6 stretches of road
@@ -3755,6 +3758,7 @@ function sfxCoin(){ if (!AC || !snd) return; const t = AC.currentTime;
   for (const [f, d] of [[988, 0], [1319, 0.09]]) { const o = AC.createOscillator(), g = AC.createGain(); o.type = 'triangle'; o.frequency.value = f; g.gain.setValueAtTime(0.0001, t + d);
     g.gain.exponentialRampToValueAtTime(0.25, t + d + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.35); o.connect(g); g.connect(snd.master); o.start(t + d); o.stop(t + d + 0.4); } }
 function audioStart(){
+  if(window.TJ_BOOT?.active)return;
   if (AC || !cfg.sound) return; try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
   const master = AC.createGain(); master.gain.value = 0.5; master.connect(AC.destination);
   const eng = AC.createOscillator(), eng2 = AC.createOscillator(), lp = AC.createBiquadFilter(), eg = AC.createGain();
@@ -4755,7 +4759,7 @@ for (const ev of ['fullscreenchange', 'webkitfullscreenchange']) document.addEve
 $('sirb').onclick = () => { cfg.siren = !cfg.siren; saveCfg(); sirenUI(); toast(cfg.siren ? 'Sirene & rotator menyala — kendaraan lain memberi jalan' : 'Sirene dimatikan'); };
 $('hudb').onclick = () => { cfg.clean = !cfg.clean; saveCfg(); setClean(); renderUI(); toast(cfg.clean ? 'HUD ringkas' : 'HUD normal'); };
 $('camb').onclick = () => { const order = ['chase', 'cockpit', 'drone', 'ic', 'orbit'], m = order[(order.indexOf(cfg.cam) + 1) % order.length]; apply('cam', m); };
-addEventListener('keydown', e => { if (FLY && FLY.on) return; if (e.key === 'Escape' && !$('atlas').hidden) { closeAtlas(); return; }
+addEventListener('keydown', e => { if(window.TJ_BOOT?.active)return;if (FLY && FLY.on) return; if (e.key === 'Escape' && !$('atlas').hidden) { closeAtlas(); return; }
   if (e.target.closest && e.target.closest('select,input,textarea,[contenteditable],#traffic-computer,#traffic-arrest')) return;
   if(TRAFFIC_PANEL?.open||ARREST_DIALOG?.open)return;
   const k = e.key.toLowerCase();
@@ -4816,7 +4820,7 @@ function startDrive({from, first = null, dest = null, legs = null, keepPos = fal
   if (!cont && !keepPos) { Object.assign(stats, {t0: clock, toll: 0, viol: 0, crashes: 0, lastPay: 0, km0: 0, log: []}); WAL.fuel = null; WAL.sleep = 0; }
   Object.assign(stats, {missed: false, done: false});
   spawnPlayer();
-  setTimeout(precompile, 1500);
+  if(!window.TJ_BOOT)setTimeout(precompile, 1500);
   if (keepU != null) { let u = 0; for (let i = 1; i < EV.length; i++) if (EV[i].rk >= keepU) { const a = EV[i-1], b = EV[i]; u = a.u + (b.u - a.u)*(keepU - a.rk)/((b.rk - a.rk) || 1); break; }
     const rs = RSITES.concat(PLAZAS).find(s => Math.abs(s.u - u) < 400); if (rs) u = rs.u + 420;
     PLR.p = Math.max(PLR.p, u); camU = PLR.p; }
@@ -5279,10 +5283,12 @@ function arrestPlayer(){
 }
 ARREST_DIALOG.addEventListener('cancel',e=>e.preventDefault());
 
+await window.TJ_BOOT?.stage(55,'Menyiapkan antarmuka dan huruf');
 try { await Promise.race([Promise.all(['700 64px Archivo', '600 64px Overpass', '700 64px Overpass', '800 64px Overpass'].map(f => document.fonts.load(f))), new Promise(r => setTimeout(r, 2500))]); } catch(e) {}
 setRoadStyle(); setView(); setClean(); setTod(null);
+await window.TJ_BOOT?.stage(70,'Membangun jalan dan lalu lintas');
 if (cfg.trip === 'free' || cfg.trip === 'santai') startDrive({from: NODES.has(cfg.from) ? cfg.from : DEF.from}); else startTrip(NODES.has(cfg.from) ? cfg.from : DEF.from, NODES.has(cfg.to) ? cfg.to : DEF.to);
-if (FLYPAGE && FLY) { $('plan').hidden = true; FLY.enter(); } else if (TUT) tutStart(); else if (!localStorage.getItem('tj_seen')) { try { localStorage.setItem('tj_seen', '1'); } catch(e) {} openPlanner(); }
+if (FLYPAGE && FLY) { $('plan').hidden = true; FLY.enter(); } else if (TUT) tutStart(); else openPlanner();
 window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam, startDrive, setNav, clearNav, chooseAt, replanIdx, openAtlas, closeAtlas, atTap, AT, get chunks(){ return chunks; }, get OBJ(){ return OBJ; }, sutetTower, setHour: h => { gameH = h; todT = 0; lastSign = -1; tickClock(0); }, get gameH(){ return gameH; }, volcanoes, updateVolcanoes, regionAt, latLonAt, get ELV(){ return ELV; }, elU, elevAt, get LMS(){ return LMS; }, angry, startAngry, mp, mpConnect, mpSay, get render(){ return {...renderer.info.render}; }, get QUAL(){ return QUAL; }, get mem(){ return {...renderer.info.memory, veh: vehicles.length, ramp: rampers.length, loc: locals.length, chunks: chunks.size, built: built.size}; }, callTow, get tow(){ return tow; }, WAL, openSvc, updateLandmarks, updateRoadSigns, RSIGNS, FX, footToggle, get foot(){ return foot; }};
 
 let last = performance.now(), mapT = 0, frames = 0;
@@ -5332,7 +5338,7 @@ let precompiled = false;
 function precompile(){ if (precompiled) return; precompiled = true; try { renderer.compile(scene, camera); } catch (e) {} }
 let shadowFrame = 0;
 renderer.setAnimationLoop(now => {
-  if (document.hidden || (FLY && FLY.on)) { last = now;renderLast=now;simClock.reset();return; }                                   // flying: the drive waits underneath
+  if (window.TJ_BOOT?.active || document.hidden || (FLY && FLY.on)) { last = now;renderLast=now;simClock.reset();return; }                                   // flying: the drive waits underneath
   // Do not render twice on 120/144 Hz screens; keep accumulated elapsed time.
   if(now-renderLast<1000/60-.5)return;renderLast=now;
   const rawDt = (now - last)/1000, dt = Math.min(0.067, rawDt); last = now; frames++; if (rawDt > 0 && rawDt < 1) govern(rawDt);
@@ -5347,3 +5353,15 @@ renderer.setAnimationLoop(now => {
   renderWorld(); drawMirrors(dt);captureEtleImages();
 });
 addEventListener('resize', () => { camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); syncQuality(); drawMap(); reqAtlas(); });
+
+// Show the first complete scene before removing the loading cover. These are
+// real preparation milestones, not a timer that pretends to measure downloads.
+if(window.TJ_BOOT){
+  await window.TJ_BOOT.stage(87,'Menyiapkan kamera dan pencahayaan');
+  updateSegs();placeGroups();place();placeFoot();placeTow();placeJob();mpPlace();
+  for(let i=0;i<40;i++)updateCam(1/60);
+  updateBend();updateHud(0);drawMap();
+  await window.TJ_BOOT.stage(94,'Menyelesaikan grafis');
+  if(renderer.compileAsync)await renderer.compileAsync(scene,camera);else renderer.compile(scene,camera);
+  precompiled=true;renderWorld();
+}

@@ -6,7 +6,7 @@
 <title>driving.7mit</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <style>@font-face{font-family:"Overpass";src:url("fonts/Overpass.ttf") format("truetype");font-weight:100 900;font-display:swap}</style>
-<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <link rel="stylesheet" href="ds/modernist.css">
 <style>
   html,body{margin:0;height:100%;overflow:hidden;background:#b9c8d3;font-family:var(--font-body);-webkit-user-select:none;user-select:none}
@@ -456,8 +456,37 @@
 {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
 </script>
 <link rel="stylesheet" href="./traffic-panel.css">
+<link rel="stylesheet" href="startup.css">
+<style>#simulator-shell{visibility:hidden}#start-screen{position:fixed;inset:0;background:#10191f;color:#f8f8f3;z-index:1000}</style>
 </head>
 <body>
+<section id="start-screen" data-time="day" data-state="home" aria-label="Halaman awal driving.7mit">
+ <div class="start-wrap" id="start-home">
+  <header class="start-head"><div class="start-logo"><svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><rect x="1" y="1" width="38" height="38" rx="11" stroke="currentColor"/><path d="M12 30l5-20m6 0 5 20M20 12v5m0 5v5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>driving.7mit</div><span class="start-version">UPDATE 2.01</span></header>
+  <main class="start-main">
+   <div class="start-copy"><div class="start-eyebrow">Simulator berkendara Indonesia</div><h1>Jalan panjang.<br>Petualangan<span>mu.</span></h1><p class="start-desc">Jelajahi jalanan Jawa. Pilih kendaraanmu, tentukan tujuan, dan nikmati perjalanan.</p>
+    <span class="start-time-label" id="start-time-label">Suasana perjalanan</span><div class="start-times" role="group" aria-labelledby="start-time-label"><button type="button" data-start-time="day" aria-pressed="true">Siang</button><button type="button" data-start-time="dusk" aria-pressed="false">Senja</button><button type="button" data-start-time="night" aria-pressed="false">Malam</button></div>
+    <div class="start-actions"><button class="start-primary" id="start-play" type="button">Mulai berkendara<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 12h16m-6-6 6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button><button class="start-secondary" id="start-help-open" type="button">Cara bermain</button></div><p class="start-hint">Pilih rute dan kendaraan setelah simulator siap.</p>
+   </div>
+   <div class="start-art"><div class="start-scene" aria-label="Ilustrasi jalan tol dengan mobil, berubah sesuai suasana yang dipilih" role="img">
+    <svg viewBox="0 0 600 570" fill="none" aria-hidden="true"><defs><linearGradient id="start-sky" x2="0" y2="1"><stop class="start-sky-top"/><stop offset="1" class="start-sky-bottom"/></linearGradient><linearGradient id="start-body" x1="0" y1="0" x2="0.7" y2="1"><stop stop-color="#e4664c"/><stop offset=".5" stop-color="#b73e30"/><stop offset="1" stop-color="#702b29"/></linearGradient><linearGradient id="start-window" x2=".8" y2="1"><stop stop-color="#8ba9b7"/><stop offset="1" stop-color="#243e4c"/></linearGradient></defs>
+     <path fill="url(#start-sky)" d="M0 0h600v570H0z"/><circle cx="475" cy="104" r="35" fill="#fff4db" opacity=".8"/><path class="start-hill" d="M0 222l65-24 50 8 90-58 87 54 90-66 118 73 100-27v388H0z"/><path fill="#4a6d60" d="M0 250l101-15 94 15 104-17 107 9 194-29v357H0z"/>
+     <path fill="#9ca9a0" d="M0 570l250-330h92l258 330z"/><path class="start-road" d="M0 570l259-330h73l268 330z"/><path d="M6 570l258-330m329 330L328 240" stroke="#e5dcd0" stroke-width="3"/><path class="start-lane-dash" d="M148 570l135-330m168 330L308 240" stroke="#f5efe4" stroke-width="4"/><path d="M298 240l-2 330" stroke="#ddd4b0" stroke-width="2"/>
+     <path d="M31 477l214-237m319 231L349 240" stroke="#bdc8c7" stroke-width="4"/><path d="M0 461l231-221m369 216L361 240" stroke="#596f70" stroke-width="3"/>
+     <g stroke="#b5c5c5" stroke-width="5"><path d="M69 380V181h58m389 200V181h-58"/><path d="M200 287V201h26m173 87v-87h-26"/></g><path d="M121 178h28v7h-28m330-7h28v7h-28" fill="#ffefb9"/>
+     <g><path d="M235 224v-65m126 65v-65" stroke="#7f9691" stroke-width="4"/><rect x="221" y="148" width="157" height="45" rx="4" fill="#1c685b" stroke="#c3d1bd" stroke-width="2"/><path d="M246 168h18m-7-7 7 7-7 7" stroke="#eef2df" stroke-width="2"/><text x="279" y="167" fill="#f0f6e9" font-size="10" font-family="system-ui">TRANS-JAWA</text><text x="279" y="181" fill="#c1dccb" font-size="8" font-family="system-ui">Terus jelajahi</text></g>
+     <g class="start-car"><ellipse cx="385" cy="456" rx="119" ry="20" fill="#101e27" opacity=".35"/><path d="M274 385l26-63q5-12 22-13h104q15 1 24 16l27 58 20 29-5 37q-1 10-14 10H286q-16 0-18-13l-4-33z" fill="url(#start-body)"/><path d="M308 327l-20 55 88 11 83-10-22-54q-3-8-14-8h-99q-12 0-16 6z" fill="url(#start-window)" stroke="#772e2b" stroke-width="5"/><path d="M375 322v69m-82-23 82 10 74-7" stroke="#95b3bf" stroke-width="2" opacity=".5"/><path d="M270 402l105 13 116-12-4 35-111 11-105-9z" fill="#95352d"/><path d="M276 406l53 6-1 11-52-5m153-5 55-6-1 12-54 6" fill="#ef9582"/><path d="M275 408l51 6m105 1 50-6" stroke="#ffd1b3" stroke-width="3"/><path d="M270 439l104 11 112-13v9l-112 14-101-9z" fill="#28323a"/><rect x="352" y="430" width="48" height="13" rx="2" fill="#1a2730"/><path d="M360 436h31" stroke="#d9dedb" stroke-width="2"/><path d="M280 449v13q0 9 15 9t15-10v-8m133-1v12q0 9 15 9t15-13v-12" fill="#17242b"/><path d="M277 380l-15-5q-10 0-10 8l23 6m187-9 15-5q10 0 10 8l-20 6" fill="#92352f"/><path class="start-car-headlight" d="M283 386h8m159 0h8" fill="#d9dbd4" stroke="#ddd" stroke-width="2"/></g>
+    </svg><div class="start-scene-label">JAWA · INDONESIA<strong id="start-scene-time">Perjalanan siang hari</strong></div><div class="start-route-card"><span class="start-route-dot"></span><div><strong>Kamu yang tentukan arah.</strong><small>Tol, perkotaan, dan perjalanan antarkota.</small></div><span>Jelajahi</span></div>
+   </div></div>
+  </main>
+  <div class="start-features"><p><strong>Dunia berkendara</strong>Mobil, motor, truk, angkot, dan sepeda.</p><p><strong>Lebih banyak aktivitas</strong>Pekerjaan, navigasi, dan HP dalam game.</p><p><strong>Grafis adaptif</strong>Kualitas mengikuti kemampuan perangkat.</p></div><footer class="start-footer"><span>Dibuat oleh 7 MIT · driving.7mit</span><a href="mailto:halo@7mit.org">Bantuan</a></footer>
+ </div>
+ <div id="start-loading" class="start-loading" hidden tabindex="-1"><div class="start-load-icon start-load-orbit"><svg viewBox="0 0 40 40" fill="none" aria-hidden="true"><path d="M8 34l7-28m10 0 7 28M20 7v6m0 6v6m0 6v4" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/></svg></div><h2 id="start-loading-title">Menyiapkan perjalananmu</h2><p id="start-load-sub">Simulator akan terbuka setelah semuanya siap.</p><div class="start-progress-row"><span id="start-load-status" role="status">Memuat simulator</span><span id="start-load-percent" aria-hidden="true">0%</span></div><progress id="start-progress" max="100" value="0" aria-label="Progres persiapan simulator"></progress><p class="start-load-detail" id="start-load-detail">Tip: gunakan lajur kiri dan patuhi batas kecepatan.</p><button class="start-secondary" type="button" id="start-reload" hidden>Muat ulang</button></div>
+ <dialog class="start-help" id="start-help-dialog" aria-labelledby="start-help-title"><h2 id="start-help-title">Siap mulai?</h2><p>Tekan Mulai berkendara, lalu pilih titik awal, tujuan, dan kendaraan pada rencana perjalanan.</p><p>Di komputer, gunakan W/A/S/D atau tombol panah. Di HP, gunakan tombol gas, rem, dan setir di layar. Buka HP dalam game untuk navigasi dan pekerjaan.</p><p>Baru pertama bermain? <a href="tutorial/">Buka tutorial interaktif</a>.</p><form method="dialog"><button type="submit">Mengerti</button></form></dialog>
+ <noscript><p style="padding:24px">Aktifkan JavaScript di browser untuk membuka simulator.</p><style>.start-actions,.start-times{display:none!important}</style></noscript>
+</section>
+
+<div id="simulator-shell" inert aria-hidden="true">
 <div id="stage"></div>
 <div id="fade"></div>
 
@@ -683,7 +712,8 @@
     <button id="tut-go" class="pri" type="button">Mulai</button>
   </div>
 </div>
-<script src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js"></script>
-<script type="module" src="main.js"></script>
+</div>
+<script async src="https://unpkg.com/lucide@0.469.0/dist/umd/lucide.min.js" onload="if(window.lucide)lucide.createIcons()"></script>
+<script type="module" src="startup.js"></script>
 </body>
 </html>

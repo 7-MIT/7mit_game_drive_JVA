@@ -453,3 +453,11 @@ Nearby vehicles and the player's vehicle retain their full realistic geometry. A
 Simulation runs bounded 1/60-second steps independent of screen refresh, and world streaming runs once per rendered frame with a soft construction budget. Rendering is limited to approximately 60 Hz, and a hidden tab pauses rendering and simulation. Resuming clears accumulated time instead of rushing through missed frames. Bloom-free quality levels render directly without the postprocessing targets. Exact FPS still depends on GPU, browser, thermals, scene and resolution; headless tests are not hardware performance certification.
 
 Run `node --test simulator/tests/adaptive-performance.test.mjs` for governor hysteresis, cross-refresh physics integration, distance switching, silhouette bounds, shared geometry and triangle reduction checks (install Three locally for the geometry test).
+
+### Welcome screen and startup loading
+
+Opening the simulator displays a lightweight, interactive `driving.7mit` welcome page before downloading Three.js or starting the 3D simulation. Day, dusk and night buttons change the illustration and set the starting game hour when the user chooses **Mulai berkendara**. **Cara bermain** opens a short guide with a link to the interactive tutorial.
+
+`startup.js` imports `main.js` on demand. The loading screen reports actual preparation milestones: module download, renderer, services, interface/fonts, world/traffic, camera and shader compilation. The percentage represents these preparation stages, not transferred download bytes. Simulation and keyboard driving stay paused behind the cover, and the game is revealed only after its initial scene is prepared. Each normal visit enters the journey planner; direct tutorial/flight links automatically show loading and retain their requested mode. Download/WebGL failures expose a reload action, and slow loads show a status message. The welcome screen supports keyboard focus, phone layouts and reduced motion.
+
+Run `PHONE_DOM_MODULE=/path/to/jsdom node --test simulator/tests/startup.test.mjs` to check deferred loading, a single startup, ambience settings, readiness, failure recovery, direct tutorial entry and denied local storage.
