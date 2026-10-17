@@ -405,3 +405,15 @@ Hold an app icon for 550 ms (or right-click) to enter edit mode. Rename icons, s
 Hold a widget or use **Widget** to select up to two widgets (wallet, journey, clock, weather, destination, vehicle), swap them, or choose compact/large size. **Tampilan** changes icon size and labels or restores the default layout. Search, the dock and installed apps continue to work while layout preferences persist with phone settings. Swipe movement cancels a pending long press; releasing after a hold does not launch the app. **Selesai**, Escape or the home indicator exits editing.
 
 Validation includes state migration after app installation/removal, page boundaries, page arrows/keyboard, long press vs. swipe cancellation, persistent renaming, widget/appearance customization, hidden-app restoration, confirmed uninstall, icon swaps and dock customization. A Chromium phone-only harness also verified desktop layout, page animation, long press and a native mobile touch swipe without browser errors.
+
+### Bicycle and food delivery
+
+Choose **Sepeda** in the vehicle selector, start on a non-toll road (for example Jakarta), and use the normal accelerator / W / up-arrow to pedal and the brake to stop. The HUD and bicycle computer show **Energi** instead of fuel. Energy recovers while coasting; cycling never consumes petrol. Bicycles and motorcycles use non-toll routing and cannot enter toll roads.
+
+Open **Kerja (J) → Kurir makanan · sepeda**, or choose the same job in the phone's Ojek driver tab. Follow the restaurant pickup and delivery markers, stop beside each marker, and receive the delivery payment. A delivery bag appears on the rear rack while the job is active. Bicycle pickups and deliveries use shorter distances.
+
+The bicycle has a full-size frame, spokes, brakes, handlebars, animated crank/pedals and rider legs, helmet, lights and rack. Its motion uses rider power, mass, rolling resistance, aerodynamic drag, gradient, fatigue and braking grip. The close follow camera and handlebar view are tuned for cycling.
+
+Vehicle realism also adds damped suspension pitch/roll/heave, two-wheel cornering lean, Ackermann front-wheel steering, speed-dependent road resistance, wheel/rim/brake detail, seats/dashboard, translucent passenger-car windows, clear-coated player paint and textured asphalt. These are procedural models and a lightweight browser driving simulation; the environment and rigid-body collisions remain simplified. Higher graphics settings enable the existing richer shadows and reflections.
+
+Run the regression suite with `node --test simulator/tests/*.mjs` (phone DOM tests require jsdom; set `PHONE_DOM_MODULE` to its installed module path when it is outside the project). `vehicle-dynamics.test.mjs` checks bicycle power and slope response, braking, energy bounds, damping across frame rates, steering geometry and non-toll route selection.

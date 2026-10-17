@@ -70,7 +70,7 @@ export function createPhoneHome({home,P,A,save,getApps,icon,openApp,ic,esc,unins
     if(anim){home.classList.remove('in');void home.offsetWidth;home.classList.add('in');q('.home-page')?.querySelectorAll('.ic').forEach((b,i)=>b.style.animationDelay=`${i*22}ms`);}
   }
   function widgets(){if(!layout)return;const s=A.state(),clock=s.time||'--:--',defs={
-    wallet:['Uang tunai',A.rpS(s.cash),`e-Toll ${A.rpS(s.etoll)}`],drive:[s.place||'Perjalanan',`${s.kmh} km/j`,s.job||`BBM ${s.fuel}%`],
+    wallet:['Uang tunai',A.rpS(s.cash),`e-Toll ${A.rpS(s.etoll)}`],drive:[s.place||'Perjalanan',`${s.kmh} km/j`,s.job||`${s.fuelLabel||'BBM'} ${s.fuel}%`],
     clock:['Jam game',clock,'Waktu dalam simulasi'],weather:['Cuaca',`${s.temp??'—'}°`,s.weather||'—'],trip:['Tujuan',s.dest||'Keliling',s.left||'Pilih tujuan di Peta'],car:['Kendaraan',s.veh||'Mobil',`Kerusakan ${s.dmg}%`]};
     q('.wid').innerHTML=layout.widgets.map((k,i)=>{const d=defs[k];return `<div data-widget="${i}" role="button" tabindex="0" aria-label="${WIDGETS[k]}, tahan untuk mengedit"><small>${esc(d[0])}</small><b>${esc(d[1])}</b><small>${esc(d[2])}</small></div>`;}).join('');
   }

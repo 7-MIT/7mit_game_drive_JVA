@@ -214,7 +214,7 @@ const DOCK = [{k: 'telepon', name: 'Telepon', icon: 'Phone'}, {k: 'pesan', name:
 const FOODS = [
   {name: 'Nasi goreng', em: '🍛', price: 25000, fresh: 15}, {name: 'Sate ayam', em: '🍢', price: 30000, fresh: 15}, {name: 'Bakso', em: '🍜', price: 22000, fresh: 15},
   {name: 'Kopi susu', em: '☕', price: 18000, fresh: 30}, {name: 'Es teh manis', em: '🧋', price: 8000, fresh: 10}, {name: 'Martabak', em: '🥞', price: 35000, fresh: 15}];
-const VEH_IC = {car: 'Car', suv: 'CarFront', pickup: 'Truck', taxi: 'CarTaxiFront', moto: 'Bike', bus: 'Bus', truck: 'Truck', angkot: 'BusFront', ambulance: 'Ambulance', damkar: 'Siren', police: 'Shield'};
+const VEH_IC = {car: 'Car', suv: 'CarFront', pickup: 'Truck', taxi: 'CarTaxiFront', moto: 'Bike', bicycle:'Bike', bus: 'Bus', truck: 'Truck', angkot: 'BusFront', ambulance: 'Ambulance', damkar: 'Siren', police: 'Shield'};
 const DRIVERS = ['Budi Santoso', 'Siti Rahma', 'Agus Pratama', 'Dewi Lestari', 'Rudi Hartono', 'Wayan Sudarma', 'Joko Susilo', 'Rina Wulandari', 'Andi Saputra', 'Putu Ayu'];
 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'})[c]);
@@ -336,7 +336,7 @@ export function initPhone(A){
       m.onclick = e => { const b = e.target.closest('button'); if (!b) return; const f = FOODS[+b.dataset.i]; errOr(A.orderFood(f), () => { A.sfx('ok'); A.toast(`${f.name} dipesan · kurir menuju lokasimu`); redraw(); }); };
       const pend = A.foodPending(); if (pend.length) html(pg, `<div class="card" style="margin-top:10px"><h4>Pesanan berjalan</h4>${pend.map(f => `<div class="row"><span class="rt"><b>${f.em} ${esc(f.name)}</b><small>Kurir dalam perjalanan</small></span><span class="rv">${f.eta}s</span></div>`).join('')}</div>`);
       live(() => { if (A.foodPending().length !== pend.length) redraw(); });
-    } else driverTab(pg, [['ojek', 'Ojek online', 'Bike'], ['food', 'Antar makanan', 'UtensilsCrossed']]); };
+    } else driverTab(pg, [['ojek', 'Ojek online', 'Bike'], ['food', 'Antar makanan', 'UtensilsCrossed'], ['food_bicycle','Kurir makanan · sepeda','Bike']]); };
   // Blue: taxi rides and parcels as a customer; taxi driver or freight truck driver as work
   let blTab = 'taksi';
   APPS_IMPL.blue = pg => { scr.style.setProperty('--acc', '#1f6fd8');
@@ -374,20 +374,21 @@ export function initPhone(A){
 
   // Kendaraan: the vehicle's papers (STNK-style card: plate, type, colours, parts, figures), change vehicle, plate, paint and parts, tow
   APPS_IMPL.kendaraan = pg => { scr.style.setProperty('--acc', '#ff6a2a'); const s0 = A.state(), V = A.veh, I = V.info();
-    pg.innerHTML = head('Kendaraan') + `<div class="stnk"><div class="hd"><span>SURAT TANDA NOMOR KENDARAAN</span><span>${esc(I.gol)}</span></div>
+    pg.innerHTML = head('Kendaraan') + `<div class="stnk"><div class="hd"><span>${s0.veh==='bicycle'?'INFORMASI SEPEDA':'SURAT TANDA NOMOR KENDARAAN'}</span><span>${esc(I.gol)}</span></div>
       <span class="plate" style="--pb:${I.plateStyle[0]};--pf:${I.plateStyle[1]}"><b>${esc(I.plate)}</b><small>${esc(I.valid)}</small></span>
       <dl><dt>Jenis</dt><dd>${esc(I.label)}</dd><dt>Tahun</dt><dd>${I.year}</dd><dt>Warna</dt><dd><i style="background:${I.paintHex}"></i>${esc(I.paint)}</dd>
         <dt>Warna kedua</dt><dd>${esc(I.paint2)}</dd><dt>Velg</dt><dd>${esc(I.rim)}</dd><dt>Livery</dt><dd>${esc(I.livery)}</dd><dt>Kaca film</dt><dd>${I.tint}</dd>
         <dt>Aksesori</dt><dd>${[I.spoiler && 'Spoiler', I.low && 'Ceper', I.stripe && 'Strip sport'].filter(Boolean).join(', ') || '—'}</dd><dt>Jenis plat</dt><dd>${esc(I.plateName)}</dd></dl></div>
-      <div class="card"><h4>Kondisi</h4><div class="row" style="cursor:default"><span class="ri" style="--g:${G.dompet}">${ic('Fuel')}</span><span class="rt"><b>BBM</b><small class="fu"></small><div class="bar" style="margin-top:4px"><i class="fb"></i></div></span></div>
+      <div class="card"><h4>Kondisi</h4><div class="row" style="cursor:default"><span class="ri" style="--g:${G.dompet}">${ic('Fuel')}</span><span class="rt"><b>${esc(s0.fuelLabel || 'BBM')}</b><small class="fu"></small><div class="bar" style="margin-top:4px"><i class="fb"></i></div></span></div>
         <div class="row" style="cursor:default"><span class="ri" style="--g:${G.amb}">${ic('Wrench')}</span><span class="rt"><b>Kerusakan</b><small class="dm"></small><div class="bar" style="margin-top:4px"><i class="db" style="background:#ff5a4f"></i></div></span></div>
-        <div class="row" style="cursor:default"><span class="ri" style="--g:${G.blue}">${ic('Gauge')}</span><span class="rt"><b>Kecepatan maks ${I.vmax} km/j</b><small>Tangki ${I.tank} L · ${I.kml} km/L · perjalanan ini ${I.km} km</small></span></div></div>`;
+        <div class="row" style="cursor:default"><span class="ri" style="--g:${G.blue}">${ic('Gauge')}</span><span class="rt"><b>Kecepatan maks ${I.vmax} km/j</b><small>${s0.veh==='bicycle'?'Tenaga kayuh · tanpa BBM':`Tangki ${I.tank} L · ${I.kml} km/L`} · perjalanan ini ${I.km} km</small></span></div></div>`;
     const stat = () => { const t = A.state(); pg.querySelector('.fu').textContent = `${t.fuel}% · sekarang ${t.kmh} km/j`; pg.querySelector('.fb').style.width = t.fuel + '%'; pg.querySelector('.dm').textContent = t.dmg + '%'; pg.querySelector('.db').style.width = t.dmg + '%'; }; stat(); live(stat);
     html(pg, `<div class="card"><h4>Ganti kendaraan</h4><div class="vg">${V.types.map(([k, l]) => `<button data-v="${k}" class="${k === s0.veh ? 'on' : ''}">${ic(VEH_IC[k] || 'Car')}${esc(l)}</button>`).join('')}</div></div>`).onclick = e => {
       const b = e.target.closest('button'); if (!b || b.dataset.v === s0.veh) return; errOr(V.swap(b.dataset.v), () => { A.sfx('ok'); redraw(); }); };
     const pl = html(pg, `<div class="card"><h4>Plat nomor</h4><input class="inp pn" style="padding-left:12px;margin-bottom:8px;text-transform:uppercase;font-weight:800;letter-spacing:1px" maxlength="11" placeholder="${esc(I.plate)}" value="${esc(V.mods().plate || '')}">
       <select class="inp pc">${I.cats.map(([k, l]) => `<option value="${k}" ${k === I.plateCat ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
       <p style="margin-top:6px">Kosongkan untuk plat otomatis. Format: wilayah, angka, huruf (mis. B 1234 XYZ).</p><button class="btn ps">${ic('Check')} Simpan plat</button></div>`);
+    if(s0.veh==='bicycle')pl.hidden=true;
     pl.querySelector('.ps').onclick = () => errOr(V.setPlate(pl.querySelector('.pn').value, pl.querySelector('.pc').value), () => { A.sfx('ok'); A.toast('Plat nomor diperbarui'); redraw(); });
     const m = V.mods();
     const c = html(pg, `<div class="card"><h4>Cat</h4><div class="sw pa"></div><h4 style="margin-top:12px">Warna kedua (livery)</h4><div class="sw p2"></div><h4 style="margin-top:12px">Velg</h4><div class="sw ri2"></div><h4 style="margin-top:12px">Livery</h4><div class="sw lv" style="gap:6px"></div>
