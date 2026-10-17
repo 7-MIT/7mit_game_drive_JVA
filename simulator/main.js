@@ -33,7 +33,7 @@ const MOBILE = matchMedia('(pointer:coarse)').matches || innerWidth < 700;
 const LW = 3.6, MED = 1.2, CH = 120, OPEN_HW = 35, OVH = 7.5, PRC = 328, BACK = MOBILE ? 260 : 460, FWD = MOBILE ? 520 : 720;
 const TRAFFIC_GAP = MOBILE ? 2 : 1;
 let VIEWX = 0;   // extra metres of road and scenery built ahead (Jarak pandang: jauh)
-const DEF = {mode:'mix', gfx:'auto', cam:'chase', den:1, tod:'day', lanes:'auto', closed:{'1':[1], '-1':[]}, cf:0, cfk:2, ovl:2, scale:5, veh:'car', tspd:1, steerAssist:false, weather:'cerah', roadStyle:'data', view:'normal', autoSteer:false, sound:true, clean:false,
+const DEF = {voice:true, mode:'mix', gfx:'auto', cam:'chase', den:1, tod:'day', lanes:'auto', closed:{'1':[1], '-1':[]}, cf:0, cfk:2, ovl:2, scale:5, veh:'car', tspd:1, steerAssist:false, weather:'cerah', roadStyle:'data', view:'normal', autoSteer:false, sound:true, clean:false,
   from:'Bekasi Barat', to:'Pasteur', auto:false, trip:'route'};
 // tutorial mode (the /tutorial page, or ?tutorial): a fixed short drive with a coach, the player's own settings left untouched
 const FLYPAGE = !!window.TJ_FLY || /\/terbang\/?(index\.html)?$/.test(location.pathname) || new URLSearchParams(location.search).has('terbang');
@@ -4527,6 +4527,7 @@ function rowsSpec(){
     ['gfx', 'Grafis', [['auto','Otomatis'],['hemat','Hemat (paling ringan)'],['sedang','Sedang'],['tinggi','Tinggi']]],
     ['autoSteer', 'Setir otomatis', [[false,'Mati'],[true,'Aktif (gas & rem tetap manual)']]],
     ['sound', 'Suara', [[true,'Nyala'],[false,'Mati']]],
+    ['voice', 'Suara navigasi', [[true,'Nyala (pemandu suara)'],[false,'Mati']]],
     ['clean', 'Tampilan HUD', [[false,'Normal'],[true,'Ringkas (lebih kecil, tekan G)']]],
     ['tod', 'Atur jam', [['morning','Pagi 07:00'],['day','Siang 12:00'],['dusk','Sore 17:48'],['night','Malam 21:00']]],
     ['steerAssist', 'Asisten setir', [[false,'Mati (setir penuh, harus balas setir)'],[true,'Aktif (mobil lurus lagi saat setir dilepas)']]],
@@ -5119,10 +5120,60 @@ function drawGMap(cv, view){
 function nextMove(){ if (!PLR || !trip || !EV.length) return null; const u = uOfV(PLR), rk = rkAt(u);
   for (let j = Math.max(0, evAt(u) + 1); j < EV.length; j++) { const e = EV[j]; if (e.u <= u + 5) continue;
     const dest = j === trip.destIdx; if (!e.turn && !dest) continue; const d = Math.max(0, e.rk - rk);
-    if (dest) return {t: `Tujuan: ${e.name}`, sub: e.kind === 'x' ? 'Keluar tol di sini' : 'Tiba di tujuan', d, icon: 'flag'};
-    const deg = turnDeg(prevKeyOf(e), e.key, (EV[j + 1] || e).key) || 0;
-    return {t: e.kind === 'j' ? `Ambil ${nodeLabel(e)}` : `${deg < 0 ? 'Belok kiri' : 'Belok kanan'} di ${e.name}`, sub: `ke ${CORR[e.cNext].name}`, d, icon: e.kind === 'j' || deg < -20 ? 'left' : deg > 20 ? 'right' : 'up'}; }
+    const key = e.kind + '@' + Math.round(e.u);
+    if (dest) return {key, type: 'arrive', deg: 0, side: 0, t: `Tujuan: ${e.name}`, sub: e.kind === 'x' ? 'Keluar tol di sini' : 'Tiba di tujuan', d, icon: 'flag', say: e.kind === 'x' ? `keluar tol di ${e.name}, tujuan Anda` : `tujuan Anda, ${e.name}`};
+    const deg = turnDeg(prevKeyOf(e), e.key, (EV[j + 1] || e).key) || 0, to = CORR[e.cNext].name, ramp0 = e.kind === 'j' || e.kind === 'x' || e.kind === 'te', side = ramp0 ? -1 : deg < -12 ? -1 : deg > 12 ? 1 : 0;   // every ramp of the game leaves on the left
+    // what kind of move: a ramp off the road (interchange, exit), a fork where the road splits, a U-turn, a turn at a crossing, or straight on
+    const ramp = e.kind === 'j' || e.kind === 'x' || e.kind === 'te', type = ramp ? (Math.abs(deg) < 12 ? 'keep' : 'ramp') : Math.abs(deg) > 150 ? 'uturn' : Math.abs(deg) < 20 ? 'straight' : Math.abs(deg) < 50 ? 'slight' : Math.abs(deg) > 120 ? 'sharp' : 'turn';
+    const kiri = side < 0 ? 'kiri' : 'kanan', name = e.kind === 'j' ? nodeLabel(e) : e.kind === 'x' || e.kind === 'te' ? `pintu keluar ${e.name}` : e.name;
+    const t = type === 'keep' ? `Tetap di ${kiri}, ${e.kind === 'j' ? 'ambil ' + nodeLabel(e) : 'keluar di ' + e.name}` : type === 'ramp' ? `Ambil ${name}` : type === 'uturn' ? `Putar balik di ${e.name}` : type === 'straight' ? `Lurus di ${e.name}` : `${type === 'slight' ? 'Belok sedikit ke' : type === 'sharp' ? 'Belok tajam ke' : 'Belok'} ${kiri} di ${e.name}`;
+    const say = type === 'keep' ? `tetap di lajur ${kiri}, lalu ${e.kind === 'j' ? 'ambil ' + nodeLabel(e) : 'keluar di ' + e.name}, ke arah ${to}` : type === 'ramp' ? `ambil ${name} di sebelah ${kiri}, ke arah ${to}` : type === 'uturn' ? `putar balik di ${e.name}` : type === 'straight' ? `tetap lurus di ${e.name}, ke ${to}` : `${t.toLowerCase()}, masuk ${to}`;
+    return {key, type, deg, side, t, sub: `ke ${to}`, d, icon: type === 'uturn' ? 'uturn' : side < 0 ? 'left' : side > 0 ? 'right' : 'up', say}; }
   return null; }
+// the manoeuvre drawn like a navigation app: a bold arrow bent by the real angle of the turn, ramps and forks with the road they leave
+function moveSvg(m){ if (!m) return ''; const c = 'currentColor', A = (x, y, a) => { const s = 7, l = a - 2.5, r = a + 2.5; return `<path d="M${x + Math.cos(l)*s} ${y + Math.sin(l)*s}L${x} ${y}L${x + Math.cos(r)*s} ${y + Math.sin(r)*s}" fill="none" stroke="${c}" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>`; };
+  const svg = b => `<svg viewBox="3 3 42 42" width="46" height="46" aria-hidden="true">${b}</svg>`, line = (d, w = 5, o = 1) => `<path d="${d}" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" opacity="${o}"/>`;
+  if (m.type === 'arrive') return svg(`<path d="M24 44c-6-9-12-15-12-22a12 12 0 0 1 24 0c0 7-6 13-12 22z" fill="${c}"/><circle cx="24" cy="22" r="4.5" fill="#0f7a3f"/>`);
+  if (m.type === 'uturn') { const sx = m.side > 0 ? 1 : -1, x0 = 24 - 7*sx, x1 = 24 + 7*sx; return svg(line(`M${x0} 44V19A7 7 0 0 ${sx > 0 ? 1 : 0} ${x1} 19V31`) + A(x1, 33, Math.PI/2)); }
+  if (m.type === 'straight') return svg(line('M24 44V8') + A(24, 7, -Math.PI/2));
+  if (m.type === 'ramp' || m.type === 'keep') { const sx = m.side < 0 ? -1 : 1, ex = 24 + sx*15, ey = 8;
+    return svg(line('M24 44V8', 4.5, m.type === 'keep' ? 0.85 : 0.35) + line(`M24 44V30C24 22 ${ex} 20 ${ex} ${ey + 2}`) + A(ex, ey, -Math.PI/2)); }
+  // a turn: up the stem, then round into the real angle (slight, normal, sharp)
+  const a = clamp(Math.abs(m.deg) || 90, 25, 160)*Math.PI/180*(m.side < 0 ? -1 : 1), cy = Math.abs(a) > 1.7 ? 17 : 24, hx = 24 + Math.sin(a)*17, hy = cy - Math.cos(a)*17, mx = 24 + Math.sin(a)*4, my = cy - Math.cos(a)*4;
+  return svg(line(`M24 46V${cy + 4}Q24 ${cy} ${mx} ${my}L${hx} ${hy}`) + A(hx, hy, a - Math.PI/2)); }
+// ---------- navigation voice: spoken guidance like the phone map apps, and reminders that fit the moment ----------
+const VOICE = {last: '', stage: new Map(), t: 0, cool: {}, dest: null, weather: null, said: new Set()};
+function speak(text, urgent){ if (!cfg.voice || TUT || (FLY && FLY.on) || !('speechSynthesis' in window)) return; try { const ss = speechSynthesis;
+    if (urgent) ss.cancel(); else if (ss.speaking && ss.pending) return;
+    const u = new SpeechSynthesisUtterance(text), vs = ss.getVoices(), v = vs.find(v => /^id(-|_|$)/i.test(v.lang) && /google|natural|neural|online/i.test(v.name)) || vs.find(v => /^id(-|_|$)/i.test(v.lang)) || vs.find(v => /^ms(-|_|$)/i.test(v.lang));
+    u.lang = v ? v.lang : 'id-ID'; if (v) u.voice = v; u.rate = 1.02; u.pitch = 1; u.volume = 1; ss.speak(u); VOICE.last = text; } catch (e) {} }
+try { if ('speechSynthesis' in window) speechSynthesis.getVoices(); } catch (e) {}
+const sayKm = km => km >= 1 ? `${km < 10 ? (Math.round(km*2)/2).toString().replace('.5', ' setengah') : Math.round(km)} kilometer` : `${Math.max(50, Math.round(km*1000/50)*50)} meter`;
+const cooled = (k, s) => { if (clock - (VOICE.cool[k] ?? -1e9) < s) return false; VOICE.cool[k] = clock; return true; };
+function voiceTick(dt){ if ((VOICE.t -= dt) > 0 || !cfg.voice || !PLR || !trip || !EV.length || stats.done) return; VOICE.t = 0.5;
+  const u = uOfV(PLR), kmh = Math.abs(KMH(PLR.vel)), toll = isToll(u), d = trip.destIdx >= 0 ? EV[trip.destIdx] : null;
+  // a new navigation: where to, how far, how long
+  const dk = d ? d.key + '@' + Math.round(d.u) : null;
+  if (dk !== VOICE.dest) { VOICE.dest = dk; VOICE.stage.clear(); if (d) { const left = Math.max(0, d.rk - rkAt(u)), mins = Math.max(1, Math.round(left/75*60));
+      speak(`Memulai navigasi ke ${d.name}. ${sayKm(left)}, sekitar ${mins >= 60 ? Math.floor(mins/60) + ' jam ' + (mins % 60 ? mins % 60 + ' menit' : '') : mins + ' menit'}.`); return; } }
+  // the next manoeuvre: far, near, now (distances by road type and speed)
+  const m = nextMove(); if (m && VOICE.mk === m.key && VOICE.md != null) { const r1 = (VOICE.md - m.d)/0.5; if (r1 >= 0 && r1 < 0.15) VOICE.rate = 0.8*(VOICE.rate || 0) + 0.2*r1; }   // km per second; a jump (teleport, respawn) is not a speed if (m) { VOICE.mk = m.key; VOICE.md = m.d; }
+  // the calls come by time to the manoeuvre (how fast the distance shrinks), never closer than these distances
+  if (m) { const r = VOICE.rate || 0, far = Math.max(toll ? 2 : 1, r*80), near = Math.max(toll ? 0.6 : 0.3, r*30), now = Math.max(0.08, r*7), st = VOICE.stage.get(m.key) || 0;
+    if (m.type === 'arrive') { if (st < 1 && m.d < near) { VOICE.stage.set(m.key, 2); speak(`${m.d < 0.12 ? 'Anda telah tiba di' : 'Dalam ' + sayKm(m.d) + ', '} ${m.say}.`, true); return; } }
+    else if (st < 3 && m.d <= now) { VOICE.stage.set(m.key, 3); speak(`Sekarang, ${m.say}.`, true); return; }
+    else if (st < 2 && m.d <= near && m.d > now*1.5) { VOICE.stage.set(m.key, 2); speak(`Dalam ${sayKm(m.d)}, ${m.say}.`); return; }
+    else if (st < 1 && m.d <= far && m.d > near*1.4) { VOICE.stage.set(m.key, 1); speak(`Dalam ${sayKm(m.d)}, ${m.say}.`); return; } }
+  // reminders that fit the moment
+  const lim = Math.round(limitAt(u)*3.6);
+  if (kmh > lim + 12 && !cfg.auto) { VOICE.fast = (VOICE.fast || 0) + 0.5; if (VOICE.fast > 4 && cooled('fast', 45)) { speak(`Hati-hati, Anda melebihi batas kecepatan ${lim} kilometer per jam.`); return; } } else VOICE.fast = 0;
+  const ahead = (kinds, km) => { for (let j = Math.max(0, evAt(u) + 1); j < EV.length; j++) { const e = EV[j], dd = e.rk - rkAt(u); if (dd > km) break; if (kinds.includes(e.kind) && dd > 0.05) return {e, d: dd}; } return null; };
+  const nm = n => n.replace(/^(GT|Rest Area|Gerbang Tol)\s+/i, '');
+  const g = toll && ahead(['g', 't', 'ti'], 1.2); if (g && !VOICE.said.has('g' + g.e.u)) { VOICE.said.add('g' + g.e.u); speak(WAL.etoll < 20000 ? `Gerbang tol ${nm(g.e.name)} di depan. Saldo e-Toll Anda hampir habis, isi ulang dulu di aplikasi Dompet.` : `Gerbang tol ${g.e.name} sekitar ${sayKm(g.d)} lagi. Siapkan kartu e-Toll.`.replace(g.e.name, nm(g.e.name))); return; }
+  const fuel = (WAL.fuel ?? tankOf())/tankOf(); if (fuel < 0.15 && cooled('fuel', 240)) { const r = ahead(['r'], 60); speak(r ? `Bensin hampir habis. Rest area ${nm(r.e.name)} ${sayKm(r.d)} lagi, isi bensin di sana.` : 'Bensin hampir habis. Cari SPBU terdekat.'); return; }
+  if (WAL.sleep >= 70 && cooled('sleep', 300)) { const r = ahead(['r'], 80); speak(`Anda sudah lama berkendara dan mulai mengantuk. ${r ? `Istirahatlah di rest area ${nm(r.e.name)}, ${sayKm(r.d)} lagi.` : 'Menepilah dan istirahat sebentar.'}`); return; }
+  if (cfg.weather !== VOICE.weather) { const w = VOICE.weather; VOICE.weather = cfg.weather; if (w != null && (cfg.weather === 'hujan' || cfg.weather === 'kabut')) { speak(cfg.weather === 'hujan' ? 'Hujan turun, jalan licin. Kurangi kecepatan dan jaga jarak.' : 'Kabut tebal di depan. Nyalakan lampu dan kurangi kecepatan.'); return; } }
+}
 
 // ---------- the phone: everything its apps can read and do ----------
 function phoneSfx(k){ if (k === 'coin') return sfxCoin();
@@ -5156,7 +5207,7 @@ PHONE = TUT ? null : initPhone({cfg, saveCfg, toast, rp: rp$, rpS, sfx: phoneSfx
       if (t && !/^[A-Z]{1,2} \d{1,4}( [A-Z]{1,3})?$/.test(t)) return 'Format plat: huruf wilayah, angka, huruf (mis. B 1234 XYZ)';
       cfg.mod = {...MODS(), plate: t, plateCat: cat || MODS().plateCat}; saveCfg(); if (PLR && !PLR.rp && !foot && !tow && !ride) swapPlayerVeh(PLR.type); return null; }},
   tow: () => callTow(), svc: () => { if ($('svcb').hidden) toast('Layanan SPBU dan bengkel ada di rest area: masuk rest area dulu', 'warn'); else openSvc(); },
-  traffic: () => ({...mapTraffic(), sd: PLR?.sd || 1}), drawMap: cv => drawMap(cv, false), gmap: (cv, view) => drawGMap(cv, view), here: () => gmapView(), next: () => nextMove(), nav: {set: k => setNav(k), clear: () => clearNav()}, openAtlas: () => openAtlas(),
+  traffic: () => ({...mapTraffic(), sd: PLR?.sd || 1}), drawMap: cv => drawMap(cv, false), gmap: (cv, view) => drawGMap(cv, view), here: () => gmapView(), next: () => nextMove(), moveSvg: m => moveSvg(m), voice: {get on(){ return !!cfg.voice; }, set(on){ cfg.voice = on; saveCfg(); if (!on) try { speechSynthesis.cancel(); } catch (e) {} else speak('Suara navigasi aktif.', true); }, repeat(){ const m = nextMove(); if (m) speak(`${m.type === 'arrive' ? 'Menuju' : 'Dalam ' + sayKm(m.d) + ','} ${m.say}.`, true); else speak('Tidak ada navigasi aktif.', true); }},  nav: {set: k => setNav(k), clear: () => clearNav()}, openAtlas: () => openAtlas(),
   openChat: () => { if (mp.on) PHONE.openGroup(); else { $('toggle').click(); toast('Sambungkan multiplayer di Pengaturan untuk chat', 'warn'); } },
   mp: {ready: () => !!(mp.on && mp.ready && mp.ch), peers: () => [...mp.peers.values()].map(p => ({no: p.no, name: p.name})),
     send: payload => mp.ch.send({type: 'broadcast', event: 'ph', payload}), say(t){ if (!mp.ready) return false; const c0 = mp.chatT; mpSay(t); return mp.chatT !== c0; }},
@@ -5313,7 +5364,7 @@ window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ ret
 let last = performance.now(), mapT = 0, frames = 0;
 function tick(dt,stream=true){
   if(ARREST_DIALOG?.open)return;
-  clock += dt; if (TUT) tutTick(dt); phoneTick(dt); osmTick(dt);
+  clock += dt; if (TUT) tutTick(dt); phoneTick(dt); osmTick(dt); voiceTick(dt);
   if (PLR && PLR.wantU) { PLR.wantU = false; uTurn(PLR); }
   stepFoot(dt); tickNeeds(dt); stepTow(dt); stepAngry(dt); mpTick(dt); sim(dt); mbzTraffic(); rampStep(dt); jobTick(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt); tickTrafficLaw(dt); tickPursuit(dt); TRAFFIC_PANEL?.tick(dt); tickClock(dt);
   if (PLR) camU = foot ? foot.u : uOfV(PLR);
@@ -5321,6 +5372,7 @@ function tick(dt,stream=true){
 }
 function streamWorld(){ensureAhead();setupBlocks(false);updateWorld(true);updateSignals();animGhosts();}
 window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
+window.__tj.moveSvg = moveSvg; window.__tj.nextMv = nextMove;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering
 window.__tj.step = (n, dt = 1/20) => { for (let i = 0; i < n; i++) tick(dt); updateSegs(); placeGroups(); place(); for (let k = 0; k < 40; k++) updateCam(dt); updateBend(); hudT = 0; updateHud(dt); drawMap(); };

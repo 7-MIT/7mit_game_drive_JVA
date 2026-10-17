@@ -107,11 +107,12 @@ const CSS = `
 #phone .gm .top{position:absolute;left:10px;right:10px;top:46px;display:flex;gap:8px;align-items:center;z-index:3}
 #phone .gm .sb{flex:1;display:flex;align-items:center;gap:8px;background:#fff;color:#3c4043;border-radius:24px;padding:10px 14px;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.25);cursor:pointer;border:0;font-family:inherit;text-align:left}
 #phone .gm .sb svg{width:18px;height:18px;color:#5f6368} #phone .gm .bk{width:40px;height:40px;border-radius:50%;background:#fff;border:0;display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.25);cursor:pointer;color:#3c4043;flex:none} #phone .gm .bk svg{width:20px;height:20px}
-#phone .gm .mv{position:absolute;left:10px;right:10px;top:96px;z-index:3;background:#0f7a3f;color:#fff;border-radius:16px;padding:10px 12px;display:flex;gap:10px;align-items:center;box-shadow:0 4px 12px rgba(0,0,0,.3);animation:phIn .35s both}
+#phone .gm .mv{position:absolute;left:10px;right:10px;top:96px;z-index:3;background:#0f7a3f;color:#fff;border-radius:16px;padding:10px 12px;display:flex;gap:10px;align-items:center;box-shadow:0 4px 12px rgba(0,0,0,.3);cursor:pointer}
+#phone .gm .mv.in{animation:phIn .35s both} #phone .gm .mv .mi{display:grid;place-items:center;flex:none;width:44px;height:44px}
 #phone .gm .mv svg{width:34px;height:34px;flex:none} #phone .gm .mv b{display:block;font-size:15px;line-height:1.15} #phone .gm .mv small{font-size:11.5px;opacity:.9}
 #phone .gm .mv .dd{font-size:20px;font-weight:800;margin-right:2px}
-#phone .gm .fab{position:absolute;right:10px;z-index:3;display:flex;flex-direction:column;gap:8px}
-#phone .gm .fab button{width:42px;height:42px;border-radius:50%;border:0;background:#fff;color:#1a73e8;display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.28);cursor:pointer;transition:transform .15s}
+#phone .gm .fab{position:absolute;right:10px;z-index:3;display:flex;flex-direction:column;gap:6px}
+#phone .gm .fab button{width:38px;height:38px;border-radius:50%;border:0;background:#fff;color:#1a73e8;display:grid;place-items:center;box-shadow:0 2px 8px rgba(0,0,0,.28);cursor:pointer;transition:transform .15s}
 #phone .gm .fab button:active{transform:scale(.9)} #phone .gm .fab button svg{width:20px;height:20px} #phone .gm .fab button.on{background:#1a73e8;color:#fff} #phone .gm .fab .zb{color:#3c4043;font-size:22px;font-weight:500}
 #phone .gm .sheet{position:absolute;left:0;right:0;bottom:0;z-index:3;background:#fff;color:#202124;border-radius:22px 22px 0 0;padding:8px 14px 24px;box-shadow:0 -4px 16px rgba(0,0,0,.18);animation:phUp .4s cubic-bezier(.2,1,.3,1) both}
 #phone .gm .traffic-key{display:flex;flex-wrap:wrap;gap:4px 9px;font-size:9px;color:#5f6368;margin:6px 0} #phone .gm .traffic-key i{display:inline-block;width:14px;height:3px;vertical-align:middle;margin-right:3px} #phone .gm .traffic-alert{font-size:10px;margin:5px 0;color:#a13b00} #phone .gm .traffic-alert svg{width:12px;height:12px;vertical-align:middle} #phone .gm .traffic-source{font-size:9px;color:#70757a;margin-bottom:5px} #phone .gm .sheet{max-height:46%;overflow-y:auto} #phone .gm .sheet::before{content:'';display:block;width:36px;height:4px;border-radius:2px;background:#dadce0;margin:0 auto 8px}
@@ -409,13 +410,17 @@ export function initPhone(A){
   APPS_IMPL.peta = pg => { scr.style.setProperty('--acc', '#1a73e8'); pg.style.padding = '0';
     pg.innerHTML = `<div class="gm"><canvas aria-label="Peta"></canvas>
       <div class="top"><button class="bk" data-back aria-label="Kembali">${ic('ChevronLeft')}</button><button class="sb">${ic('Search')}<span>Cari di sini</span></button></div>
-      <div class="mvw"></div><div class="fab" style="bottom:178px"><button class="cp" aria-label="Kompas">${ic('Compass')}</button><button class="zb zi" aria-label="Perbesar">+</button><button class="zb zo" aria-label="Perkecil">−</button><button class="lc" aria-label="Ikuti posisi">${ic('LocateFixed')}</button></div>
+      <div class="mvw"></div><div class="fab" style="bottom:170px"><button class="vo" aria-label="Suara navigasi">${ic(A.voice.on ? 'Volume2' : 'VolumeX')}</button><button class="cp" aria-label="Kompas">${ic('Compass')}</button><button class="zb zi" aria-label="Perbesar">+</button><button class="zb zo" aria-label="Perkecil">−</button><button class="lc" aria-label="Ikuti posisi">${ic('LocateFixed')}</button></div>
       <div class="sheet"></div></div>`;
     const cv = pg.querySelector('canvas'), here = () => A.here();
     if (MV.follow || !MV.lat) { const h = here(); MV.lat = h.lat; MV.lon = h.lon; }
     const paint = () => { if (MV.follow) { const h = here(); MV.lat = h.lat; MV.lon = h.lon; } A.gmap(cv, MV); pg.querySelector('.lc').classList.toggle('on', MV.follow); };
     const fillUI = () => { const t = A.state(), n = A.next(), mv = pg.querySelector('.mvw');
-      mv.innerHTML = n ? `<div class="mv">${ic(n.icon === 'left' ? 'CornerUpLeft' : n.icon === 'right' ? 'CornerUpRight' : n.icon === 'flag' ? 'Flag' : 'ArrowUp')}<div><span class="dd">${n.d < 1 ? Math.round(n.d*1000/10)*10 + ' m' : n.d.toFixed(n.d < 10 ? 1 : 0).replace('.', ',') + ' km'}</span><b>${esc(n.t)}</b><small>${esc(n.sub)}</small></div></div>` : '';
+      // the banner is built once; only its text and arrow change, and it slides in only when the next manoeuvre is a new one
+      if (!n) { mv.innerHTML = ''; mv.dataset.k = ''; }
+      else { let b = mv.firstElementChild; if (!b) { mv.innerHTML = `<div class="mv" role="button" title="Ulangi instruksi"><span class="mi"></span><div><span class="dd"></span><b></b><small></small></div></div>`; b = mv.firstElementChild; b.onclick = () => A.voice.repeat(); }
+        if (mv.dataset.k !== n.key) { mv.dataset.k = n.key; b.classList.remove('in'); void b.offsetWidth; b.classList.add('in'); b.querySelector('.mi').innerHTML = A.moveSvg(n); b.querySelector('b').textContent = n.t; b.querySelector('small').textContent = n.sub; }
+        const dd = n.d < 1 ? Math.round(n.d*1000/10)*10 + ' m' : n.d.toFixed(n.d < 10 ? 1 : 0).replace('.', ',') + ' km', de = b.querySelector('.dd'); if (de.textContent !== dd) de.textContent = dd; }
       const sh = pg.querySelector('.sheet');
       if (t.dest) { const mins = Math.max(1, Math.round(t.leftKm/75*60)); sh.innerHTML = `<div class="eta"><b>${mins >= 60 ? Math.floor(mins/60) + ' j ' + mins % 60 + ' mnt' : mins + ' mnt'}</b><span>(${esc(t.left)})</span></div><p>Tiba ± ${esc(t.arrive)} · ke ${esc(t.dest)} · ${esc(t.place)}</p>
         <div class="acts"><button class="xn">${ic('X')} Akhiri</button><button class="f">${ic('Maximize2')} Peta penuh</button></div>`;
@@ -434,6 +439,7 @@ export function initPhone(A){
     pg.querySelector('.zo').onclick = () => { MV.z = Math.max(60, MV.z/1.6); paint(); A.sfx('tap'); };
     pg.querySelector('.lc').onclick = () => { MV.follow = true; MV.z = Math.max(MV.z, 1200); paint(); A.sfx('tap'); };
     pg.querySelector('.cp').onclick = () => { MV.z = 1600; paint(); };
+    const vo = pg.querySelector('.vo'); vo.classList.toggle('on', A.voice.on); vo.onclick = () => { A.voice.set(!A.voice.on); vo.innerHTML = ic(A.voice.on ? 'Volume2' : 'VolumeX'); vo.classList.toggle('on', A.voice.on); A.toast(A.voice.on ? 'Suara navigasi nyala' : 'Suara navigasi mati'); };
     // drag to look around (stops following), pinch or wheel to zoom
     const ptr = new Map(); let pin = 0;
     cv.onpointerdown = e => { cv.setPointerCapture(e.pointerId); ptr.set(e.pointerId, {x: e.clientX, y: e.clientY}); if (ptr.size === 2) { const [p1, p2] = [...ptr.values()]; pin = Math.hypot(p1.x - p2.x, p1.y - p2.y); } };
