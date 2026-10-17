@@ -13,7 +13,7 @@
 window.TJ_FLY = true;
 (async () => {
   for (const url of ['../index.html', '../']) {
-    try { const r = await fetch(url, {cache: 'no-cache'}); if (!r.ok) continue; let h = await r.text(); if (!h.includes('main.js')) continue;
+    try { const r = await fetch(url, {cache: 'no-cache'}); if (!r.ok) continue; let h = await r.text(); if (!h.includes('startup.js')) continue;
       h = h.replace(/<head>/i, '<head><base href="../"><script>window.TJ_FLY = true;<\/script>').replace(/<title>[^<]*<\/title>/i, '<title>Terbang · driving.7mit</title>');
       document.open(); document.write(h); document.close(); return; } catch (e) {}
   }
