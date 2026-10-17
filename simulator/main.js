@@ -552,6 +552,7 @@ function makeVehicle(type, color, noMerge = false){
   const tail=color!=null?brakeMat:tailMat, variant=type==='car'&&color==null?pick(['sedan','hatch','mpv','mpv']):type==='truck'&&color==null&&Math.random()<.4?'boxTruck':null;
   const cargo=own(pick([0xe2e4e1,0xb9c3ca,0x9aa5ac,0x356288]));
   const res=buildRoadVehicle(type,{paint,glass:glassMat,head:headMat,tail,chrome:chromeMat,grille:grilleMat,plate:plateMat,cargo},variant);
+  res.paintMaterial=paint;
   const body=res.g,top=res.dimensions.height;
   if(type==='police'){box(1.8,.10,3.6,polStripe,0,.77,0,body);res.lights=lightBar(body,1.2,top+.11,-.3);}
   if(type==='taxi'){box(.6,.20,.24,taxiSignMat,0,top+.11,-.3,body);}
@@ -561,7 +562,7 @@ function makeVehicle(type, color, noMerge = false){
   plateVehicle(body,type);
   const bounds=new THREE.Box3().setFromObject(body),width=Math.min(bounds.max.x-bounds.min.x,2.6),hv=res.len>7;
   res.lampM=type==='moto'?addLamps(body,{w:.5,zF:.68,zR:-.84,yL:.90,yT:.75,tx:.08}):addLamps(body,{w:width-.06,zF:bounds.max.z-.02,zR:bounds.min.z+.02,yL:hv?res.r+.75:.72,yT:hv?res.r+.9:.95,tx:hv?1.05:width*.36});
-  if(!noMerge&&color==null){mergeVehicle(res);attachVehicleLOD(res);}
+  if(!noMerge&&color==null){mergeVehicle(res);attachVehicleLOD(res,MOBILE);}
   bendObj(body);body.rotation.order='YXZ';
   const frontZ=Math.max(...res.wh.map(w=>w.position.z));res.front=res.wh.filter(w=>Math.abs(w.position.z-frontZ)<.01);res.front.forEach(w=>w.rotation.order='YXZ');
   return res;
@@ -3189,7 +3190,7 @@ function place(){
   for (const v of vehicles){ const u = v.sd*v.p, z = camU - u;
     v.g.position.set(v.x, (v.lift || 0) - (v.lowered || 0) + (v.heave || 0), z); v.g.rotation.y = (v.sd > 0 ? Math.PI : 0) - v.yaw*v.sd; v.g.visible = z < zb && z > -zf && !(v.player && camMode === 'cockpit' && !foot && !tow);
     // Realistic wheels stay on distant LOD models; original geometry is kept nearby.
-    setVehicleLOD(v,PROFILE.nearLOD);
+    setVehicleLOD(v,MOBILE?Math.min(26,PROFILE.nearLOD):PROFILE.nearLOD);
     const near = !!v.distanceLOD || Math.abs(z) < 140 || v.player; if (v.lod !== near) { v.lod = near; for (const w of v.wh) w.visible = near; }
     if (v.g.visible && Math.abs(z) < 300) { v.g.rotation.x = v.pit || 0; v.g.rotation.z = v.rol || 0; for (const w of v.front || []) w.rotation.y = isTwoWheeler(v.type) ? v.stv||0 : ackermannAngle(v.stv||0,w.position.x,wheelbase(v));
       if(v.player&&!isTwoWheeler(v.type))for(const w of v.wh){w.userData.baseY??=w.position.y;w.position.y=w.userData.baseY+(v.pit||0)*w.position.z-(v.rol||0)*w.position.x-(v.heave||0);}
@@ -5325,8 +5326,8 @@ function syncQuality(){
   PROFILE=qualityProfile(QUAL.level);
   renderer.setPixelRatio(Math.max(.4,basePixelRatio()*PROFILE.scale));
   if(composer){composer.setPixelRatio(renderer.getPixelRatio());composer.setSize(innerWidth,innerHeight);}
-  const shadowsChanged=renderer.shadowMap.enabled!==PROFILE.shadows;
-  bloom.enabled=!!composer&&PROFILE.bloom;renderer.shadowMap.enabled=PROFILE.shadows;sun.castShadow=PROFILE.shadows;
+  const useShadows=!MOBILE&&PROFILE.shadows,shadowsChanged=renderer.shadowMap.enabled!==useShadows;
+  bloom.enabled=!!composer&&PROFILE.bloom;renderer.shadowMap.enabled=useShadows;sun.castShadow=useShadows;
   renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
   const size=MOBILE?Math.min(512,PROFILE.shadowSize):PROFILE.shadowSize;
   if(sun.shadow.mapSize.x!==size){sun.shadow.mapSize.set(size,size);sun.shadow.map?.dispose();sun.shadow.map=null;}

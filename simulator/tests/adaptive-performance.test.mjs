@@ -37,3 +37,19 @@ test('distant batching reduces draw calls while preserving paint, glass and emis
  const near=v.distanceLOD.levels[0].object,far=v.distanceLOD.levels[1].object,parts=g=>{const a=[];g.traverse(o=>{if(o.isMesh)a.push(o);});return a;};
  assert.ok(parts(far).length<parts(near).length/2);for(const m of [paint,glass,head,lods.distantOpaqueMaterial])assert.ok(parts(far).some(o=>o.material===m));
 });
+test('mobile distant models reuse three meshes while keeping full detail nearby',{skip:!THREE},()=>{
+ const paint=new THREE.MeshStandardMaterial({color:0x2770aa}),other=new THREE.MeshStandardMaterial();
+ const styles={paint,glass:other,head:other,tail:other,chrome:other,grille:other,plate:other,cargo:other};
+ for(const type of ['car','moto','bus','truck']){
+  const a=models.buildRoadVehicle(type,styles),b=models.buildRoadVehicle(type,styles);
+  a.paintMaterial=b.paintMaterial=paint;
+  const original=count(a.g);lods.attachVehicleLOD(a,true);lods.attachVehicleLOD(b,true);
+  const near=a.distanceLOD.levels[0].object,far=a.distanceLOD.levels[1].object,again=b.distanceLOD.levels[1].object;
+  assert.equal(count(near),original);assert.equal(far.children.length,3,type);
+  assert.ok(count(far)<original*.05,type+' triangle budget');
+  assert.equal(far.children[0].geometry,again.children[0].geometry,type+' shared geometry');
+  assert.equal(far.children[0].material,paint);
+  const box=new THREE.Box3().setFromObject(far),size=box.getSize(new THREE.Vector3());
+  assert.ok(Math.abs(size.z-a.len)<.2,type+' length');assert.ok(Math.abs(size.y-a.dimensions.height)<.2,type+' height');
+ }
+});
