@@ -16,6 +16,7 @@ import {BICYCLE, isTwoWheeler, nonTollVehicle, bicycleAcceleration, staminaStep,
 import {buildBicycle, animateBicycle, buildBicycleView} from './bicycle.js';
 import {detailPlayerVehicle, roadSurface} from './vehicle-realism.js';
 import {buildRoadVehicle, MODEL_MATERIALS} from './road-vehicle-models.js';
+import {TRIP_OPTIONS, ROUTE_OPTIONS, MOD_DEF, PAINTS, RIMS, LIVERY, PRESETS} from './start-options.js';
 import {buildHuman} from './human-model.js';
 import {buildArchitecture, architectureMaterials} from './architecture-models.js';
 import {foliageGeometry,shrubGeometry} from './natural-models.js';
@@ -47,6 +48,7 @@ let osmScheduled = false;
 function scheduleOSM(){ if(osmScheduled)return;osmScheduled=true;setTimeout(() => OSM.loadBase(), MOBILE ? 12000 : 2500); }
 const OSNAP = new Map(), OSM_KINDS = {t: ['t'], n: ['n', 'p'], a: ['s', 'p', 'n', 't']};
 let cfg; try { cfg = {...DEF, ...JSON.parse(localStorage.getItem('tj_cfg1') || '{}')}; } catch(e) { cfg = {...DEF}; }
+if(window.TJ_START_PLAN&&!TUT&&!FLYPAGE)cfg={...cfg,...window.TJ_START_PLAN};
 if (TUT) cfg = {...DEF, gfx: cfg.gfx, sound: cfg.sound, veh: 'car', mod: cfg.mod, den: 0.7, tod: 'day', gh: 9, cam: 'chase', auto: false, trip: 'route', from: 'Bekasi Barat', to: 'Cikarang Timur', mirror: cfg.mirror};
 const saveCfg = () => { if (TUT) return; try { localStorage.setItem('tj_cfg1', JSON.stringify(cfg)); } catch(e) {} };
 const mod = (a, n) => ((a % n) + n) % n;
@@ -2539,11 +2541,8 @@ function placeTow(){ if (!tow) return; const d = tow.v; d.x = posX(-d.sd, d.lx);
 // ================================================================
 // VEHICLE MODS: paint, rims, window tint, spoiler, lowered suspension, sport stripes, number plate
 // ================================================================
-const MOD_DEF = {paint: '#ec3013', paint2: '#f4f4f2', livery: 'polos', rim: '#c9ccd0', tint: 0, plate: '', plateCat: '', spoiler: false, low: false, stripe: false};
 const MODS = () => Object.assign({}, MOD_DEF, cfg.mod || {});
-const PAINTS = ['#ec3013', '#f4f4f2', '#1b1c1f', '#8d939a', '#1f3f73', '#2f5a4a', '#e0a020', '#6a1d2b', '#3a9fd8', '#f07a1a'], RIMS = ['#c9ccd0', '#1b1c1f', '#d4af37', '#b02020', '#3a6fd8'];
 // body liveries: a 4 m tile painted in the two colours, mapped onto the body panels
-const LIVERY = {polos: 'Polos', balap: 'Garis balap', api: 'Api', kamo: 'Kamuflase', batik: 'Batik kawung', karbon: 'Karbon', gradasi: 'Gradasi', kotak: 'Kotak balap', polkadot: 'Polkadot'};
 const LIVTEX = new Map();
 function liveryTex(kind, c1, c2){
   const k = kind + c1 + c2; if (LIVTEX.has(k)) return LIVTEX.get(k);
@@ -4630,10 +4629,6 @@ function fillSelect(sel, val){
     for (const p of list) { const o = document.createElement('option'); o.value = p.key; o.textContent = p.name + (p.planned ? ' (rencana)' : ''); og.append(o); } sel.append(og); }
   sel.value = val;
 }
-const PRESETS = [['Jakarta → Surabaya (Pantura)', 'N:Jakarta', 'N:Surabaya', 'nr'], ['Bandung → Yogyakarta (Lintas Selatan)', 'N:Bandung', 'N:Yogyakarta', 'nr'],
-  ['Jakarta → Puncak → Bandung', 'N:Jakarta', 'N:Bandung', 'nr'], ['Jakarta (kota) → Malang', 'N:Jakarta', 'N:Malang', 'mix'],['Jakarta → Bandung', 'Halim', 'Pasteur'], ['Jakarta → Surabaya', 'Halim', 'Dupak'], ['Merak → Banyuwangi', 'Merak', 'Ketapang'],
-  ['Bekasi → Bogor', 'Bekasi Barat', 'Bogor'], ['Bandung → Cirebon', 'Buahbatu', 'Kedawung'], ['Semarang → Solo', 'Krapyak', 'Colomadu'], ['Surabaya → Malang', 'Dupak', 'Malang'],
-  ['JORR 2: Bandara → Pamulang', 'Bandara Soekarno-Hatta', 'Pamulang', 'toll'], ['JORR 2: Pamulang → Setu', 'Pamulang', 'Setu', 'toll']];
 const legHours = legs => legs.reduce((a, l) => { const c = CORR[l.c], km = Math.abs(c.nodes.find(n => n.key === l.b).km - c.nodes.find(n => n.key === l.a).km); return a + km/({t: 90, n: 50, a: 30}[c.cls]); }, 0);
 let firstPick = null;
 function planPreview(){
@@ -4666,12 +4661,12 @@ function planPreview(){
   const r = document.createElement('div'); r.className = 'path'; r.textContent = t.corridors.map(c => CORR[c].short).join(' → '); el.append(r);
   if (planned) { const w = document.createElement('div'); w.className = 'warn'; w.textContent = 'Sebagian ruas masih rencana (belum beroperasi).'; el.append(w); }
 }
-const MODES = [['mix', 'Tol + jalan nasional (tercepat)'], ['toll', 'Utamakan tol'], ['nr', 'Jalan nasional saja']];
+const MODES = ROUTE_OPTIONS;
 function setMode(m){ cfg.mode = m; saveCfg(); [...$('modesel').children].forEach(c => c.setAttribute('aria-pressed', c.dataset.m === m ? 'true' : 'false')); }
 function openPlanner(){
   fillSelect($('from'), trip ? trip.from : cfg.from); fillSelect($('to'), trip && trip.dest && [...$('to').options].some(o => o.value === trip.dest) ? trip.dest : cfg.to);
   const ts = $('tripsel'); ts.innerHTML = '';
-  for (const [k, l] of [['route', 'Rute (A → B)'], ['free', 'Keliling bebas'], ['santai', 'Santai (ala Slow Roads)'], ['mp', 'Multiplayer']]) { const x = btn(l, (cfg.trip || 'route') === k); x.dataset.t = k; x.onclick = () => { cfg.trip = k; saveCfg(); planPreview(); }; ts.append(x); }
+  for (const [k, l] of TRIP_OPTIONS) { const x = btn(l, (cfg.trip || 'route') === k); x.dataset.t = k; x.onclick = () => { cfg.trip = k; saveCfg(); planPreview(); }; ts.append(x); }
   const pr = $('presets'); pr.innerHTML = '';
   for (const [label, a, b, m] of PRESETS) { const x = btn(label, false); x.onclick = () => { $('from').value = a; $('to').value = b; setMode(m || 'mix'); planPreview(); }; pr.append(x); }
   const ms = $('modesel'); ms.innerHTML = '';
@@ -5296,12 +5291,23 @@ await window.TJ_BOOT?.stage(55,'Menyiapkan antarmuka dan huruf');
 try { await Promise.race([Promise.all(['700 64px Archivo', '600 64px Overpass', '700 64px Overpass', '800 64px Overpass'].map(f => document.fonts.load(f))), new Promise(r => setTimeout(r, 2500))]); } catch(e) {}
 setRoadStyle(); setView(); setClean(); setTod(null);
 await window.TJ_BOOT?.stage(70,'Membangun jalan dan lalu lintas');
-// The regular start page leads to a route picker. Do not create a disposable
-// world and hundreds of AI vehicles before the player chooses "Berkendara".
+// The welcome page has already collected and validated the journey. Build only
+// that world after the player presses start.
 if(TUT||FLYPAGE){
   if (cfg.trip === 'free' || cfg.trip === 'santai') startDrive({from: NODES.has(cfg.from) ? cfg.from : DEF.from}); else startTrip(NODES.has(cfg.from) ? cfg.from : DEF.from, NODES.has(cfg.to) ? cfg.to : DEF.to);
 }
-if (FLYPAGE && FLY) { $('plan').hidden = true; FLY.enter(); } else if (TUT) tutStart(); else openPlanner();
+if (FLYPAGE && FLY) { $('plan').hidden = true; FLY.enter(); } else if (TUT) tutStart(); else if(window.TJ_START_PLAN){
+  const p=window.TJ_START_PLAN;
+  if(cfg.trip==='santai'){Object.assign(cfg,{auto:true,clean:true,roadStyle:'kelok',view:'jauh',den:.6});gameH=16.4;saveCfg();setRoadStyle();setView();setClean();hudAuto();setTod(null);}
+  let started=false;
+  if(cfg.trip==='mp'){cfg.auto=false;hudAuto();started=startDrive({from:MP_SPAWN});if(started){mpSpawnShoulder();mpConnect();if(mp.ready)mp.ch.track(mpMe());}}
+  else if(cfg.trip==='free'||cfg.trip==='santai'){
+    RULES.noToll=nonTollVehicle(cfg.veh);RULES.noMbz=!MBZ_OK.has(cfg.veh);
+    const first=p.first&&choicesAt(cfg.from,null,'mix').find(o=>o.e.to===p.first.to&&o.e.c===p.first.c)?.e;
+    started=startDrive({from:cfg.from,first});
+  }else started=startTrip(cfg.from,cfg.to);
+  if(!started)openPlanner();
+} else openPlanner();
 window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam, startDrive, setNav, clearNav, chooseAt, replanIdx, openAtlas, closeAtlas, atTap, AT, get chunks(){ return chunks; }, get OBJ(){ return OBJ; }, sutetTower, setHour: h => { gameH = h; todT = 0; lastSign = -1; tickClock(0); }, get gameH(){ return gameH; }, volcanoes, updateVolcanoes, regionAt, latLonAt, get ELV(){ return ELV; }, elU, elevAt, get LMS(){ return LMS; }, angry, startAngry, mp, mpConnect, mpSay, get render(){ return {...renderer.info.render}; }, get QUAL(){ return QUAL; }, get mem(){ return {...renderer.info.memory, veh: vehicles.length, ramp: rampers.length, loc: locals.length, chunks: chunks.size, built: built.size}; }, callTow, get tow(){ return tow; }, WAL, openSvc, updateLandmarks, updateRoadSigns, RSIGNS, FX, footToggle, get foot(){ return foot; }};
 
 let last = performance.now(), mapT = 0, frames = 0;
