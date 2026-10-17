@@ -455,6 +455,7 @@
 <script type="importmap">
 {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
 </script>
+<link rel="stylesheet" href="./traffic-panel.css">
 </head>
 <body>
 <div id="stage"></div>
@@ -536,6 +537,10 @@
       <button id="mapb" class="dbtn" aria-label="Peta"><i data-lucide="map"></i><span class="bl">Peta</span></button>
       <button id="hudb" class="dbtn" aria-pressed="false" aria-label="HUD ringkas" title="HUD ringkas (G)"><i data-lucide="layout-dashboard"></i><span class="bl">HUD</span></button>
       <button id="sirb" class="dbtn" aria-pressed="false" hidden title="Sirene (N)" aria-label="Sirene"><i data-lucide="siren"></i><span class="bl">Sirene</span></button>
+      <button id="lawb" class="dbtn" title="Aturan & komputer ETLE (F8)" aria-label="Aturan & komputer ETLE"><i data-lucide="cctv"></i><span class="bl">ETLE</span></button>
+      <button id="siglb" class="dbtn" title="Sein kiri (Z)" aria-label="Sein kiri" aria-pressed="false"><i data-lucide="arrow-left"></i><span class="bl">Sein kiri</span></button>
+      <button id="sigrb" class="dbtn" title="Sein kanan (X)" aria-label="Sein kanan" aria-pressed="false"><i data-lucide="arrow-right"></i><span class="bl">Sein kanan</span></button>
+      <button id="hazb" class="dbtn" title="Hazard (B)" aria-label="Hazard" aria-pressed="false"><i data-lucide="triangle-alert"></i><span class="bl">Hazard</span></button>
       <button id="hornb" class="dbtn" title="Klakson (H, tahan)" aria-label="Klakson"><i data-lucide="megaphone"></i><span class="bl">Klakson</span></button>
       <button id="mirb" class="dbtn" aria-pressed="true" title="Spion (V)" aria-label="Spion"><i data-lucide="eye"></i><span class="bl">Spion</span></button>
       <button id="svcb" class="dbtn" hidden title="Layanan (L)" aria-label="Layanan"><i data-lucide="store"></i><span class="bl">Layanan</span></button>
