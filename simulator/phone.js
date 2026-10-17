@@ -1,3 +1,4 @@
+import {createPhoneHome, HOME_CSS} from './phone-home.js';
 import {createPhoneStore, STORE_CSS} from './phone-store.js';
 // ================================================================
 // HANDPHONE: the player's phone, a full GUI with animated screens and apps.
@@ -224,7 +225,7 @@ function ic(name){ const L = window.lucide && window.lucide.icons, node = L && L
 
 export const phIcon = name => ic(name);
 export function initPhone(A){
-  const st = document.createElement('style'); st.textContent = CSS + STORE_CSS; document.head.append(st);
+  const st = document.createElement('style'); st.textContent = CSS + STORE_CSS + HOME_CSS; document.head.append(st);
   const P = Object.assign({wall: 'aurora', case: '#1b1c1f', theme: 'dark', acc: '#0a84ff', shape: 15, owner: 'Pengemudi 7MIT', photoWall: null, warn: true}, A.cfg.phone || {});
   const save = () => { A.cfg.phone = {...P, photoWall: null}; A.saveCfg(); };
   const el = document.createElement('div'); el.id = 'phone'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Handphone');
@@ -232,7 +233,7 @@ export function initPhone(A){
     <div class="case"><div class="scr"><div class="wall"></div><div class="isl"></div>
       <div class="stat"><span class="t">--:--</span><span class="r">${ic('SignalHigh')}${ic('Wifi')}<span class="bt">100%</span>${ic('BatteryFull')}</span></div>
       <div class="lock"><div class="d"></div><div class="t">--:--</div><div class="o"></div><div class="nl"></div><div class="sw">Geser ke atas untuk membuka</div></div>
-      <div class="home"><div class="wid"></div><div class="launcher"><input class="inp home-search" aria-label="Cari aplikasi terpasang" placeholder="Cari aplikasi di HP…" maxlength="100"><div class="grid"></div></div><div class="dock"></div></div>
+      <div class="home"><div class="wid"></div><div class="home-tools"></div><div class="launcher"><div class="home-search-tools"><input class="inp home-search" aria-label="Cari aplikasi terpasang" placeholder="Cari aplikasi di HP…" maxlength="100"><button class="home-edit" data-home-action="edit" aria-label="Edit layar utama">${ic('SlidersHorizontal')}</button></div><div class="home-pages" tabindex="0" role="region" aria-label="Halaman aplikasi, geser kanan atau kiri"></div><div class="page-nav"><button class="page-arrow" data-home-prev aria-label="Halaman sebelumnya">${ic('ChevronLeft')}</button><div class="page-dots"></div><button class="page-arrow" data-home-next aria-label="Halaman berikutnya">${ic('ChevronRight')}</button></div></div><div class="dock"></div></div>
       <div class="app"></div><div class="ban"></div><div class="flash"></div><div class="hind" title="Layar utama"></div></div></div>`;
   document.body.append(el);
   const q = s => el.querySelector(s), scr = q('.scr'), app = q('.app'), lock = q('.lock'), home = q('.home'), ban = q('.ban'), isl = q('.isl');
@@ -245,15 +246,9 @@ export function initPhone(A){
   addEventListener('resize', look);
   // ---------- home screen ----------
   const icon = a => `<button class="ic" data-app="${a.k}" aria-label="${esc(a.name)}"><i style="--g:${a.gradient || G[a.k]}">${ic(a.icon)}</i><span>${esc(a.name)}</span>${badges[a.k] ? `<b class="bd">${badges[a.k]}</b>` : ''}</button>`;
-  function drawHome(anim){ const search = q('.home-search').value.trim().toLocaleLowerCase('id-ID');
-    q('.grid').innerHTML = [...APPS, ...STORE.installed()].filter(a => !search || a.name.toLocaleLowerCase('id-ID').includes(search)).map(icon).join(''); q('.dock').innerHTML = DOCK.map(icon).join('');
-    if (anim) { home.classList.remove('in'); void home.offsetWidth; home.classList.add('in'); home.querySelectorAll('.ic').forEach((b, i) => b.style.animationDelay = `${Math.min(i, 15)*28}ms`); }
-    widgets(); }
-  function widgets(){ const s = A.state(); q('.wid').innerHTML = `<div><small>Uang tunai</small><b>${A.rpS(s.cash)}</b><small>e-Toll ${A.rpS(s.etoll)}</small></div>
-      <div><small>${esc(s.place)}</small><b>${s.kmh} <small style="font-size:11px">km/j</small></b><small>${s.job || (s.ride ? 'Penumpang ' + s.ride : 'BBM ' + s.fuel + '%')}</small></div>`; }
-  q('.home-search').oninput = () => drawHome();
+  function drawHome(anim){ HOME.render(anim); }
+  function widgets(){ HOME.widgets(); }
   el.addEventListener('keydown', e => { if (e.target.closest('input,textarea,select,[contenteditable]')) e.stopPropagation(); });
-  home.addEventListener('click', e => { const b = e.target.closest('.ic'); if (b) openApp(b.dataset.app, b); });
   // ---------- lock screen: swipe (or tap) up to unlock ----------
   let lk = null;
   lock.addEventListener('pointerdown', e => { lk = {y: e.clientY, id: e.pointerId}; lock.setPointerCapture(e.pointerId); lock.style.transition = 'none'; });
@@ -261,18 +256,18 @@ export function initPhone(A){
   lock.addEventListener('pointerup', e => { if (!lk) return; const dy = e.clientY - lk.y; lk = null; lock.style.transition = ''; lock.style.transform = ''; lock.style.opacity = '';
     if (dy < -60 || Math.abs(dy) < 6) unlock(); });
   function unlock(){ A.sfx('unlock'); lock.classList.add('gone'); drawHome(true); }
-  function lockNow(){ lock.classList.remove('gone'); closeApp(true); }
+  function lockNow(){ HOME.finish(); lock.classList.remove('gone'); closeApp(true); }
   // ---------- open / close ----------
-  function toggle(force){ open = force ?? !open; el.classList.toggle('on', open); A.onToggle(open); musPos();
+  function toggle(force){ open = force ?? !open; if (!open) HOME.finish(); el.classList.toggle('on', open); A.onToggle(open); musPos();
     if (open) { look(); lockNow(); tickClock(); renderLockNotes(); clearBadge('all');
       if (P.warn && A.state().kmh > 15 && !A.state().auto && !A.state().ride) A.toast('Hati-hati: main HP sambil menyetir itu berbahaya (dan dilarang). Menepi dulu, atau pakai Autopilot', 'warn'); }
     A.sfx(open ? 'open' : 'close'); }
   q('.x').onclick = () => toggle(false);
-  q('.hind').onclick = () => { if (cur) closeApp(); else if (!lock.classList.contains('gone')) unlock(); else toggle(false); };
+  q('.hind').onclick = () => { if (HOME.editing) return HOME.finish(); if (cur) closeApp(); else if (!lock.classList.contains('gone')) unlock(); else toggle(false); };
   function openApp(k, from){ if (k === 'terbang') { A.sfx('tap'); toggle(false); setTimeout(() => A.fly(), 250); return; }
     const r = from ? from.getBoundingClientRect() : null, sr = scr.getBoundingClientRect(), sc = sr.width/scr.offsetWidth;
     if (r) { app.style.setProperty('--ox', `${(r.left + r.width/2 - sr.left)/sc}px`); app.style.setProperty('--oy', `${(r.top + r.height/2 - sr.top)/sc}px`); }
-    cur = k; stack = []; clearBadge(k); app.innerHTML = ''; app.style.setProperty('--g', G[k]); push(k.startsWith('store-') ? pg => STORE.renderApp(pg, k) : APPS_IMPL[k] || APPS_IMPL.stub, true);
+    HOME.finish(); cur = k; stack = []; clearBadge(k); app.innerHTML = ''; app.style.setProperty('--g', G[k]); push(k.startsWith('store-') ? pg => STORE.renderApp(pg, k) : APPS_IMPL[k] || APPS_IMPL.stub, true);
     el.classList.add('app-open'); requestAnimationFrame(() => app.classList.add('on')); A.sfx('tap'); }
   function closeApp(instant){ if (!cur) return; cur = null; setTimeout(musPos); stack = []; app.classList.remove('on'); el.classList.remove('app-open'); if (instant) app.innerHTML = ''; else setTimeout(() => { if (!cur) app.innerHTML = ''; }, 420); drawHome(); }
   // a stack of pages inside an app: push slides in from the right, back slides it out
@@ -319,6 +314,9 @@ export function initPhone(A){
   // ---------- the apps ----------
   const APPS_IMPL = {};
   const STORE = createPhoneStore({A, P, save, head, ic, esc, html, push, redraw, live, drawHome, openApp, setAccent: color => scr.style.setProperty('--acc', color)});
+  const HOME = createPhoneHome({home, P, A, save, icon, ic, esc, openApp,
+    getApps: () => [...APPS, ...DOCK.filter(a => !APPS.some(b => a.k === b.k)), ...STORE.installed()],
+    isInstalled: id => STORE.library.has(id), uninstall: id => STORE.uninstall(id)});
   APPS_IMPL.appstore = STORE.renderStore;
   APPS_IMPL.stub = pg => { pg.innerHTML = head('Segera hadir'); };
 

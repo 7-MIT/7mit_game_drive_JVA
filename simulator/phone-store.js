@@ -202,6 +202,6 @@ export function createPhoneStore(ctx){
     const a=APP_BY_ID.get(id);if(!a||!library.has(id)){pg.innerHTML=head('Aplikasi belum dipasang');act(pg,'Buka App Store',()=>openApp('appstore'));return;}
     setAccent(a.color);pg.innerHTML=head(a.name)+`<div class="card"><p>${esc(a.description)}</p></div>`;ENGINES[a.kind](pg,a);
   }
-  return {library,renderStore,renderApp,engines:Object.keys(ENGINES),installed:()=>library.list().map(a=>({...a,gradient:`linear-gradient(145deg,${a.color},#172033)`}))};
+  return {library,renderStore,renderApp,uninstall: id => {runtime.delete(id);return library.uninstall(id);},engines:Object.keys(ENGINES),installed:()=>library.list().map(a=>({...a,gradient:`linear-gradient(145deg,${a.color},#172033)`}))};
 }
 function hslHex(h,s,l){s/=100;l/=100;const a=s*Math.min(l,1-l),f=n=>{const k=(n+h/30)%12;return Math.round(255*(l-a*Math.max(-1,Math.min(k-3,9-k,1)))).toString(16).padStart(2,'0');};return '#'+f(0)+f(8)+f(4);}
