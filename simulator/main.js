@@ -29,7 +29,8 @@ import {snapCorridor, createMapNodes, collectMapTraffic, TRAFFIC_COLORS, navigat
 import {COAST, altAt, ALT_KM, CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, walkFree, choicesAt, edgesFrom, turnDeg, fmtKm, nodeLabel, JAVA, MADURA, corrGeo, corrLL, RULES} from './network.js';
 
 const MOBILE = matchMedia('(pointer:coarse)').matches || innerWidth < 700;
-const LW = 3.6, MED = 1.2, CH = 120, OPEN_HW = 35, OVH = 7.5, PRC = 328, BACK = 460, FWD = 720;
+const LW = 3.6, MED = 1.2, CH = 120, OPEN_HW = 35, OVH = 7.5, PRC = 328, BACK = MOBILE ? 260 : 460, FWD = MOBILE ? 520 : 720;
+const TRAFFIC_GAP = MOBILE ? 2 : 1;
 let VIEWX = 0;   // extra metres of road and scenery built ahead (Jarak pandang: jauh)
 const DEF = {mode:'mix', gfx:'auto', cam:'chase', den:1, tod:'day', lanes:'auto', closed:{'1':[1], '-1':[]}, cf:0, cfk:2, ovl:2, scale:5, veh:'car', tspd:1, steerAssist:false, weather:'cerah', roadStyle:'data', view:'normal', autoSteer:false, sound:true, clean:false,
   from:'Bekasi Barat', to:'Pasteur', auto:false, trip:'route'};
@@ -40,7 +41,10 @@ const TUT = !!window.TJ_TUTORIAL || /\/tutorial\/?(index\.html)?$/.test(location
 const OSM = initOSM({onUpdate: st => { OSNAP.clear(); MAP_NODES.clear(); LAT = null; segT = 0; drawMap.cache = null; OSMV++; JCACHE.clear(); try { for (const [i, g] of chunks) if (i*CH > camU + 350) { dropSolids([g]); dispose(g); chunks.delete(i); } } catch (e) {} try { drawMap(); reqAtlas(); } catch (e) {} if (FLY) FLY.roadsChanged();
     if (st === 'ok') toast(`Data jalan OpenStreetMap dimuat: ${OSM.S.n.toLocaleString('id-ID')} ruas tol & arteri (${Math.round(OSM.S.km).toLocaleString('id-ID')} km)`);
     else if (st === 'fail') toast('Data OpenStreetMap belum bisa dimuat (internet/server sibuk) · memakai data bawaan', 'warn'); }});
-setTimeout(() => OSM.loadBase(), 2500);
+// Loading the whole island's OSM index while the route picker is open is a
+// substantial memory spike on phones. Start it only after a drive begins.
+let osmScheduled = false;
+function scheduleOSM(){ if(osmScheduled)return;osmScheduled=true;setTimeout(() => OSM.loadBase(), MOBILE ? 12000 : 2500); }
 const OSNAP = new Map(), OSM_KINDS = {t: ['t'], n: ['n', 'p'], a: ['s', 'p', 'n', 't']};
 let cfg; try { cfg = {...DEF, ...JSON.parse(localStorage.getItem('tj_cfg1') || '{}')}; } catch(e) { cfg = {...DEF}; }
 if (TUT) cfg = {...DEF, gfx: cfg.gfx, sound: cfg.sound, veh: 'car', mod: cfg.mod, den: 0.7, tod: 'day', gh: 9, cam: 'chase', auto: false, trip: 'route', from: 'Bekasi Barat', to: 'Cikarang Timur', mirror: cfg.mirror};
@@ -60,9 +64,9 @@ function posX(side, lx){ const c = MED + LW/2;
 
 // ---------- renderer ----------
 await window.TJ_BOOT?.stage(25,'Menyiapkan mesin grafis');
-const renderer = new THREE.WebGLRenderer({antialias:!MOBILE, preserveDrawingBuffer:true});
+const renderer = new THREE.WebGLRenderer({antialias:!MOBILE, preserveDrawingBuffer:!MOBILE});
 // Cap total render pixels as well as DPR on high-resolution screens.
-const basePixelRatio=()=>Math.min(devicePixelRatio||1,MOBILE?1.5:2,Math.sqrt((MOBILE?1800000:3000000)/(innerWidth*innerHeight)));
+const basePixelRatio=()=>Math.min(devicePixelRatio||1,MOBILE?1.25:2,Math.sqrt((MOBILE?1200000:3000000)/(innerWidth*innerHeight)));
 renderer.setPixelRatio(basePixelRatio());
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
@@ -80,15 +84,16 @@ controls.enableDamping = true; controls.maxPolarAngle = Math.PI*0.48; controls.e
 
 const hemi = new THREE.HemisphereLight(0xdfeaf5, 0x55603a, 1.1); scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff1dc, 2.4);
-sun.castShadow = true; const smz = MOBILE ? 1024 : 2048; sun.shadow.mapSize.set(smz, smz);
+sun.castShadow = true; const smz = MOBILE ? 512 : 2048; sun.shadow.mapSize.set(smz, smz);
 Object.assign(sun.shadow.camera, {left:-90,right:90,top:90,bottom:-90,near:1,far:400});
 sun.shadow.bias = -0.00035; sun.shadow.normalBias = 0.025; sun.shadow.radius = 2;
 scene.add(sun, sun.target);
 
-const composer = new EffectComposer(renderer);
-composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.2, 0.5, 0.9);
-composer.addPass(bloom); composer.addPass(new OutputPass());
+// Postprocessing reserves multiple full-screen GPU buffers even when bloom is
+// disabled. Never allocate them on memory-constrained mobile browsers.
+const composer = MOBILE ? null : new EffectComposer(renderer);
+const bloom = MOBILE ? {enabled:false} : new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.2, 0.5, 0.9);
+if(composer){composer.addPass(new RenderPass(scene, camera));composer.addPass(bloom);composer.addPass(new OutputPass());}
 
 await window.TJ_BOOT?.stage(40,'Menyiapkan kendaraan, peta, dan layanan');
 
@@ -1216,7 +1221,7 @@ function layoutMirrors(){
 }
 addEventListener('resize', () => setTimeout(layoutMirrors, 150));
 function drawMirrors(dt){
-  const v = PLR, want = cfg.mirror !== false && QUAL.level < 4 && v && !foot && (camMode === 'chase' || camMode === 'cockpit') && $('plan').hidden && $('atlas').hidden;
+  const v = PLR, want = !MOBILE && cfg.mirror !== false && QUAL.level < 4 && v && !foot && (camMode === 'chase' || camMode === 'cockpit') && $('plan').hidden && $('atlas').hidden;
   if (!want) return; if (!mirBox) layoutMirrors();
   if ((mirT -= dt) < 0) { mirT = 1; layoutMirrors(); }
   const g = v.g, fwd = headV, up = 1.25 + (v.rp && v.q ? v.q.h || 0 : 0) + (heavy(v) ? 1.3 : v.type === 'suv' || v.type === 'van' || v.type === 'angkot' ? 0.35 : 0);
@@ -2144,7 +2149,7 @@ function fillTraffic(){
         if (lane >= n) { p += 30; continue; }
         const type = pickType(lane, n, p, sd), len = LEN(type);
         if (!spawnOK(sd, lane, p, len) || (PLR && PLR.sd === sd && PLR.lane === lane && Math.abs(PLR.p - p) < 30)) { p += 12; continue; }
-        const v = addVehicle(sd, lane, p, type); p += v.len + rnd(18, 60)/cfg.den; } } }
+        const v = addVehicle(sd, lane, p, type); p += v.len + rnd(18, 60)*TRAFFIC_GAP/cfg.den; } } }
 }
 let spawnT = 0;
 function maintainTraffic(dt){
@@ -2155,7 +2160,7 @@ function maintainTraffic(dt){
       for (const [edge, p] of [['up', lo + 6], ['down', hi - 6]]) {
         const n = nAvail(sd, p); if (lane >= n) continue;
         let near = null, gap = Infinity; for (const o of L) { const g2 = Math.abs(o.p - p) - o.len/2; if (g2 < gap) { gap = g2; near = o; } }
-        const want = 10 + rnd(18, 60)/cfg.den;
+        const want = 10 + rnd(18, 60)*TRAFFIC_GAP/cfg.den;
         if (gap < want) continue;
         const type = pickType(lane, n, p, sd), len = LEN(type);
         if (!spawnOK(sd, lane, p, len)) continue;
@@ -4824,12 +4829,15 @@ function startDrive({from, first = null, dest = null, legs = null, keepPos = fal
   if (keepU != null) { let u = 0; for (let i = 1; i < EV.length; i++) if (EV[i].rk >= keepU) { const a = EV[i-1], b = EV[i]; u = a.u + (b.u - a.u)*(keepU - a.rk)/((b.rk - a.rk) || 1); break; }
     const rs = RSITES.concat(PLAZAS).find(s => Math.abs(s.u - u) < 400); if (rs) u = rs.u + 420;
     PLR.p = Math.max(PLR.p, u); camU = PLR.p; }
-  setupBlocks(true); updateWorld(); fillTraffic();
+  // Build visible scenery over successive frames; eager construction of the
+  // entire visible window can exceed WebKit's memory limit during startup.
+  setupBlocks(true); updateWorld(MOBILE); fillTraffic();
   rm(vehicles, PLR);
-  for (let i = 0; i < 120; i++) { sim(1/20); rampStep(1/20); }
+  for (let i = 0; i < (MOBILE ? 12 : 120); i++) { sim(1/20); rampStep(1/20); }
   for (const v of [...vehicles]) if (v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); }
   for (const v of [...rampers]) if (v.rp.sd === PLR.sd && Math.abs(v.p - PLR.p) < 60) { rm(rampers, v); killVehicle(v); }
   vehicles.push(PLR);
+  scheduleOSM();
   setTitle(); choiceSig = '';
   $('plan').hidden = true; setRest(false); hudAuto(); hudLane(); renderUI(); setCam(cfg.cam); drawMap();
   if (!cont) toast(dest ? `${CORR[EV[0].cNext].name} · ${fmtKm(t.total)} ke ${EV[t.destIdx].name}` : `Keliling bebas dari ${EV[0].name}: pilih arah di tiap simpang, buka Peta untuk navigasi`);
@@ -5162,7 +5170,7 @@ PHONE = TUT ? null : initPhone({cfg, saveCfg, toast, rp: rp$, rpS, sfx: phoneSfx
   callNumber(n){ if (n === '133' || n === '14080') { if (PLR && !tow && !PLR.rp) { callTow(); return 'Petugas: derek dikirim ke lokasi Anda'; } return 'Petugas: jalan tol aman, terima kasih'; }
     if (n === '110') return 'Polisi: laporan diterima, petugas PJR berpatroli'; if (n === '118') return 'Ambulans: siaga, sebutkan lokasi KM'; return ''; },
   view: () => renderer.domElement,
-  snap(){ const src = renderer.domElement, c = document.createElement('canvas'), w = 720, h = Math.round(w*src.height/src.width); c.width = w; c.height = h; c.getContext('2d').drawImage(src, 0, 0, w, h); return c.toDataURL('image/jpeg', 0.82); },
+  snap(){ renderWorld(); const src = renderer.domElement, c = document.createElement('canvas'), w = 720, h = Math.round(w*src.height/src.width); c.width = w; c.height = h; c.getContext('2d').drawImage(src, 0, 0, w, h); return c.toDataURL('image/jpeg', 0.82); },
   setWeather: w => apply('weather', w), setTod: t => apply('tod', t), fly: () => openFly(), osm: {S: () => OSM.S, reload: () => OSM.loadBase(true)},
   music: {state: () => ({on: music.on, now: $('mus-now').textContent, src: music.cur ? music.cur.title : '', h: music.cur ? (music.cur.kind === 'audio' ? 54 : music.cur.h) : 0}), recent: () => music.recent,
     play: i => { const r = music.recent[i]; if (r) musPlay(r.item, r.label); }, stop: () => musStop(), dock: () => PHONE ? $('mus-player') : null,
@@ -5287,7 +5295,11 @@ await window.TJ_BOOT?.stage(55,'Menyiapkan antarmuka dan huruf');
 try { await Promise.race([Promise.all(['700 64px Archivo', '600 64px Overpass', '700 64px Overpass', '800 64px Overpass'].map(f => document.fonts.load(f))), new Promise(r => setTimeout(r, 2500))]); } catch(e) {}
 setRoadStyle(); setView(); setClean(); setTod(null);
 await window.TJ_BOOT?.stage(70,'Membangun jalan dan lalu lintas');
-if (cfg.trip === 'free' || cfg.trip === 'santai') startDrive({from: NODES.has(cfg.from) ? cfg.from : DEF.from}); else startTrip(NODES.has(cfg.from) ? cfg.from : DEF.from, NODES.has(cfg.to) ? cfg.to : DEF.to);
+// The regular start page leads to a route picker. Do not create a disposable
+// world and hundreds of AI vehicles before the player chooses "Berkendara".
+if(TUT||FLYPAGE){
+  if (cfg.trip === 'free' || cfg.trip === 'santai') startDrive({from: NODES.has(cfg.from) ? cfg.from : DEF.from}); else startTrip(NODES.has(cfg.from) ? cfg.from : DEF.from, NODES.has(cfg.to) ? cfg.to : DEF.to);
+}
 if (FLYPAGE && FLY) { $('plan').hidden = true; FLY.enter(); } else if (TUT) tutStart(); else openPlanner();
 window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ return trip; }, get clock(){ return clock; }, get vehicles(){ return vehicles; }, get rampers(){ return rampers; }, cfg, camera, startTrip, input, geo: () => ({OVS, ssPath, trOut, trIn, restPath, offPts, onPts, smooth, detourOut, detourIn, RE, SC, PRC, PR_IN, DK, FAR, GATE_O, MED, LW}), look: (...a) => { window.__tjCam = a; camMode = 'dbg'; }, siteU: name => EV.find(e => e.name === name), get camU(){ return camU; }, get frames(){ return frames; }, dbg: () => { const v = PLR; if (v.rp) { const sd = v.rp.sd, p = v.rp.pc + v.q.u - v.rp.shift, n = nAvail(sd, p), fr = p + v.len/2; return {rp: true, p, n, qu: v.q.u, mergeAt: v.rp.mergeAt, len: v.rp.P.len, d: v.rp.d, sf: [n-1, n-2].map(l => spanFree(sd, l, p - v.len/2 - 2, fr + 2)), ba: [n-1, n-2].map(l => blockAhead(sd, l, fr)), g: [n-1,n-2].map(l => { const g = gapInfo(v, laneList(sd, l)); return [g.ld, g.fd]; }), CFA: CFA.map(z => ({A: z.A, bStart: z.bStart, bEnd: z.bEnd, oneWay: z.oneWay})), near: vehicles.filter(o => o.sd === sd && Math.abs(o.p - p) < 80).map(o => [Math.round(o.p), o.lane, +o.vel.toFixed(1)]) }; } const g = gapInfo(v, laneList(v.sd, v.lane)); return {ba: blockAhead(v.sd, v.lane, v.p + v.len/2), ld: g.ld, lead: g.lead && {p: g.lead.p, vel: g.lead.vel, type: g.lead.type, lane: g.lead.lane}, n: nAvail(1, v.p), acc: v.acc, CFA: CFA.length, blocks: [...blocks.keys()], zones: ZONES.slice(0,4)}; }, get stats(){ return stats; }, get built(){ return built; }, setCam, startDrive, setNav, clearNav, chooseAt, replanIdx, openAtlas, closeAtlas, atTap, AT, get chunks(){ return chunks; }, get OBJ(){ return OBJ; }, sutetTower, setHour: h => { gameH = h; todT = 0; lastSign = -1; tickClock(0); }, get gameH(){ return gameH; }, volcanoes, updateVolcanoes, regionAt, latLonAt, get ELV(){ return ELV; }, elU, elevAt, get LMS(){ return LMS; }, angry, startAngry, mp, mpConnect, mpSay, get render(){ return {...renderer.info.render}; }, get QUAL(){ return QUAL; }, get mem(){ return {...renderer.info.memory, veh: vehicles.length, ramp: rampers.length, loc: locals.length, chunks: chunks.size, built: built.size}; }, callTow, get tow(){ return tow; }, WAL, openSvc, updateLandmarks, updateRoadSigns, RSIGNS, FX, footToggle, get foot(){ return foot; }};
 
@@ -5312,11 +5324,11 @@ let PROFILE=qualityProfile(QUAL.level);
 function syncQuality(){
   PROFILE=qualityProfile(QUAL.level);
   renderer.setPixelRatio(Math.max(.4,basePixelRatio()*PROFILE.scale));
-  composer.setPixelRatio(renderer.getPixelRatio());composer.setSize(innerWidth,innerHeight);
+  if(composer){composer.setPixelRatio(renderer.getPixelRatio());composer.setSize(innerWidth,innerHeight);}
   const shadowsChanged=renderer.shadowMap.enabled!==PROFILE.shadows;
-  bloom.enabled=PROFILE.bloom;renderer.shadowMap.enabled=PROFILE.shadows;sun.castShadow=PROFILE.shadows;
+  bloom.enabled=!!composer&&PROFILE.bloom;renderer.shadowMap.enabled=PROFILE.shadows;sun.castShadow=PROFILE.shadows;
   renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
-  const size=MOBILE?Math.min(1024,PROFILE.shadowSize):PROFILE.shadowSize;
+  const size=MOBILE?Math.min(512,PROFILE.shadowSize):PROFILE.shadowSize;
   if(sun.shadow.mapSize.x!==size){sun.shadow.mapSize.set(size,size);sun.shadow.map?.dispose();sun.shadow.map=null;}
   // Refresh materials after toggling the shadow shader variant.
   if(shadowsChanged){const mats=new Set();scene.traverse(o=>{if(o.material)for(const m of Array.isArray(o.material)?o.material:[o.material])mats.add(m);});for(const m of mats)m.needsUpdate=true;}
@@ -5335,10 +5347,11 @@ function renderWorld(){
 }
 // shaders compiled up front, so new objects do not stutter the first time they appear
 let precompiled = false;
-function precompile(){ if (precompiled) return; precompiled = true; try { renderer.compile(scene, camera); } catch (e) {} }
+function precompile(){ if (precompiled || MOBILE) return; precompiled = true; try { renderer.compile(scene, camera); } catch (e) {} }
 let shadowFrame = 0;
 renderer.setAnimationLoop(now => {
   if (window.TJ_BOOT?.active || document.hidden || (FLY && FLY.on)) { last = now;renderLast=now;simClock.reset();return; }                                   // flying: the drive waits underneath
+  if(!PLR){last=now;renderLast=now;simClock.reset();return;}
   // Do not render twice on 120/144 Hz screens; keep accumulated elapsed time.
   if(now-renderLast<1000/60-.5)return;renderLast=now;
   const rawDt = (now - last)/1000, dt = Math.min(0.067, rawDt); last = now; frames++; if (rawDt > 0 && rawDt < 1) govern(rawDt);
@@ -5362,6 +5375,6 @@ if(window.TJ_BOOT){
   for(let i=0;i<40;i++)updateCam(1/60);
   updateBend();updateHud(0);drawMap();
   await window.TJ_BOOT.stage(94,'Menyelesaikan grafis');
-  if(renderer.compileAsync)await renderer.compileAsync(scene,camera);else renderer.compile(scene,camera);
+  if(!MOBILE){if(renderer.compileAsync)await renderer.compileAsync(scene,camera);else renderer.compile(scene,camera);}
   precompiled=true;renderWorld();
 }
