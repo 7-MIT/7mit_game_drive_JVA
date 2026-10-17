@@ -8,13 +8,17 @@ import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
 import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
 import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
 import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
-import {mergeGeometries, toCreasedNormals} from 'three/addons/utils/BufferGeometryUtils.js';
+import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {initPhone, phIcon} from './phone.js';
 import {initFly} from './fly.js';
 import {initOSM} from './osm.js';
 import {BICYCLE, isTwoWheeler, nonTollVehicle, bicycleAcceleration, staminaStep, springStep, ackermannAngle, roadResistance, FOOD_BICYCLE_JOB} from './vehicle-dynamics.js';
 import {buildBicycle, animateBicycle, buildBicycleView} from './bicycle.js';
 import {detailPlayerVehicle, roadSurface} from './vehicle-realism.js';
+import {buildRoadVehicle, MODEL_MATERIALS} from './road-vehicle-models.js';
+import {buildHuman} from './human-model.js';
+import {buildArchitecture, architectureMaterials} from './architecture-models.js';
+import {foliageGeometry,shrubGeometry} from './natural-models.js';
 import {createLawAuditor, LAW_BY_ID, inferLaw, mustStop, safeStep, followSeconds} from './traffic-law.js';
 import {makeEtleCameras, createEtle} from './etle.js';
 import {initTrafficPanel} from './traffic-panel.js';
@@ -410,7 +414,7 @@ const VMATS = new Set(); let VENV_I = 1;
 const vEnv = (m, i = 1) => { m.envMap = VENV; m.userData.envK = i; m.envMapIntensity = i*VENV_I; VMATS.add(m); return m; };
 function setVehEnv(level){ if (Math.abs(level - VENV_I) < 0.04) return; VENV_I = level; for (const m of VMATS) m.envMapIntensity = (m.userData.envK || 1)*level; }
 const brakeMat = new THREE.MeshStandardMaterial({color:0x8a1010, emissive:0xff2a1a, emissiveIntensity:0.3});
-const glassMat = vEnv(new THREE.MeshStandardMaterial({color:0x141c24, roughness:0.06, metalness:0.75}), 1.2);
+const glassMat = vEnv(new THREE.MeshPhysicalMaterial({color:0x162c39,roughness:0.18,metalness:0.05,transparent:true,opacity:0.86,depthWrite:false,side:THREE.DoubleSide,clearcoat:0.15,reflectivity:0.22}),0.35);
 const tyreMat = M(0x161616);
 const polRed = new THREE.MeshStandardMaterial({color:0x550008, emissive:0xff1020, emissiveIntensity:3});
 const polBlue = new THREE.MeshStandardMaterial({color:0x000a55, emissive:0x1040ff, emissiveIntensity:3});
@@ -423,7 +427,6 @@ const EMERG = new Set(['ambulance', 'damkar', 'police']);
 const towAmber = new THREE.MeshStandardMaterial({color: 0x553300, emissive: 0xffa000, emissiveIntensity: 3}); SHARED.add(towAmber);
 const taxiSignTex = canvasTex(1, 0.36, (x, w, h) => { x.fillStyle = '#fff9e0'; x.fillRect(0, 0, w, h); x.fillStyle = '#1e4f9a'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '900 230px Archivo, sans-serif'; x.fillText('TAXI', w/2, h/2 + 10); });
 const taxiSignMat = new THREE.MeshStandardMaterial({map: taxiSignTex, emissive: 0xffffff, emissiveMap: taxiSignTex, emissiveIntensity: 0.6}); SHARED.add(taxiSignMat);
-const wheelGeo = new THREE.CylinderGeometry(1,1,1,MOBILE ? 16 : 20); wheelGeo.rotateZ(Math.PI/2); wheelGeo.userData.keep = true;
 // the colours on Indonesian roads: mostly white, silver, black and grey, then red, dark blue, bronze, maroon, dark green
 const PAINT = [0xf2f3f1,0xf2f3f1,0xf2f3f1,0xf4f4f0,0xb9bdc1,0xb9bdc1,0xa7abaf,0x16171a,0x16171a,0x1d1f23,0x5f656c,0x4a5057,0x9e1d1a,0x1c2f52,0x6e5a46,0x5a1a22,0x2c463b,0xc9c0ac];
 const SOLID_PAINT = new Set([0xf2f3f1, 0xf4f4f0, 0x9e1d1a, 0xc9c0ac]);
@@ -431,56 +434,9 @@ const geoCache = new Map();
 const bgeo = (w,h,d) => { const k = `${w}|${h}|${d}`; if (!geoCache.has(k)) { const g = new THREE.BoxGeometry(w,h,d); g.userData.keep = true; geoCache.set(k, g); } return geoCache.get(k); };
 function box(w,h,d,mat,x,y,z,g){ const m = new THREE.Mesh(bgeo(w,h,d),mat); m.position.set(x,y,z); m.castShadow = true; g.add(m); return m; }
 
-// ---------- realistic low-poly vehicles: side profiles extruded across the width (shared, cached geometry) ----------
-const busSignMat = M(0x111111, {emissive: 0xffa000, emissiveIntensity: 0.6}), bedMat = M(0x8a8f93, {metalness: 0.6}); SHARED.add(busSignMat); SHARED.add(bedMat);
-const extCache = new Map(), rimMat = vEnv(M(0xc9ccd0, {metalness: 0.9, roughness: 0.22})), trimMat = M(0x1c1d1f, {roughness: 0.7}), plateMat = M(0xf4f4f0, {roughness: 0.5}),
-  grilleMat = vEnv(M(0x121314, {roughness: 0.35, metalness: 0.5}), 0.6), chromeMat = vEnv(M(0xd9dcdf, {metalness: 1, roughness: 0.12}));
-[rimMat, trimMat, plateMat, grilleMat, chromeMat].forEach(m => SHARED.add(m));
-const rimGeo = new THREE.CylinderGeometry(1, 1, 1, MOBILE ? 16 : 20); rimGeo.rotateZ(Math.PI/2); rimGeo.userData.keep = true;
-// a closed side profile with its corners rounded off (Chaikin), so bodies have soft bonnets, roofs and bumpers
-function roundP(pts, it = MOBILE ? 1 : 2){ if (MOBILE) it = Math.min(it, 1); let p = pts; for (let k = 0; k < it; k++) { const q = []; for (let i = 0; i < p.length; i++) { const a = p[i], b = p[(i + 1) % p.length]; q.push([a[0]*0.75 + b[0]*0.25, a[1]*0.75 + b[1]*0.25], [a[0]*0.25 + b[0]*0.75, a[1]*0.25 + b[1]*0.75]); } p = q; } return p; }
-function ext(key, pts, width, bevel = 0.05){
-  const k = key + '|' + width; let geo = extCache.get(k);
-  if (!geo) { const sh = new THREE.Shape(pts.map(([z, y]) => new THREE.Vector2(z, y))), d = Math.max(0.01, width - 2*bevel);
-    geo = new THREE.ExtrudeGeometry(sh, {depth: d, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelSegments: bevel >= 0.08 && !MOBILE ? 3 : 2, curveSegments: 4});
-    geo.translate(0, 0, -d/2); geo.rotateY(-Math.PI/2); geo = toCreasedNormals(geo, 0.6); geo.userData.keep = true; extCache.set(k, geo); }   // smooth over the rounded curves, sharp at the flanks
-  return geo; }
-function part(g, geo, mat, shadow = true){ const m = new THREE.Mesh(geo, mat); m.castShadow = shadow; g.add(m); return m; }
-function wheels(g, pts, r, w){ return pts.map(([x,z]) => { const m = new THREE.Mesh(wheelGeo, tyreMat); m.scale.set(w, r, r); m.position.set(x, r, z);
-  const rim = new THREE.Mesh(rimGeo, rimMat); rim.scale.set(1.06, 0.6, 0.6); m.add(rim); g.add(m); return m; }); }
-// lamps, bumpers, grille, plates and mirrors common to cars
-function carDetails(g, {w, len, yL, yT, yB, zF = len/2, zR = -len/2, mirY, mirZ, tail, grille = 0.5}){
-  for (const s2 of [-1, 1]) { box(0.44, 0.13, 0.08, headMat, s2*w*0.33, yL, zF - 0.02, g); box(0.36, 0.15, 0.06, tail, s2*w*0.38, yT, zR + 0.02, g);
-    box(0.08, 0.1, 0.2, trimMat, s2*(w/2 + 0.07), mirY, mirZ, g); }
-  box(w*grille, 0.2, 0.06, grilleMat, 0, yL - 0.12, zF - 0.01, g);
-  box(w + 0.04, 0.2, 0.22, trimMat, 0, yB, zF - 0.08, g); box(w + 0.04, 0.2, 0.22, trimMat, 0, yB, zR + 0.08, g);
-  box(0.46, 0.14, 0.03, plateMat, 0, yB + 0.02, zF + 0.04, g); box(0.46, 0.14, 0.03, plateMat, 0, yB + 0.17, zR - 0.04, g); }
-// a dark wheel arch (crescent, extruded through the body so it shows on both sides) over an axle at z
-function arch(g, r, w, z){ const R0 = r + 0.03, R1 = r + 0.13, pts = [];
-  for (let k = 0; k <= 10; k++) { const a = Math.PI*k/10; pts.push([Math.cos(a)*R1, Math.sin(a)*R1]); }
-  for (let k = 10; k >= 0; k--) { const a = Math.PI*k/10; pts.push([Math.cos(a)*R0, Math.sin(a)*R0]); }
-  const m = part(g, ext('arch' + r.toFixed(2), pts, w + 0.03, 0), trimMat, false); m.position.set(0, r, z); return m; }
-// the finish of a modern passenger car: arches, sills, door shut lines, handles, wrap-round lamps with daytime running lights,
-// a wide lower intake, mirrors in body colour, a shark-fin aerial; doors: z of each shut line
-function carKit(g, {w, len, r, axF, axR, yL, yT, yB, belt, doors, roofY, roofZ, mirY, mirZ, paint, tail, tailBar = false}){
-  const F = len/2 + 0.07, B = -len/2 - 0.07;     // the rounded skin stands a little proud of the profile: lamps and plates sit on it
-  arch(g, r, w, axF); arch(g, r, w, axR);
-  box(w + 0.025, 0.09, axF - axR - 2*r - 0.25, trimMat, 0, r + 0.08, (axF + axR)/2, g);                               // sills
-  for (const z of doors) box(w + 0.012, belt - r - 0.12, 0.014, trimMat, 0, (belt + r + 0.12)/2, z, g);                // door shut lines
-  for (const z of doors.slice(0, -1)) box(w + 0.035, 0.035, 0.13, chromeMat, 0, belt - 0.12, z - 0.22, g);             // handles
-  box(w + 0.012, 0.018, len*0.72, trimMat, 0, belt - 0.02, (axF + axR)/2 + 0.1, g);                                     // window line
-  for (const s2 of [-1, 1]) {
-    box(0.46, 0.12, 0.12, headMat, s2*w*0.33, yL, F - 0.07, g); box(0.03, 0.11, 0.26, headMat, s2*(w/2 - 0.005), yL, F - 0.25, g);   // head lamp, wrapping round the corner
-    box(0.34, 0.025, 0.04, headMat, s2*w*0.31, yL - 0.1, F - 0.03, g);                                               // daytime running light
-    box(0.38, 0.13, 0.1, tail, s2*w*0.36, yT, B + 0.06, g); box(0.03, 0.12, 0.22, tail, s2*(w/2 - 0.005), yT, B + 0.2, g);
-    box(0.08, 0.09, 0.17, paint, s2*(w/2 + 0.06), mirY, mirZ, g); box(0.05, 0.04, 0.1, trimMat, s2*(w/2 + 0.015), mirY - 0.05, mirZ, g);   // mirrors
-    box(0.12, 0.07, 0.04, grilleMat, s2*w*0.36, yB + 0.02, F - 0.03, g); }                                           // fog lamp housings
-  if (tailBar) box(w*0.42, 0.05, 0.03, tail, 0, yT + 0.02, B + 0.02, g);
-  box(w*0.52, 0.17, 0.05, grilleMat, 0, yL - 0.06, F - 0.02, g); box(w*0.62, 0.13, 0.05, grilleMat, 0, yB + 0.02, F - 0.01, g);   // grille, lower intake
-  box(w + 0.05, 0.16, 0.24, trimMat, 0, yB - 0.08, F - 0.11, g); box(w + 0.05, 0.16, 0.24, trimMat, 0, yB - 0.08, B + 0.11, g);  // bumper lips
-  box(0.46, 0.13, 0.03, plateMat, 0, yB + 0.17, F, g); box(0.46, 0.13, 0.03, plateMat, 0, yB + 0.2, B, g);
-  box(0.07, 0.07, 0.22, trimMat, 0, roofY + 0.04, roofZ, g);                                                            // shark-fin aerial
-}
+// Shared finishes for the curved vehicle models and existing accessories.
+const trimMat=M(0x1c1d1f,{roughness:.7}),plateMat=M(0xf4f4f0,{roughness:.5}),grilleMat=vEnv(M(0x121314,{roughness:.35,metalness:.5}),.6),chromeMat=vEnv(M(0xd9dcdf,{metalness:1,roughness:.12}));
+[trimMat,plateMat,grilleMat,chromeMat].forEach(m=>SHARED.add(m));
 
 // ---------- Indonesian number plates: region code + number + letters, expiry month · year; colour by category ----------
 const PLATE_STYLE = {pribadi: ['#f6f6f2', '#111111'], umum: ['#f2c21b', '#111111'], dinas: ['#c4161c', '#ffffff'], polri: ['#1b1b1b', '#ffffff'],
@@ -534,18 +490,13 @@ function plateVehicle(g, type){
   g.traverse(o => { if (o.isMesh && o.material === plateMat) o.material = mat; });
 }
 
-// ---------- performance: AI vehicles are merged into a few meshes (one per material), cached per model ----------
-// A built vehicle is ~30 small meshes; drawing 150 of them costs thousands of draw calls. After building, all parts that
-// share a material are merged into one geometry (the result is cached and shared by every vehicle with the same model),
-// and each wheel becomes one mesh with tyre + rim in vertex colours.
-const wheelVCGeo = (() => { const t = wheelGeo.clone().toNonIndexed(), r = rimGeo.clone().toNonIndexed(); r.scale(1.06, 0.6, 0.6);
-  const col = (g, c) => { const n = g.attributes.position.count, a = new Float32Array(n*3); const k = new THREE.Color(c); for (let i = 0; i < n; i++) { a[i*3] = k.r; a[i*3+1] = k.g; a[i*3+2] = k.b; } g.setAttribute('color', new THREE.BufferAttribute(a, 3)); };
-  col(t, 0x161616); col(r, 0xb9bcc0); for (const g of [t, r]) g.deleteAttribute('uv'); const m = mergeGeometries([t, r]); m.userData.keep = true; return m; })();
-const wheelVCMat = vEnv(new THREE.MeshStandardMaterial({vertexColors: true, roughness: 0.45, metalness: 0.45}), 0.7); SHARED.add(wheelVCMat);
+// AI body surfaces are merged by material and cached per shape; the physical
+// tyre/rim meshes stay separate so steering and wheel rotation retain their shape.
 const mergeCache = new Map(), _mInv = new THREE.Matrix4(), _mRel = new THREE.Matrix4();
 // small dark/trim parts share one vertex-coloured material, so they cost a single draw call per vehicle
-const detailVCMat = vEnv(new THREE.MeshStandardMaterial({vertexColors: true, roughness: 0.22, metalness: 0.6}), 0.9); SHARED.add(detailVCMat);   // glass, trim, chrome merged: glossy
-const DETAIL = new Set([glassMat, trimMat, grilleMat, chromeMat, lbOff, angkotStripe, ladderMat, ambStripe, ambOrange, polStripe, bedMat, signBackMat]);
+const detailVCMat = vEnv(new THREE.MeshStandardMaterial({vertexColors: true, roughness: 0.22, metalness: 0.6}), 0.9); SHARED.add(detailVCMat);   // trim and chrome merged: glossy
+MODEL_MATERIALS.forEach(m=>SHARED.add(m));
+const DETAIL = new Set([ trimMat, grilleMat, chromeMat, lbOff, angkotStripe, ladderMat, ambStripe, ambOrange, polStripe, signBackMat]);
 function mergeVehicle(v){
   const g = v.g, keep = new Set([...(v.wh || []), ...(v.lights || []), ...(v.lampM ? [v.lampM.brk, v.lampM.l, v.lampM.r] : [])]); g.updateMatrixWorld(true); _mInv.copy(g.matrixWorld).invert();
   const parts = []; g.traverse(o => { if (!o.isMesh || keep.has(o) || keep.has(o.parent)) return; parts.push(o); });
@@ -556,14 +507,14 @@ function mergeVehicle(v){
   const sig = v.type + '|' + parts.map(o => `${o.geometry.id}:${DETAIL.has(o.material) ? 'D' + o.material.id : SHARED.has(o.material) || !o.material.userData.own ? 's' + o.material.id : 'o' + slot.get(keyOf(o))}:${o.position.x.toFixed(2)},${o.position.y.toFixed(2)},${o.position.z.toFixed(2)},${o.rotation.x.toFixed(2)}`).join(';');
   let tpl = mergeCache.get(sig);
   if (!tpl) { tpl = mats.map((m, i) => { const geos = parts.filter(o => slot.get(keyOf(o)) === i).map(o => { _mRel.multiplyMatrices(_mInv, o.matrixWorld); const gg = (o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone()).applyMatrix4(_mRel);
-        for (const a of Object.keys(gg.attributes)) if (a !== 'position' && a !== 'normal' && a !== 'uv') gg.deleteAttribute(a); if (!gg.attributes.uv) gg.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(gg.attributes.position.count*2), 2));
+        for (const a of Object.keys(gg.attributes)) if (a !== 'position' && a !== 'normal' && a !== 'uv' && !(a==='color'&&m.vertexColors)) gg.deleteAttribute(a); if (!gg.attributes.uv) gg.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(gg.attributes.position.count*2), 2));
         if (m === detailVCMat) { const n = gg.attributes.position.count, ca = new Float32Array(n*3), c = o.material.color; for (let j = 0; j < n; j++) { ca[j*3] = c.r; ca[j*3+1] = c.g; ca[j*3+2] = c.b; } gg.setAttribute('color', new THREE.BufferAttribute(ca, 3)); }
         gg.clearGroups(); return gg; });
       const mg = geos.length === 1 ? geos[0] : mergeGeometries(geos); if (mg) mg.userData.keep = true; return mg; }); mergeCache.set(sig, tpl); }
   if (tpl.some(gm => !gm)) return;
   for (const o of parts) o.parent.remove(o);
   tpl.forEach((gm, i) => { const m = new THREE.Mesh(gm, mats[i]); m.castShadow = i === 0; g.add(m); });
-  for (const w of v.wh) { w.geometry = wheelVCGeo; w.material = wheelVCMat; w.clear(); w.castShadow = false; }
+
 }
 
 // brake lights and indicators that switch on and off: a few small boxes per vehicle merged into three meshes (cached per shape)
@@ -581,146 +532,26 @@ function addLamps(g, {w, zF, zR, yL, yT, tx}){
 function makeVehicle(type, color, noMerge = false){
   if (type === 'bicycle') { const paint = vEnv(new THREE.MeshPhysicalMaterial({color: color ?? 0x249b79, metalness:0.5, roughness:0.28, clearcoat:0.8, clearcoatRoughness:0.18})); paint.userData.own = true;
     const v = buildBicycle({paint, tyre:tyreMat, metal:chromeMat, dark:trimMat, head:headMat, tail:tailMat}); bendObj(v.g); v.g.rotation.order='YXZ'; for (const w of v.front) w.rotation.order='YXZ'; return v; }
-  const g = new THREE.Group(); let len, wh, r, v0;
   const own = c => { const m = M(c, {roughness:0.4, metalness:0.3}); m.userData.own = true; return m; };
   const pc = color ?? (type==='taxi' ? 0x1e5aa8 : type==='derek' ? 0xf2b705 : type==='police' || type==='ambulance' ? 0xf6f6f4 : type==='damkar' ? 0xc8160f : type==='angkot' ? pick([0x2a6fd1,0x2f9a4a,0x2f9a4a,0xd23a2a,0xe8c22a,0x3a9fd8,0x8a2bb0]) : pick(PAINT));
   // metallic paints get a sharper, stronger reflection than solid colours (white, red); both have a clear-coat sheen
   const solidP = SOLID_PAINT.has(pc) || ['taxi', 'derek', 'police', 'ambulance', 'damkar', 'angkot'].includes(type) || (color != null && new THREE.Color(pc).getHSL({}).l > 0.85);
-  const paint = vEnv(color != null ? new THREE.MeshPhysicalMaterial({color:pc,clearcoat:0.9,clearcoatRoughness:0.16}) : own(pc), solidP ? 0.8 : 1.15); paint.userData.own = true; paint.roughness = solidP ? 0.3 : 0.24; paint.metalness = solidP ? 0.12 : 0.6;
-  const tail = color != null ? brakeMat : tailMat; let lights = null;
-  if (type==='car' || type==='police' || type==='taxi'){
-    // passenger cars: a sedan (also police and taxi, and the player's car), or for traffic a hatchback or a 7-seat MPV, the commonest family car here
-    const bodyK = type !== 'car' || color != null ? 'sedan' : pick(['sedan', 'sedan', 'hatch', 'hatch', 'mpv', 'mpv', 'mpv']);
-    if (bodyK === 'sedan') {
-      len = 4.5; r = 0.32; const w = 1.78;
-      part(g, ext('sedL2', roundP([[-2.25,0.3],[2.12,0.3],[2.27,0.42],[2.29,0.62],[2.2,0.76],[1.55,0.85],[1.05,0.91],[-1.5,0.97],[-2.08,0.97],[-2.25,0.88],[-2.3,0.56]]), w, 0.09), paint);
-      part(g, ext('sedG2', roundP([[1.1,0.89],[0.34,1.36],[-0.88,1.4],[-1.58,0.97]], 1), w*0.9, 0.05), glassMat, false);
-      part(g, ext('sedR2', roundP([[0.34,1.35],[-0.9,1.39],[-0.86,1.45],[0.28,1.42]], 1), w*0.91, 0.04), paint);
-      box(w*0.9, 0.42, 0.09, paint, 0, 1.15, -0.3, g);                                                                     // B-pillar
-      carKit(g, {w, len, r, axF: 1.38, axR: -1.33, yL: 0.7, yT: 0.86, yB: 0.36, belt: 0.92, doors: [1.02, -0.3, -1.35], roofY: 1.43, roofZ: -0.75, mirY: 1.0, mirZ: 0.95, paint, tail, tailBar: Math.random() < 0.4});
-      if (type==='police') { box(w+0.03, 0.14, len*0.86, polStripe, 0, 0.72, 0, g); lights = lightBar(g, 1.2, 1.5, -0.35); }
-      if (type==='taxi') { box(0.62, 0.22, 0.24, taxiSignMat, 0, 1.54, -0.3, g); box(w+0.03, 0.08, len*0.86, angkotStripe, 0, 0.8, 0, g); }
-      wh = wheels(g, [[-w/2+0.14,1.38],[w/2-0.14,1.38],[-w/2+0.14,-1.33],[w/2-0.14,-1.33]], r, 0.24); v0 = rnd(24, 27.5);
-    } else if (bodyK === 'hatch') {
-      // city car / hatchback: short nose, upright tailgate
-      len = 3.85; r = 0.3; const w = 1.68;
-      part(g, ext('hatL', roundP([[-1.9,0.29],[1.8,0.29],[1.93,0.42],[1.94,0.62],[1.82,0.75],[1.2,0.85],[0.78,0.9],[-1.78,0.97],[-1.93,0.9],[-1.96,0.5]]), w, 0.09), paint);
-      part(g, ext('hatG', roundP([[0.8,0.88],[0.02,1.37],[-1.55,1.4],[-1.86,0.97]], 1), w*0.9, 0.05), glassMat, false);
-      part(g, ext('hatR', roundP([[0.02,1.36],[-1.56,1.39],[-1.58,1.45],[-0.04,1.43]], 1), w*0.91, 0.04), paint);
-      box(w*0.9, 0.4, 0.09, paint, 0, 1.14, -0.55, g);
-      carKit(g, {w, len, r, axF: 1.2, axR: -1.22, yL: 0.72, yT: 1.02, yB: 0.34, belt: 0.93, doors: [0.78, -0.55, -1.25], roofY: 1.44, roofZ: -1.2, mirY: 1.0, mirZ: 0.7, paint, tail});
-      wh = wheels(g, [[-w/2+0.13,1.2],[w/2-0.13,1.2],[-w/2+0.13,-1.22],[w/2-0.13,-1.22]], r, 0.21); v0 = rnd(22, 26);
-    } else {
-      // 7-seat MPV: long glasshouse, tall roof, short bonnet
-      len = 4.42; r = 0.32; const w = 1.74;
-      part(g, ext('mpvL', roundP([[-2.18,0.33],[2.08,0.33],[2.2,0.46],[2.21,0.68],[2.1,0.82],[1.55,0.93],[1.12,0.99],[-2.08,1.05],[-2.2,0.96],[-2.23,0.58]]), w, 0.09), paint);
-      part(g, ext('mpvG', roundP([[1.14,0.97],[0.32,1.58],[-1.98,1.63],[-2.13,1.04]], 1), w*0.9, 0.05), glassMat, false);
-      part(g, ext('mpvR', roundP([[0.32,1.57],[-1.99,1.62],[-1.98,1.69],[0.26,1.65]], 1), w*0.91, 0.04), paint);
-      for (const z of [-0.2, -1.3]) box(w*0.9, 0.58, 0.1, paint, 0, 1.32, z, g);                                          // B and C pillars
-      for (const s2 of [-1, 1]) box(0.05, 0.05, 2.1, chromeMat, s2*w*0.38, 1.71, -0.9, g);                                   // roof rails
-      carKit(g, {w, len, r, axF: 1.38, axR: -1.38, yL: 0.78, yT: 1.08, yB: 0.38, belt: 1.02, doors: [1.12, -0.2, -1.3], roofY: 1.69, roofZ: -1.7, mirY: 1.1, mirZ: 0.95, paint, tail, tailBar: Math.random() < 0.5});
-      wh = wheels(g, [[-w/2+0.14,1.38],[w/2-0.14,1.38],[-w/2+0.14,-1.38],[w/2-0.14,-1.38]], r, 0.23); v0 = rnd(23, 26.5);
-    }
-  } else if (type==='suv'){
-    // body-on-frame SUV (tall, upright) or a crossover with a sloping rear
-    const cross = color == null && Math.random() < 0.45;
-    len = cross ? 4.45 : 4.8; r = cross ? 0.36 : 0.39; const w = cross ? 1.82 : 1.9, hl = len/2;
-    if (cross) {
-      part(g, ext('crL', roundP([[-hl,0.42],[hl - 0.12,0.42],[hl,0.56],[hl + 0.01,0.78],[hl - 0.1,0.94],[hl - 0.7,1.03],[hl - 1.1,1.08],[-hl + 0.18,1.12],[-hl,1.02],[-hl - 0.03,0.68]]), w, 0.1), paint);
-      part(g, ext('crG', roundP([[hl - 1.08,1.06],[hl - 1.9,1.6],[-hl + 0.7,1.6],[-hl + 0.12,1.12]], 1), w*0.9, 0.05), glassMat, false);
-      part(g, ext('crR', roundP([[hl - 1.9,1.59],[-hl + 0.7,1.59],[-hl + 0.66,1.66],[hl - 1.94,1.66]], 1), w*0.91, 0.04), paint);
-      box(w*0.9, 0.5, 0.1, paint, 0, 1.33, -0.35, g);
-      carKit(g, {w, len, r, axF: 1.33, axR: -1.33, yL: 0.88, yT: 1.05, yB: 0.5, belt: 1.1, doors: [1.12, -0.35, -1.45], roofY: 1.66, roofZ: -1.3, mirY: 1.17, mirZ: 0.95, paint, tail, tailBar: true});
-    } else {
-      part(g, ext('suvL2', roundP([[-hl,0.44],[hl - 0.08,0.44],[hl + 0.02,0.6],[hl + 0.02,0.86],[hl - 0.1,1.0],[hl - 1.1,1.1],[-hl + 0.04,1.14],[-hl - 0.02,0.74]], 1), w, 0.1), paint);
-      part(g, ext('suvG2', roundP([[hl - 1.12,1.07],[hl - 1.9,1.62],[-hl + 0.18,1.66],[-hl + 0.06,1.1]], 1), w*0.9, 0.05), glassMat, false);
-      part(g, ext('suvR2', roundP([[hl - 1.9,1.6],[-hl + 0.17,1.64],[-hl + 0.18,1.72],[hl - 1.96,1.68]], 1), w*0.9, 0.04), paint);
-      for (const z of [-0.45, -1.5]) box(w*0.9, 0.5, 0.1, paint, 0, 1.37, z, g);
-      for (const s2 of [-1, 1]) box(0.05, 0.05, 2.3, chromeMat, s2*w*0.38, 1.76, -0.9, g);                                   // roof rails
-      { const sp = new THREE.Mesh(wheelGeo, tyreMat); sp.scale.set(0.26, 0.34, 0.34); sp.rotation.y = Math.PI/2; sp.position.set(0, 1.0, -hl - 0.12); sp.castShadow = true; g.add(sp); }   // spare wheel on the tailgate
-      carKit(g, {w, len, r, axF: 1.45, axR: -1.45, yL: 0.9, yT: 1.0, yB: 0.52, belt: 1.12, doors: [1.25, -0.45, -1.55], roofY: 1.72, roofZ: -1.6, mirY: 1.2, mirZ: 1.1, paint, tail});
-    }
-    wh = wheels(g, [[-w/2+0.15,cross ? 1.33 : 1.45],[w/2-0.15,cross ? 1.33 : 1.45],[-w/2+0.15,cross ? -1.33 : -1.45],[w/2-0.15,cross ? -1.33 : -1.45]], r, 0.27); v0 = rnd(24, 27.5);
-  } else if (type==='pickup'){
-    len = 4.9; r = 0.36; const w = 1.76;
-    part(g, ext('pkL2', roundP([[-2.45,0.4],[2.36,0.4],[2.46,0.56],[2.47,0.76],[2.38,0.92],[1.38,1.04],[-2.45,1.04],[-2.5,0.62]], 1), w, 0.08), paint);
-    part(g, ext('pkG2', roundP([[1.34,1.0],[0.66,1.55],[-0.42,1.57],[-0.46,1.02]], 1), w*0.9, 0.05), glassMat, false);
-    part(g, ext('pkR2', roundP([[0.66,1.53],[-0.46,1.55],[-0.46,1.62],[0.6,1.6]], 1), w*0.91, 0.04), paint);
-    for (const s2 of [-1, 1]) box(0.07, 0.38, 1.95, paint, s2*(w/2 - 0.04), 1.23, -1.45, g);
-    box(w, 0.38, 0.07, paint, 0, 1.23, -2.42, g); box(w*0.9, 0.04, 1.9, trimMat, 0, 1.05, -1.45, g);
-    carKit(g, {w, len, r, axF: 1.55, axR: -1.45, yL: 0.8, yT: 1.08, yB: 0.5, belt: 1.04, doors: [1.3, -0.44], roofY: 1.62, roofZ: -0.1, mirY: 1.12, mirZ: 1.2, paint, tail});
-    wh = wheels(g, [[-w/2+0.14,1.55],[w/2-0.14,1.55],[-w/2+0.14,-1.45],[w/2-0.14,-1.45]], r, 0.25); v0 = rnd(21, 25);
-  } else if (type==='van' || type==='ambulance' || type==='angkot'){
-    // one-box minibus (Hiace / Elf / Carry): short sloping nose, tall body, window band
-    const A = type === 'angkot'; len = A ? 4.3 : 5.4; r = A ? 0.3 : 0.36; const w = A ? 1.66 : 1.95, hl = len/2, top = A ? 1.92 : 2.22;
-    part(g, ext(type + 'B2', roundP([[-hl,r + 0.05],[hl - 0.08,r + 0.05],[hl,r + 0.35],[hl - 0.06,1.05],[hl - 0.55,1.2],[hl - 0.95,top],[-hl + 0.05,top + 0.02],[-hl,top - 0.1]], 1), w, 0.09), paint);
-    arch(g, r, w, hl - 0.85); arch(g, r, w, -hl + 0.9);
-    for (const s2 of [-1, 1]) box(0.02, 0.5, len - 1.5, glassMat, s2*(w/2 + 0.075), top - 0.62, -0.35, g);       // side window band
-    box(w*0.9, 0.62, 0.05, glassMat, 0, top - 0.55, hl - 0.74, g).rotation.x = -0.55;                                 // windscreen
-    box(w*0.8, 0.45, 0.04, glassMat, 0, top - 0.55, -hl - 0.05, g);
-    carDetails(g, {w, len, yL: 0.72, yT: 0.95, yB: r + 0.15, mirY: 1.25, mirZ: hl - 0.5, tail, grille: 0.45});
-    if (type === 'ambulance') { box(w + 0.03, 0.22, len - 1.1, ambStripe, 0, 1.0, -0.4, g); box(w + 0.03, 0.08, len - 1.1, ambOrange, 0, 1.18, -0.4, g); lights = lightBar(g, 1.3, top + 0.12, hl - 1.2); }
-    if (A) { box(w + 0.03, 0.08, len - 0.4, angkotStripe, 0, 1.0, 0, g); box(0.05, 1.0, 0.9, trimMat, w/2 + 0.03, 0.95, -0.2, g); box(w*0.85, 0.2, 0.45, angkotStripe, 0, top + 0.12, hl - 1.1, g); }
-    wh = wheels(g, [[-w/2+0.14,hl - 0.85],[w/2-0.14,hl - 0.85],[-w/2+0.14,-hl + 0.9],[w/2-0.14,-hl + 0.9]], r, A ? 0.2 : 0.25);
-    v0 = A ? rnd(13, 17) : type === 'ambulance' ? rnd(25, 28) : rnd(22, 25.5);
-  } else if (type==='moto'){
-    len = 2; r = 0.3;
-    box(0.12, 0.12, 1.2, trimMat, 0, r + 0.25, 0, g); box(0.28, 0.32, 0.6, paint, 0, r + 0.55, 0.15, g); box(0.26, 0.1, 0.62, trimMat, 0, r + 0.72, -0.3, g);
-    box(0.5, 0.06, 0.06, chromeMat, 0, r + 0.95, 0.6, g); box(0.1, 0.5, 0.08, chromeMat, 0, r + 0.55, 0.62, g);
-    box(0.44, 0.58, 0.4, own(pick([0x1f3f73,0x2a2a2a,0x6a1d2b,0x3e5a3a,0x8a6a3a])), 0, r + 1.05, -0.2, g);
-    box(0.3, 0.32, 0.32, own(pick([0x111111,0xf2f2f2,0xc81e1e,0x1f3f73])), 0, r + 1.5, -0.12, g); box(0.24, 0.1, 0.04, glassMat, 0, r + 1.5, 0.05, g);
-    for (const s2 of [-1, 1]) box(0.1, 0.45, 0.12, trimMat, s2*0.18, r + 0.5, 0.0, g);
-    box(0.14, 0.1, 0.06, headMat, 0, r + 0.7, 0.68, g); box(0.14, 0.08, 0.06, tail, 0, r + 0.58, -0.68, g);
-    wh = wheels(g, [[0,0.66],[0,-0.62]], r, 0.11); v0 = rnd(11, 15);
-  } else if (type==='truck' || type==='damkar' || type==='derek'){
-    // cab-over truck cab with rounded front edges, then a box trailer (truck), a body with ladder (fire engine) or a flat bed (tow truck)
-    const box6 = type === 'truck' && color == null && Math.random() < 0.4;      // a six-wheel box truck (engkel) instead of a semi-trailer
-    const T = type === 'truck' && !box6; len = T ? 16 : box6 ? 8.2 : type === 'damkar' ? 9 : 8.6; r = T ? 0.5 : 0.46; const w = T ? 2.5 : 2.4, hl = len/2;
-    const cab = T ? (color != null ? paint : own(pick([0xf4f4f2,0x1f3f73,0xb22a26,0x2f5a4a,0x1b1c1f,0xe0a020]))) : paint;
-    const cg = new THREE.Group(); cg.position.z = hl - 2.4; g.add(cg);
-    part(cg, ext('cab' + w, [[0,r + 0.3],[2.35,r + 0.3],[2.42,r + 0.75],[2.42,2.5],[2.25,3.05],[0.05,3.15],[0,2.9]], w, 0.12), cab);
-    box(w*0.9, 0.85, 0.06, glassMat, 0, 2.55, 2.5, cg).rotation.x = -0.1; for (const s2 of [-1, 1]) box(0.05, 0.6, 0.9, glassMat, s2*(w/2 + 0.1), 2.5, 1.6, cg);
-    box(w*0.6, 0.5, 0.06, grilleMat, 0, 1.35, 2.54, cg); box(w + 0.06, 0.3, 0.25, trimMat, 0, r + 0.35, 2.45, cg);
-    for (const s2 of [-1, 1]) { box(0.35, 0.18, 0.06, headMat, s2*0.85, r + 0.75, 2.55, cg); box(0.08, 0.55, 0.16, trimMat, s2*(w/2 + 0.2), 2.4, 2.35, cg); }
-    box(0.5, 0.12, 0.03, plateMat, 0, r + 0.4, 2.6, cg);
-    box(w*0.86, 0.35, len - 2.6, trimMat, 0, r + 0.55, -1.2, g);                                   // chassis
-    if (T) { const tr = own(pick([0xe8e8e4,0xdcdcd6,0x9aa1a6,0x3a5f8f,0xc4462a])); tr.roughness = 0.7;
-      part(g, ext('trl', [[-hl,r + 0.75],[hl - 2.7,r + 0.75],[hl - 2.7,4.0],[-hl,4.0]], w, 0.05), tr);
-      for (const s2 of [-1, 1]) box(0.05, 0.3, 6, chromeMat, s2*(w/2 - 0.05), r + 0.45, -1.5, g); }
-    else if (box6) { const tr = own(pick([0xe8e8e4,0xdcdcd6,0x9aa1a6,0x2f5a8a,0xd8b030])); tr.roughness = 0.7;
-      part(g, ext('bx6', [[-hl,r + 0.75],[hl - 2.65,r + 0.75],[hl - 2.65,3.5],[-hl,3.5]], w, 0.05), tr);
-      for (const s2 of [-1, 1]) box(0.04, 0.12, len - 3, trimMat, s2*(w/2 + 0.01), r + 0.9, -1.3, g); }
-    else if (type === 'damkar') { box(w, 2.1, len - 2.6, paint, 0, r + 1.5, -1.2, g); box(w + 0.03, 0.18, len - 2.6, angkotStripe, 0, r + 1.2, -1.2, g);
-      for (let k = 0; k < 4; k++) box(0.04, 1.4, 1.1, chromeMat, w/2 + 0.02, r + 1.6, -hl + 1 + k*1.2, g);
-      box(0.9, 0.16, len - 1.2, ladderMat, 0, r + 2.7, -0.7, g); for (const s2 of [-1,1]) box(0.08, 0.3, len - 1.2, ladderMat, s2*0.45, r + 2.75, -0.7, g);
-      lights = lightBar(cg, 1.8, 3.25, 1.2); }
-    else { box(w, 0.25, len - 2.6, bedMat, 0, r + 0.95, -1.2, g); box(0.5, 0.7, 0.5, trimMat, 0, r + 1.4, hl - 2.9, g);
-      lights = [box(0.5, 0.15, 0.3, towAmber, -0.4, 3.25, 1.2, cg), box(0.5, 0.15, 0.3, towAmber, 0.4, 3.25, 1.2, cg)]; lights.forEach(l => l.visible = false); }
-    for (const s2 of [-1, 1]) box(0.25, 0.25, 0.06, tail, s2*1.05, r + 0.9, -hl, g);
-    wh = wheels(g, T ? [[-1.1,6.6],[1.1,6.6],[-1.1,4.6],[1.1,4.6],[-1.1,-4.6],[1.1,-4.6],[-1.1,-6],[1.1,-6]] : box6 ? [[-1.05,hl - 1.3],[1.05,hl - 1.3],[-1.05,-hl + 1.6],[1.05,-hl + 1.6]] : [[-1.05,hl - 1.3],[1.05,hl - 1.3],[-1.05,-hl + 2.3],[1.05,-hl + 2.3],[-1.05,-hl + 1.1],[1.05,-hl + 1.1]], r, 0.36);
-    v0 = T ? rnd(18, 21.5) : box6 ? rnd(19, 22.5) : type === 'damkar' ? rnd(21, 24) : rnd(20, 23);
-  } else {
-    // city / intercity bus: rounded front, deep window band, livery stripe, destination board
-    len = 12.5; r = 0.5; const w = 2.5, hl = len/2;
-    const body = color != null ? paint : own(pick([0xf4f4f2,0x1f3f73,0x2f5a4a,0x5d6670,0xb22a26]));
-    part(g, ext('bus', [[-hl,0.5],[hl - 0.05,0.5],[hl,0.95],[hl,2.9],[hl - 0.25,3.45],[-hl + 0.1,3.5],[-hl,3.3]], w, 0.12), body);
-    for (const s2 of [-1, 1]) box(0.03, 1.05, len - 1.6, glassMat, s2*(w/2 + 0.115), 2.35, -0.4, g);
-    box(w*0.92, 1.4, 0.05, glassMat, 0, 2.35, hl + 0.11, g); box(w*0.7, 0.28, 0.05, busSignMat, 0, 3.2, hl + 0.12, g);
-    box(w + 0.25, 0.25, len - 0.6, angkotStripe, 0, 1.3, 0, g); box(0.04, 2.1, 1.0, trimMat, w/2 + 0.12, 1.55, hl - 1.6, g);
-    for (const s2 of [-1, 1]) { box(0.4, 0.18, 0.06, headMat, s2*0.9, 0.95, hl + 0.1, g); box(0.25, 0.4, 0.06, tail, s2*1.05, 1.2, -hl - 0.1, g); box(0.08, 0.5, 0.16, trimMat, s2*(w/2 + 0.25), 2.6, hl - 0.1, g); }
-    box(0.52, 0.12, 0.03, plateMat, 0, 0.65, hl + 0.12, g);
-    wh = wheels(g, [[-1.1,4.2],[1.1,4.2],[-1.1,-3.4],[1.1,-3.4],[-1.1,-4.8],[1.1,-4.8]], r, 0.38); v0 = rnd(21, 23.5);
-  }
-  plateVehicle(g, type);
-  // where the lamps are, from the finished body: brake lights at the tail lamps, indicators at the four corners
-  const bb = new THREE.Box3().setFromObject(g), lw = Math.min(bb.max.x - bb.min.x, 2.6), hv = len > 7;
-  const lampM = type === 'moto' ? addLamps(g, {w: 0.5, zF: 0.68, zR: -0.68, yL: r + 0.7, yT: r + 0.5, tx: 0.08})
-    : addLamps(g, {w: lw - 0.06, zF: bb.max.z - 0.02, zR: bb.min.z + 0.02, yL: hv ? r + 0.75 : 0.72, yT: hv ? r + 0.9 : type === 'van' || type === 'ambulance' || type === 'angkot' ? 0.95 : 0.88, tx: hv ? 1.05 : lw*0.36});
-  const res = {g, len, wh, front: null, r, v0, type, lights, lampM};
-  if (!noMerge && color == null) mergeVehicle(res);
-  bendObj(g);
-  g.rotation.order = 'YXZ';
-  const front = wh.filter(w => w.position.z > 0); for (const w of front) w.rotation.order = 'YXZ'; res.front = front;
+  const paint = vEnv(new THREE.MeshPhysicalMaterial({color:pc,clearcoat:0.9,clearcoatRoughness:0.16}), solidP ? 0.8 : 1.15); paint.userData.own = true; paint.roughness = solidP ? 0.3 : 0.24; paint.metalness = solidP ? 0.12 : 0.6;
+  const tail=color!=null?brakeMat:tailMat, variant=type==='car'&&color==null?pick(['sedan','hatch','mpv','mpv']):type==='truck'&&color==null&&Math.random()<.4?'boxTruck':null;
+  const cargo=own(pick([0xe2e4e1,0xb9c3ca,0x9aa5ac,0x356288]));
+  const res=buildRoadVehicle(type,{paint,glass:glassMat,head:headMat,tail,chrome:chromeMat,grille:grilleMat,plate:plateMat,cargo},variant);
+  const body=res.g,top=res.dimensions.height;
+  if(type==='police'){box(1.8,.10,3.6,polStripe,0,.77,0,body);res.lights=lightBar(body,1.2,top+.11,-.3);}
+  if(type==='taxi'){box(.6,.20,.24,taxiSignMat,0,top+.11,-.3,body);}
+  if(type==='ambulance'){box(1.98,.15,4.3,ambStripe,0,1.09,-.3,body);res.lights=lightBar(body,1.3,top+.11,1.35);}
+  if(type==='damkar')res.lights=lightBar(body,1.8,3.25,res.len/2-1.3);
+  if(type==='derek'){res.lights=[box(.5,.15,.3,towAmber,-.4,3.25,res.len/2-1.3,body),box(.5,.15,.3,towAmber,.4,3.25,res.len/2-1.3,body)];res.lights.forEach(l=>l.visible=false);}
+  plateVehicle(body,type);
+  const bounds=new THREE.Box3().setFromObject(body),width=Math.min(bounds.max.x-bounds.min.x,2.6),hv=res.len>7;
+  res.lampM=type==='moto'?addLamps(body,{w:.5,zF:.68,zR:-.84,yL:.90,yT:.75,tx:.08}):addLamps(body,{w:width-.06,zF:bounds.max.z-.02,zR:bounds.min.z+.02,yL:hv?res.r+.75:.72,yT:hv?res.r+.9:.95,tx:hv?1.05:width*.36});
+  if(!noMerge&&color==null)mergeVehicle(res);
+  bendObj(body);body.rotation.order='YXZ';
+  const frontZ=Math.max(...res.wh.map(w=>w.position.z));res.front=res.wh.filter(w=>Math.abs(w.position.z-frontZ)<.01);res.front.forEach(w=>w.rotation.order='YXZ');
   return res;
 }
 // remove a vehicle's own materials from the reflection list when it goes
@@ -906,10 +737,9 @@ function addSolid(owner, name, uA, uB, xA, xB){ SOLIDS.push({owner, name, u0: Ma
 // box given in a frame group's local coords (x outward, z along travel of side sd, origin at u0)
 function addLocalSolid(owner, sd, u0, name, x0, x1, z0, z1){ addSolid(owner, name, u0 + sd*z0, u0 + sd*z1, -sd*x0, -sd*x1); }
 function dropSolids(gs){ const set = new Set(gs); SOLIDS = SOLIDS.filter(o => !set.has(o.owner)); }
-const trunkGeo = new THREE.CylinderGeometry(0.2,0.3,2,6); trunkGeo.translate(0,1,0); trunkGeo.userData.keep = true;
-const crownGeo = new THREE.ConeGeometry(2.2,6,7); crownGeo.translate(0,4.8,0); crownGeo.userData.keep = true;
-const blobGeo = new THREE.IcosahedronGeometry(2.6,0); blobGeo.translate(0,4,0); blobGeo.userData.keep = true;
-const trunkMat = M(0x5a4330), crownMat = M(0x3f5f34), blobMat = M(0x587a3a, {flatShading:true});
+const trunkGeo = new THREE.CylinderGeometry(0.17,0.29,2.8,12); trunkGeo.translate(0,1.4,0); trunkGeo.userData.keep = true;
+const crownGeo=foliageGeometry('conifer'),blobGeo=foliageGeometry('broadleaf');
+const trunkMat = M(0x5a4330), crownMat = M(0x3f5f34,{vertexColors:true}), blobMat = M(0x587a3a,{vertexColors:true});
 const dashGeo = new THREE.PlaneGeometry(0.15, 3); dashGeo.rotateX(-Math.PI/2); dashGeo.userData.keep = true;
 const prDashGeo = new THREE.PlaneGeometry(0.12, 3); prDashGeo.rotateX(-Math.PI/2); prDashGeo.userData.keep = true;
 const poleGeo = new THREE.CylinderGeometry(0.12,0.16,11,8); poleGeo.translate(0,5.5,0); poleGeo.userData.keep = true;
@@ -937,7 +767,7 @@ function kmPostTex(txt){ return canvasTex(0.5, 0.7, (x, w, h) => { x.fillStyle =
   x.fillStyle = '#111'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = `800 200px ${SIGN_FONT}`; x.fillText('KM', w/2, h*0.3); fit(x, txt, w - 80, 300, 800); x.fillText(txt, w/2, h*0.66); }); }
 
 // ---------- national road (jalan nasional) chunk ----------
-const uPoleMat = M(0x9a948a), uBarMat = M(0x6b6660), curbMat = M(0xc9c4b8), shrubMat = M(0x4f7a3a, {flatShading:true}), shoulderMat = M(0x8f8a76), roofMat = M(0x8a4b35), roofMat2 = M(0x6b3b2a);
+const uPoleMat = M(0x9a948a), uBarMat = M(0x6b6660), curbMat = M(0xc9c4b8), shrubMat = M(0x4f7a3a), shoulderMat = M(0x8f8a76), roofMat = M(0x8a4b35), roofMat2 = M(0x6b3b2a);
 const RUKO = [0xe8d9b5, 0xd9c3a0, 0xf0e6d2, 0xc9d6c3, 0xe3c8c0, 0xd2d8e0, 0xf2efe8, 0xe6b98a].map(c => M(c));
 const AWN = [0x2a6fb5, 0xc8342b, 0xe0a020, 0x2f8a4a, 0x7a3fa0].map(c => M(c, {roughness:0.6}));
 // sawah: rows of rice and the raised bunds (pematang) between plots, young green, ripe yellow, and flooded at planting time
@@ -946,7 +776,7 @@ const paddyTex = (base, row, water) => { const c = document.createElement('canva
   x.fillStyle = '#8c7a52'; x.fillRect(0, 0, 128, 5); x.fillRect(0, 0, 5, 128);
   const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(3, 6); t.anisotropy = 4; t.userData.keep = true; t.colorSpace = THREE.SRGBColorSpace; return t; };
 const PADDY = [M(0xffffff, {map: paddyTex('#7fb83a', '#5f9628')}), M(0xffffff, {map: paddyTex('#c9c24a', '#a89b2e')}), M(0xffffff, {map: paddyTex('#6fa3a0', '#7fbf4a', '#7aa9b0'), roughness: 0.35})];
-const shrubGeo = new THREE.IcosahedronGeometry(0.7, 0); shrubGeo.translate(0, 0.6, 0); shrubGeo.userData.keep = true;
+const shrubGeo=shrubGeometry();
 const uPoleGeo = new THREE.CylinderGeometry(0.1, 0.13, 9, 6); uPoleGeo.translate(0, 4.5, 0); uPoleGeo.userData.keep = true;
 const uBarGeo = new THREE.BoxGeometry(1.6, 0.1, 0.1); uBarGeo.translate(0, 8.4, 0); uBarGeo.userData.keep = true;
 const sPoleGeo = new THREE.CylinderGeometry(0.08, 0.11, 8, 6); sPoleGeo.translate(0, 4, 0); sPoleGeo.userData.keep = true;
@@ -979,7 +809,7 @@ function suramaduBridge(g, u0, u1, Z){
 }
 function buildChunkNat(i){
   const u0 = i*CH, u1 = u0 + CH, g = new THREE.Group(), R = rng(i*7919 + 29);
-  g.userData.u0 = u0; const Z = u => -(u - u0);
+  g.userData.u0 = u0; const Z = u => -(u - u0); const nearbyBuildings=[];
   const us = []; for (let u = u0; u <= u1 + 0.01; u += 10) us.push(u);
   const divided = nAt(u0 + CH/2) >= 1.5, town = townNear(u0 + CH/2, TOWN_R + 80);
   const xGap = u => KSITES.some(t => Math.abs(t.u - u) < XW/2 + 9);
@@ -1001,9 +831,7 @@ function buildChunkNat(i){
       let u = u0 + R()*4;
       while (u < u1) { const w = 7 + R()*5, h = 6 + R()*5, d = 12, x = s*(eAt(u) + 6 + d/2);
         if (!xGap(u) && !xGap(u + w) && !jGap(SJ, s, u, u + w) && R() > 0.08 && !rampFoot(6, u + w/2, w)) {
-          g.add(ubox(RUKO[Math.floor(R()*RUKO.length)], x, h/2, Z(u + w/2), d, h, w - 0.4));
-          g.add(ubox(AWN[Math.floor(R()*AWN.length)], s*(eAt(u) + 5.4), 3.1, Z(u + w/2), 1.6, 0.15, w - 0.6));
-          g.add(ubox(roofMat2, x, h + 0.2, Z(u + w/2), d + 0.4, 0.4, w)); }
+          nearbyBuildings.push({x,z:Z(u+w/2),d,w:w-.4,h,type:'shop',color:RUKO[Math.floor(R()*RUKO.length)].color,awning:AWN[Math.floor(R()*AWN.length)].color}); }
         u += w; }
       const lp = []; for (let u2 = Math.ceil((u0 - 20)/40)*40 + 20; u2 < u1; u2 += 40) if (!xGap(u2)) { lp.push([s*(eAt(u2) + 3.4), Z(u2)]); addSolid(g, 'Menabrak tiang lampu', u2 - 0.25, u2 + 0.25, s*(eAt(u2) + 3.4) - 0.25, s*(eAt(u2) + 3.4) + 0.25); }
       g.add(instanced(sPoleGeo, lampMat, lp), instanced(headGeo, lampHeadMat, lp.map(([x, z]) => [x - s*0.9, z]), 7.9));
@@ -1011,8 +839,7 @@ function buildChunkNat(i){
       if (regionAt(u0 + CH/2) === 'paddy') for (let k = 0; k < 2; k++) { const w = 30 + R()*120, o = 14 + R()*40;
         g.add(flat(w, CH*(0.4 + R()*0.6), PADDY[Math.floor(R()*3)], s*(eAt(u0) + o + w/2), 0.002, -CH/2)); }
       for (let u = u0 + R()*30; u < u1; u += 30 + R()*40) { if (R() < 0.45) continue; const o = 9 + R()*14, x = s*(eAt(u) + o + 3); if (rampFoot(o, u, 8) || jGap(SJ, s, u - 5, u + 5)) continue;
-        g.add(ubox(RUKO[Math.floor(R()*RUKO.length)], x, 1.6, Z(u), 6, 3.2, 7));
-        const rf = new THREE.Mesh(roofGeo, R() < 0.5 ? roofMat : roofMat2); rf.position.set(x, 4.4, Z(u)); rf.scale.set(1, 1, 1.2); rf.castShadow = true; g.add(rf); }
+        nearbyBuildings.push({x,z:Z(u),d:6,w:7,h:3.2,type:'house',color:RUKO[Math.floor(R()*RUKO.length)].color}); }
     }
     if (!town && s > 0) roadside(g, u0, u1, Z, R, false);
     // a billboard now and then outside towns, alternating sides
@@ -1046,6 +873,7 @@ function buildChunkNat(i){
   pts.forEach((p, j) => { pv.set(p.x, 0, p.z); sc.set(p.k, p.k*p.h, p.k); q.setFromAxisAngle(upv, p.r); tm.compose(pv, q, sc); trunks.setMatrixAt(j, tm); blobs.setMatrixAt(j, tm); });
   trunks.count = blobs.count = pts.length;
   for (const m of [trunks, blobs]) { m.castShadow = true; g.add(m); }
+  buildArchitecture(g,nearbyBuildings);
   bendObj(g); scene.add(g); return g;
 }
 
@@ -1151,7 +979,7 @@ const hillGeo = (() => { const g = new THREE.IcosahedronGeometry(1, 1); g.scale(
 const hillMat = M(0x5f7d45, {flatShading: true});
 // buildings / fields / hills on both sides of a chunk; toll = keep clear of ramps, the parallel road and plazas
 function roadside(g, u0, u1, Z, R, toll){
-  const reg = regionAt(u0 + CH/2), boxes = [], roofs = [], fields = [];
+  const reg = regionAt(u0 + CH/2), buildings=[], fields = [];
   const free = (o, u, w) => { if (eAt(u) + o - w/2 < mbzClear(u) + 3) return false;    // never build on Japek under/beside the MBZ
     if (rampFoot(o, u, w)) return false;
     if (!toll) return o > 9 && !KSITES.some(t => Math.abs(t.u - u) < TOWN_R + 60);
@@ -1161,8 +989,7 @@ function roadside(g, u0, u1, Z, R, toll){
     return true; };
   const house = (s, u, o, w, d, h, roof = true, wc, rc) => { const x = s*(eAt(u) + o);
     if (o < 70) addSolid(g, 'Menabrak bangunan', u - w/2, u + w/2, x - d/2, x + d/2);     // buildings near the road are solid when you drive off it
-    boxes.push([x, h/2, Z(u), d, h, w, wc ?? WALLS[Math.floor(R()*WALLS.length)]]);
-    if (roof) roofs.push([x, h + 1.0*Math.min(w, d)/6, Z(u), d*0.78, Math.min(w, d)/3, w*0.78, rc ?? ROOFS[Math.floor(R()*ROOFS.length)]]); };
+    buildings.push({x,z:Z(u),d,w,h,type:roof?'house':h>18?'tower':'warehouse',color:wc??WALLS[Math.floor(R()*WALLS.length)]}); };
   for (const s of toll ? [-1, 1] : [-1, 1]) {
     if (reg === 'urban') {
       // dense kampung / housing estates close to the road, ruko and apartment towers further out
@@ -1185,17 +1012,13 @@ function roadside(g, u0, u1, Z, R, toll){
     }
   }
   for (const [s, o, w, h] of fields) g.add(flat(w, CH/2, PADDY[Math.floor(R()*3)], s*(eAt(u0 + CH/2) + o), 0.003, -(30 + h*60)));
-  if (boxes.length) { const m = new THREE.InstancedMesh(unitBox, bldMat, boxes.length);
-    boxes.forEach(([x, y, z, sx, sy, sz, c], j) => { tm.compose(new THREE.Vector3(x, y, z), new THREE.Quaternion(), new THREE.Vector3(sx, sy, sz)); m.setMatrixAt(j, tm); m.setColorAt(j, c); });
-    m.castShadow = m.receiveShadow = true; g.add(m); }
-  if (roofs.length) { const m = new THREE.InstancedMesh(roofGeo, bldRoof, roofs.length);
-    roofs.forEach(([x, y, z, sx, sy, sz, c], j) => { tm.compose(new THREE.Vector3(x, y, z), new THREE.Quaternion(), new THREE.Vector3(sx/4.6, sy/2.4, sz/4.6)); m.setMatrixAt(j, tm); m.setColorAt(j, c); });
-    m.castShadow = true; g.add(m); }
+  buildArchitecture(g,buildings);
 }
 
 // materials that belong to the land: they drop below an elevated toll road
 const prAsphalt = asphalt.clone(), prWhite = white.clone(), prYellow = yellowLine.clone(), prRail = railMat.clone(), prBar = barMat.clone(), gorMat = M(0xf2c230);
 for (const m of [ground.material, vergeMat, prVerge, prAsphalt, prWhite, prYellow, prRail, prBar, trunkMat, crownMat, blobMat, shrubMat, roofMat, roofMat2, ...RUKO, ...PADDY, bldMat, bldRoof, hillMat, uPoleMat, uBarMat]) m.userData.terrain = true;
+architectureMaterials().forEach(m=>{m.userData.terrain=true;if(m===architectureMaterials()[4])vEnv(m,.6);});
 ground.material.userData.bent = false; ground.material.needsUpdate = true; patchMat(ground.material);
 
 // volcanoes on the horizon at their real bearing; height scaled to the real angle they fill
@@ -1792,7 +1615,7 @@ function restArea(g, e){ const ex = o => e + o, th = Math.atan2(6, 7), z = u => 
   streetLamps(g, [118, 148, 178, 208, 238].map(u => [ex(56.6), 0, z(u), Math.PI]).concat([[ex(21.5), 0, z(150), 0], [ex(21.5), 0, z(210), 0]]));
   STATIC.forEach((st, i) => { if (!st) return; const v = makeVehicle(pick(['car','car','suv','van'])); v.g.position.set(ex(40), 0, z(BAYS[i])); v.g.rotation.y = th; g.add(v.g); });
   for (const u of [150, 172, 194]) { const v = makeVehicle('truck'); v.g.position.set(ex(52.5), 0, z(u)); g.add(v.g); }
-  g.add(solid(12, 4.2, 34, M(0xe9e2d4), ex(66), 2.1, z(168)), solid(13.6, 0.5, 36, M(0x9a3b2a), ex(66), 4.45, z(168)), solid(0.1, 2, 30, glassMat, ex(59.95), 1.6, z(168)));
+  buildArchitecture(g,[{x:ex(66),z:z(168),d:12,w:34,h:4.2,type:'shop',color:0xe9e2d4,awning:0x9a3b2a}]);
   g.add(solid(7, 4, 7, M(0xf2efe6), ex(66), 2, z(140))); const dome = new THREE.Mesh(new THREE.SphereGeometry(2.4, 16, 8, 0, Math.PI*2, 0, Math.PI/2), M(0x2f7a55)); dome.position.set(ex(66), 4, z(140)); g.add(dome);
   g.add(solid(10, 0.8, 16, M(0xf4f4f4), ex(66), 5.6, z(222)), solid(10.2, 0.45, 16.2, M(0xd0202a), ex(66), 5.05, z(222)));
   for (const dx of [-3.5, 3.5]) for (const dz of [-5, 5]) g.add(solid(0.35, 5.2, 0.35, M(0xf4f4f4), ex(66)+dx, 2.6, z(222+dz)));
@@ -1800,10 +1623,10 @@ function restArea(g, e){ const ex = o => e + o, th = Math.atan2(6, 7), z = u => 
   // more services: minimarket, coffee kiosk, toilets, ATM, workshop, EV chargers, each with its own sign
   const LBLI = {MINIMARKET: 'cart', 'FOOD COURT': 'food', MUSALA: 'mosque', KOPI: 'coffee', TOILET: 'wc', ATM: 'atm', BENGKEL: 'wrench', SPKLU: 'plug'};
   const lbl = (txt, bg, x, y, zz, w2 = 5) => { const q = panelMesh(w2 + 0.9, 0.9, textPanel(w2 + 0.9, 0.9, bg, txt, '', [LBLI[txt]])); q.position.set(x, y, zz); q.rotation.y = -Math.PI/2; g.add(q); };
-  g.add(solid(12, 3.8, 13, M(0xf4f4f2), ex(66), 1.9, z(194)), solid(12.4, 0.5, 13.4, M(0x1f5fbf), ex(66), 4.0, z(194)), solid(0.1, 2.2, 10, glassMat, ex(59.95), 1.4, z(194)));
+  buildArchitecture(g,[{x:ex(66),z:z(194),d:12,w:13,h:3.8,type:'shop',color:0xf4f4f2,awning:0x1f5fbf}]);
   lbl('MINIMARKET', '#1f5fbf', ex(59.8), 3.2, z(194)); lbl('FOOD COURT', '#9a3b2a', ex(59.8), 3.6, z(168), 6); lbl('MUSALA', '#2f7a55', ex(62.4), 3.4, z(140), 4);
-  g.add(solid(5, 3, 4, M(0x6b4a2e), ex(58), 1.5, z(150)), solid(5.6, 0.3, 4.6, M(0x3a2a1c), ex(58), 3.1, z(150))); lbl('KOPI', '#3a2a1c', ex(55.4), 2.4, z(150), 3);
-  g.add(solid(6, 3, 9, M(0xd9d4c8), ex(66), 1.5, z(124))); lbl('TOILET', SIGN_BLUE, ex(62.9), 2.6, z(124), 3.4);
+  buildArchitecture(g,[{x:ex(58),z:z(150),d:5,w:4,h:3,type:'shop',color:0x8e7762,awning:0x3a2a1c}]); lbl('KOPI', '#3a2a1c', ex(55.4), 2.4, z(150), 3);
+  buildArchitecture(g,[{x:ex(66),z:z(124),d:6,w:9,h:3,type:'shop',color:0xd9d4c8}]); lbl('TOILET', SIGN_BLUE, ex(62.9), 2.6, z(124), 3.4);
   g.add(solid(1.6, 2.4, 1.6, M(0xc8d2dc), ex(58), 1.2, z(132))); lbl('ATM', '#0d5a8a', ex(57.1), 2.2, z(132), 1.6);
   g.add(flat(16, 22, lotMat, ex(66), -0.002, z(252)), solid(10, 4.5, 16, M(0xb9bec4), ex(68), 2.25, z(252)), solid(0.1, 3.6, 12, M(0x2a2c2e), ex(62.95), 1.8, z(252)));
   lbl('BENGKEL', '#c8341f', ex(62.8), 4.0, z(252), 4.4);
@@ -2466,7 +2289,7 @@ function emergencyPlan(dt){
   for (const v of vehicles) v.yxT = v.ngStop ? 0.3 : 0;
   for (const e of EMS) {
     const u = uOfV(e), toll = isToll(u), n = nAvail(e.sd, e.p);
-    if (!e.player) { e.escT = (e.escT || 0) - dt;
+    if (!e.player && !(e.pursuit&&PLR&&Math.abs(e.p-PLR.p)<60&&Math.abs(PLR.vel)<2)) { e.escT = (e.escT || 0) - dt;
       if (e.escT <= 0) { e.escT = 0.5; const {lead, ld} = pathLead(e, posX(-e.sd, e.lane)), slow = lead && ld < 90 && lead.vel < e.vel + 1, jam = lead && lead.vel < 6;
         if (slow) { e.clearT = 0;
           if (toll && (jam || n < 2)) { e.esc = 'sh'; e.escX = n - 0.2; }
@@ -2491,16 +2314,7 @@ function sirenUI(){ const b = $('sirb'); if (!b) return; const ok = !!PLR && EME
 // ON FOOT: get out of the car (E or the "Keluar mobil" button) and walk around; traffic stops for you
 // ================================================================
 let foot = null;
-const skinMat = M(0xc68e62), hairMat = M(0x1d1712), pantsMat = M(0x2b3442), shoeMat = M(0x161616);
-function makePerson(){
-  const g = new THREE.Group(), shirt = M(pick([0xe23b2e, 0x2a6fd1, 0xf2f2ee, 0x2f9a4a, 0xf0b429]));
-  const part = (w, h, d, mat, x, y, z, parent = g) => { const m = new THREE.Mesh(bgeo(w, h, d), mat); m.position.set(x, y, z); m.castShadow = true; parent.add(m); return m; };
-  const legs = [-1, 1].map(s2 => { const p = new THREE.Group(); p.position.set(s2*0.1, 0.9, 0); part(0.15, 0.82, 0.17, pantsMat, 0, -0.41, 0, p); part(0.16, 0.08, 0.27, shoeMat, 0, -0.86, 0.05, p); g.add(p); return p; });
-  part(0.42, 0.62, 0.24, shirt, 0, 1.22, 0);
-  const arms = [-1, 1].map(s2 => { const p = new THREE.Group(); p.position.set(s2*0.27, 1.5, 0); part(0.11, 0.6, 0.12, shirt, 0, -0.27, 0, p); part(0.1, 0.12, 0.1, skinMat, 0, -0.62, 0, p); g.add(p); return p; });
-  part(0.22, 0.25, 0.23, skinMat, 0, 1.68, 0); part(0.24, 0.09, 0.25, hairMat, 0, 1.83, -0.01);
-  bendObj(g); return {g, legs, arms};
-}
+function makePerson(){const p=buildHuman({shirt:pick([0x365c7d,0x974b38,0xd5d1c7,0x477357,0xb28b42])});bendObj(p.g);return p;}
 function footToggle(){
   if (!PLR || !trip) return;
   if (!foot) {
@@ -2745,21 +2559,22 @@ function vehInfo(){ const m = MODS(), t = PLR ? PLR.type : cfg.veh, cat = m.plat
     vmax: Math.round(((VEH[t] || VEH.car).vmax)*3.6), tank: t==='bicycle'?0:TANK[t] || 42, kml:t==='bicycle'?0:KM_L[t] || 12, km: EV.length && PLR ? Math.round(rkAt(uOfV(PLR)) + (stats.km0 || 0)) : 0, dmg: Math.round(PLR && PLR.dmg || 0),
     year: 2018 + (parseInt(cfg.mpId || '7', 36) % 7 || 3), cats: Object.entries(PLATE_NAME)}; }
 function applyMods(v, m){
-  if (!v || !m) return; if (v.type === 'bicycle') {v.lowered=0;return;} const g = v.g; let rimM = null, glassM = null, plateM = null;
+  if (!v || !m) return; if (v.type === 'bicycle') {v.lowered=0;return;}
+  if(v.realistic&&m.rim&&m.rim!==MOD_DEF.rim){const color=new THREE.Color(m.rim);for(const wheel of v.wh){const geo=wheel.geometry.clone(),c=geo.attributes.color;for(let i=0;i<c.count;i++)if((c.getX(i)+c.getY(i)+c.getZ(i))/3>.30)c.setXYZ(i,color.r,color.g,color.b);geo.userData.keep=false;wheel.geometry=geo;}}
+  const g = v.g; let glassM = null, plateM = null;
   g.traverse(o => { if (!o.isMesh) return;
-    if (o.material === rimMat) { rimM = rimM || Object.assign(rimMat.clone(), {userData: {own: true}}); rimM.color.set(m.rim); o.material = rimM; }
-    else if (o.material === glassMat && m.tint) { glassM = glassM || Object.assign(glassMat.clone(), {userData: {own: true}}); glassM.color.set(m.tint > 1 ? 0x05070a : 0x10161c); glassM.metalness = 0.8; o.material = glassM; }
+    if (o.material === glassMat && m.tint) { glassM = glassM || Object.assign(glassMat.clone(), {userData: {own: true}}); glassM.color.set(m.tint > 1 ? 0x05070a : 0x10161c); glassM.metalness = 0.8; o.material = glassM; }
     else if (o.material && o.material.userData && o.material.userData.plate) {
       if (!plateM) { const cat = m.plateCat || plateCatOf(v.type), d = new Date(), def = [autoPlate(cat)];
         plateM = new THREE.MeshStandardMaterial({map: plateCanvas((m.plate || def[0]).toUpperCase(), cat === 'polri' ? 'POLRI' : cat === 'dinas' ? 'DINAS' : cat === 'diplomatik' ? '' : `${String(d.getMonth() + 1).padStart(2, '0')} · ${String((d.getFullYear() + 5) % 100).padStart(2, '0')}`, cat), roughness: 0.45});
         plateM.userData.own = true; } o.material = plateM; } });
   // livery on the body paint
-  const bodyM = g.children.find(o => o.isMesh && o.material && o.material.userData && o.material.userData.own && o.material !== rimM && o.material !== glassM && o.material !== plateM)?.material;
+  const bodyM = g.children.find(o => o.isMesh && o.material && o.material.userData && o.material.userData.own && o.material !== glassM && o.material !== plateM)?.material;
   if (bodyM && bodyM.isMeshStandardMaterial) { const lv = m.livery && m.livery !== 'polos' && LIVERY[m.livery] ? m.livery : null;
     if (bodyM.userData.paint == null) bodyM.userData.paint = bodyM.color.getHex();
     bodyM.map = lv ? liveryTex(lv, '#' + new THREE.Color(bodyM.userData.paint).getHexString(), m.paint2 || '#f4f4f2') : null; bodyM.color.set(lv ? 0xffffff : bodyM.userData.paint); bodyM.needsUpdate = true; }
   const box3 = new THREE.Box3().setFromObject(g), top = box3.max.y, len = v.len, w = (HW[v.type] || 0.92)*2;
-  if (m.spoiler && !heavy(v) && v.type !== 'moto') { const sp = new THREE.Group(); const pm = g.children.find(o => o.isMesh && o.material && o.material.userData.own && o.material !== rimM)?.material || trimMat;
+  if (m.spoiler && !heavy(v) && v.type !== 'moto') { const sp = new THREE.Group(); const pm = g.children.find(o => o.isMesh && o.material && o.material.userData.own)?.material || trimMat;
     const zR = -len/2 + 0.25, yR = v.type === 'car' || v.type === 'taxi' || v.type === 'police' ? 1.02 : top - 0.05;
     const at = (geo, mat, x, y, z) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); o.castShadow = true; sp.add(o); };
     for (const s2 of [-0.5, 0.5]) at(bgeo(0.06, 0.18, 0.1), trimMat, s2*w*0.6, yR + 0.09, zR);
@@ -3483,21 +3298,21 @@ function jobStart(k){
   job = {k, J, stops, i: 0, earned: 0, pax: 0, hold: 0, viol0: stats.viol, crash0: stats.crashes, dmg0: P.dmg || 0, t0: clock};
   $('jobdlg').hidden = true; jobMarker(); jobUI(); toast(`${J.name}: ${jobGoal()}`);
 }
-function jobStop(){ if (!job) return; if (job.mk) { scene.remove(job.mk); job.mk.traverse(o => o.geometry && o.geometry.dispose()); } job = null; jobUI(); }
+function jobStop(){ if (!job) return; if (job.mk) { scene.remove(job.mk); job.mk.traverse(o => {if(o.geometry&&!o.geometry.userData.keep)o.geometry.dispose();}); } job = null; jobUI(); }
 const JOB_COL = {pick: 0x2fa84f, drop: 0xec3013, halte: 0x1f5fbf};
 // the marker: a glowing post and a waiting person (or a bus-stop shelter) on the verge
 function jobMarker(){
-  if (job.mk) { scene.remove(job.mk); job.mk.traverse(o => o.geometry && o.geometry.dispose()); job.mk = null; }
+  if (job.mk) { scene.remove(job.mk); job.mk.traverse(o => {if(o.geometry&&!o.geometry.userData.keep)o.geometry.dispose();}); job.mk = null; }
   const st = job.stops[job.i]; if (!st) return; const g = new THREE.Group(), col = JOB_COL[st.kind];
   const glow = new THREE.MeshBasicMaterial({color: col, transparent: true, opacity: 0.55}), solidM = M(col);
   const post = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 9, 12, 1, true), glow); post.position.y = 4.5; g.add(post);
   const ring = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.12, 8, 28), solidM); ring.rotation.x = Math.PI/2; ring.position.y = 0.15; g.add(ring);
   if (st.kind === 'halte') { g.add(solid(3.4, 0.12, 1.6, M(0x1f5fbf), 0, 2.5, 0), solid(0.1, 2.5, 0.1, M(0x8a8f96), -1.6, 1.25, -0.7), solid(0.1, 2.5, 0.1, M(0x8a8f96), 1.6, 1.25, -0.7), solid(3.2, 0.1, 0.5, M(0xc9ccd0), 0, 0.5, -0.5)); }
   const n = st.kind === 'halte' ? Math.min(4, st.on) : 1;
-  for (let i = 0; i < n; i++) { const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.8, 4, 8), M([0x2f4f7a, 0x7a2f3a, 0x3a6a3a, 0x6a5a2f][i % 4])), head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), M(0xc58c5c));
-    body.position.set(-0.9 + i*0.6, 0.7, 0.2); head.position.set(-0.9 + i*0.6, 1.42, 0.2); g.add(body, head);
-    if (st.kind === 'pick' && (job.k === 'food' || job.k === 'food_bicycle')) { body.visible = head.visible = false; g.add(solid(1.6, 2.2, 1.4, M(0xd9a24a), 0, 1.1, 0), solid(1.8, 0.2, 1.6, M(0x9a3b2a), 0, 2.3, 0)); }
-    if (st.kind === 'pick' && job.k === 'truk') { body.visible = head.visible = false; for (let b = 0; b < 3; b++) g.add(solid(1.1, 1.1, 1.1, M(0xb8894a), -1 + b*1.15, 0.55, 0)); } }
+  for(let i=0;i<n;i++){const person=buildHuman({shirt:[0x365c7d,0x974b38,0x477357,0xb28b42][i%4]});person.g.position.set(-.9+i*.6,0,.2);g.add(person.g);
+    if(st.kind==='pick'&&(job.k==='food'||job.k==='food_bicycle')){person.g.visible=false;buildArchitecture(g,[{x:1.2,z:0,d:2.1,w:2.2,h:2.6,type:'shop',color:0xd9b687,awning:0x8a4b35}]);}
+    if(st.kind==='pick'&&job.k==='truk'){person.g.visible=false;for(let b=0;b<3;b++)g.add(solid(1.1,1.1,1.1,M(0xb8894a),-1+b*1.15,.55,0));}}
+
   bendObj(g); scene.add(g); job.mk = g;
 }
 function placeJob(){ if (!job || !job.mk) return; const st = job.stops[job.i]; if (!st) return; const sd = 1, e = eAt(st.u);
@@ -5439,7 +5254,7 @@ function tickPursuit(dt){
   if(PURSUIT.phase!=='chasing'||!PLR)return;
   if(!pursuitCar||!vehicles.includes(pursuitCar)||pursuitCar.sd!==PLR.sd){if(pursuitCar&&vehicles.includes(pursuitCar)){rm(vehicles,pursuitCar);killVehicle(pursuitCar);}pursuitCar=null;spawnPursuitCar();}
   const cop=pursuitCar;if(!cop)return;
-  cop.exitWant=false;const gap=PLR.p-cop.p,near=!PLR.rp&&Math.abs(gap)<28&&Math.abs(cop.x-PLR.x)<7;
+  cop.exitWant=false;const gap=PLR.p-cop.p;if(Math.abs(gap)<60&&Math.abs(PLR.vel)<2){cop.esc='po';cop.escX=clamp(PLR.lx+.35,0,nAvail(cop.sd,cop.p)-.15);}const near=!PLR.rp&&Math.abs(gap)<28&&Math.abs(cop.x-PLR.x)<7;
   if(gap< -45){cop.v0=8;}else{cop.v0=Math.min(50,Math.max(24,Math.abs(PLR.vel)+8));cop.cd=Math.min(cop.cd,.3);const target=clamp(Math.round(PLR.lx),0,nAvail(cop.sd,cop.p)-1);if(target!==cop.lane&&gapsOK(cop,target,true))cop.lane=target;}
   if((pursuitMsg-=dt)<=0){pursuitMsg=10;toast('Polisi: menepi, berhenti, dan tunggu petugas!','bad');}
   if(PURSUIT_ENGINE.step({time:clock,near,stopped:Math.abs(PLR.vel)<1,dt}))arrestPlayer();
@@ -5468,7 +5283,7 @@ function tick(dt){
   ensureAhead();
   setupBlocks(false); updateWorld(true); updateSignals(); animGhosts();
 }
-window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
+window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering
 window.__tj.step = (n, dt = 1/20) => { for (let i = 0; i < n; i++) tick(dt); updateSegs(); placeGroups(); place(); for (let k = 0; k < 40; k++) updateCam(dt); updateBend(); hudT = 0; updateHud(dt); drawMap(); };
