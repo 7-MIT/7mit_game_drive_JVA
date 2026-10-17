@@ -4895,7 +4895,7 @@ $('sirb').onclick = () => { cfg.siren = !cfg.siren; saveCfg(); sirenUI(); toast(
 $('hudb').onclick = () => { cfg.clean = !cfg.clean; saveCfg(); setClean(); renderUI(); toast(cfg.clean ? 'HUD ringkas' : 'HUD normal'); };
 $('camb').onclick = () => { const order = ['chase', 'cockpit', 'drone', 'ic', 'orbit'], m = order[(order.indexOf(cfg.cam) + 1) % order.length]; apply('cam', m); };
 addEventListener('keydown', e => { if (FLY && FLY.on) return; if (e.key === 'Escape' && !$('atlas').hidden) { closeAtlas(); return; }
-  if (e.target.closest && e.target.closest('select,input')) return;
+  if (e.target.closest && e.target.closest('select,input,textarea,[contenteditable]')) return;
   const k = e.key.toLowerCase();
   if (k === 'enter' && mp.on && !$('mpbox').hidden) { $('mpbox').classList.remove('min'); $('mp-in').focus(); e.preventDefault(); return; }
   if (['arrowup','arrowdown','arrowleft','arrowright','w','a','s','d'].includes(k) && !document.body.classList.contains('kbd')) document.body.classList.add('kbd');

@@ -385,3 +385,13 @@ The maps colour the **inside of the navigation line** using live game simulation
 Active nearby roadworks and contraflow, crashed AI vehicles, and player crashes appear as map markers. The phone shows the nearest two incidents ahead, their route distance, affected lanes and opposite-direction labels. Player crash reports expire after 45 simulation seconds or a route replacement; AI reports disappear when their crash state expires.
 
 Run map regression checks with `node --test simulator/tests/map-data.test.mjs`.
+
+### App Store on the phone
+
+Open **App Store** from the phone home screen to browse **160 local mini-apps in 10 categories**: Perjalanan, Kendaraan, Produktivitas, Utilitas, Belajar, Game, Keuangan, Rutinitas, Kreatif and Eksplorasi. Search by name or category, tap **DAPATKAN** to install, then **BUKA** or the new home-screen icon to launch. The Terpasang tab and each app detail page let you manage installations; uninstalling asks for confirmation and removes that app's data. Built-in phone apps remain available.
+
+Six extras start installed: Catatan, Tugas, Kalkulator, Stopwatch, Tebak Angka and Sketch Pad. The home grid scrolls independently of the dock and includes a search field, so all installed apps remain reachable. Notes, lists, calculation inputs, timer state, ledger entries, drawings and game best scores save through the existing local phone configuration and return after reload. There is no real OS installation or external app download.
+
+The catalogue uses 23 working mini-app engines with app-specific presets and content: navigation to places in the game, live vehicle dashboards, notes, checklists, calculators, unit conversion, timers, stopwatch, ledgers, quizzes, flashcards, number guessing, dice, memory, reaction/tapping games, palettes, drawing, text tools and random pickers. Navigation helpers use the existing game route API. Notes and lists render user content as text. Text input does not trigger driving hotkeys.
+
+Validation: `node --test simulator/tests/*.mjs`. The optional phone DOM integration suite requires `jsdom`; install it in the test environment or set `PHONE_DOM_MODULE` to its module path. Without it, only those DOM checks are skipped. DOM checks cover rendering all 160 apps, install/open/confirmed uninstall, home search, persistent data, calculator/quiz interaction and custom timer duration.
