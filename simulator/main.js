@@ -20,7 +20,7 @@ import {TRIP_OPTIONS, ROUTE_OPTIONS, MOD_DEF, PAINTS, RIMS, LIVERY, PRESETS} fro
 import {buildHuman} from './human-model.js';
 import {buildArchitecture, architectureMaterials} from './architecture-models.js';
 import {foliageGeometry,shrubGeometry} from './natural-models.js';
-import {initialQuality,qualityProfile,createQualityGovernor,createSimulationClock} from './adaptive-performance.js';
+import {initialQuality,qualityProfile,ultraProfile,createQualityGovernor,createSimulationClock} from './adaptive-performance.js';
 import {attachVehicleLOD,setVehicleLOD,distantOpaqueMaterial} from './vehicle-lod.js';
 import {createLawAuditor, LAW_BY_ID, inferLaw, mustStop, safeStep, followSeconds} from './traffic-law.js';
 import {makeEtleCameras, createEtle} from './etle.js';
@@ -68,7 +68,8 @@ function posX(side, lx){ const c = MED + LW/2;
 await window.TJ_BOOT?.stage(25,'Menyiapkan mesin grafis');
 const renderer = new THREE.WebGLRenderer({antialias:!MOBILE, preserveDrawingBuffer:!MOBILE});
 // Cap total render pixels as well as DPR on high-resolution screens.
-const basePixelRatio=()=>Math.min(devicePixelRatio||1,MOBILE?1.25:2,Math.sqrt((MOBILE?1200000:3000000)/(innerWidth*innerHeight)));
+const ULTRA=()=>cfg.gfx==='tinggi';
+const basePixelRatio=()=>ULTRA()?Math.min(devicePixelRatio||1,2,Math.sqrt((MOBILE?2400000:4800000)/(innerWidth*innerHeight))):Math.min(devicePixelRatio||1,MOBILE?1.25:2,Math.sqrt((MOBILE?1200000:3000000)/(innerWidth*innerHeight)));
 renderer.setPixelRatio(basePixelRatio());
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
@@ -3189,7 +3190,7 @@ function place(){
   for (const v of vehicles){ const u = v.sd*v.p, z = camU - u;
     v.g.position.set(v.x, (v.lift || 0) - (v.lowered || 0) + (v.heave || 0), z); v.g.rotation.y = (v.sd > 0 ? Math.PI : 0) - v.yaw*v.sd; v.g.visible = z < zb && z > -zf && !(v.player && camMode === 'cockpit' && !foot && !tow);
     // Realistic wheels stay on distant LOD models; original geometry is kept nearby.
-    setVehicleLOD(v,MOBILE?Math.min(26,PROFILE.nearLOD):PROFILE.nearLOD);
+    setVehicleLOD(v,PROFILE.ultra||!MOBILE?PROFILE.nearLOD:Math.min(26,PROFILE.nearLOD));
     const near = !!v.distanceLOD || Math.abs(z) < 140 || v.player; if (v.lod !== near) { v.lod = near; for (const w of v.wh) w.visible = near; }
     if (v.g.visible && Math.abs(z) < 300) { v.g.rotation.x = v.pit || 0; v.g.rotation.z = v.rol || 0; for (const w of v.front || []) w.rotation.y = isTwoWheeler(v.type) ? v.stv||0 : ackermannAngle(v.stv||0,w.position.x,wheelbase(v));
       if(v.player&&!isTwoWheeler(v.type))for(const w of v.wh){w.userData.baseY??=w.position.y;w.position.y=w.userData.baseY+(v.pit||0)*w.position.z-(v.rol||0)*w.position.x-(v.heave||0);}
@@ -4524,7 +4525,7 @@ function rowsSpec(){
     ['weather', 'Cuaca', [['cerah','Cerah'],['berawan','Berawan'],['hujan','Hujan'],['kabut','Kabut']]],
     ['roadStyle', 'Bentuk jalan', [['data','Sesuai aslinya (OpenStreetMap)'],['kelok','Lebih berkelok & berbukit'],['lurus','Lebih lurus']]],
     ['view', 'Jarak pandang', [['normal','Normal'],['jauh','Jauh (lebih berat)']]],
-    ['gfx', 'Grafis', [['auto','Otomatis'],['hemat','Hemat (paling ringan)'],['sedang','Sedang'],['tinggi','Tinggi']]],
+    ['gfx', 'Grafis', [['auto','Otomatis'],['hemat','Hemat (paling ringan)'],['sedang','Sedang'],['tinggi','Tinggi (paling realistis)']]],
     ['autoSteer', 'Setir otomatis', [[false,'Mati'],[true,'Aktif (gas & rem tetap manual)']]],
     ['sound', 'Suara', [[true,'Nyala'],[false,'Mati']]],
     ['voice', 'Suara navigasi', [[true,'Nyala (pemandu suara)'],[false,'Mati']]],
@@ -5381,18 +5382,19 @@ const DEVICE_QUALITY=initialQuality({mobile:MOBILE,memory:navigator.deviceMemory
 const GOVERNOR=createQualityGovernor(DEVICE_QUALITY),QUAL=GOVERNOR.state;
 let PROFILE=qualityProfile(QUAL.level);
 function syncQuality(){
-  PROFILE=qualityProfile(QUAL.level);
+  PROFILE=ULTRA()?ultraProfile(MOBILE):qualityProfile(QUAL.level);
   renderer.setPixelRatio(Math.max(.4,basePixelRatio()*PROFILE.scale));
   if(composer){composer.setPixelRatio(renderer.getPixelRatio());composer.setSize(innerWidth,innerHeight);}
-  const useShadows=!MOBILE&&PROFILE.shadows,shadowsChanged=renderer.shadowMap.enabled!==useShadows;
+  const useShadows=(!MOBILE||PROFILE.ultra)&&PROFILE.shadows,shadowsChanged=renderer.shadowMap.enabled!==useShadows;
   bloom.enabled=!!composer&&PROFILE.bloom;renderer.shadowMap.enabled=useShadows;sun.castShadow=useShadows;
   renderer.shadowMap.autoUpdate=false;renderer.shadowMap.needsUpdate=true;
-  const size=MOBILE?Math.min(512,PROFILE.shadowSize):PROFILE.shadowSize;
+  const size=MOBILE&&!PROFILE.ultra?Math.min(512,PROFILE.shadowSize):PROFILE.shadowSize,span=PROFILE.shadowSpan||90;
+  if(sun.shadow.camera.right!==span){Object.assign(sun.shadow.camera,{left:-span,right:span,top:span,bottom:-span,far:span*4.4});sun.shadow.camera.updateProjectionMatrix();}
   if(sun.shadow.mapSize.x!==size){sun.shadow.mapSize.set(size,size);sun.shadow.map?.dispose();sun.shadow.map=null;}
   // Refresh materials after toggling the shadow shader variant.
   if(shadowsChanged){const mats=new Set();scene.traverse(o=>{if(o.material)for(const m of Array.isArray(o.material)?o.material:[o.material])mats.add(m);});for(const m of mats)m.needsUpdate=true;}
 }
-function govern(rawDt){if(GOVERNOR.sample(rawDt))syncQuality();}
+function govern(rawDt){if(!ULTRA()&&GOVERNOR.sample(rawDt))syncQuality();}
 function applyGfx(){GOVERNOR.reset(({hemat:5,sedang:2,tinggi:0})[cfg.gfx]??DEVICE_QUALITY);syncQuality();}
 applyGfx();
 window.__tj.performance={preset:mode=>apply('gfx',mode),draw:()=>renderWorld(),get metrics(){return {level:QUAL.level,fps:Math.round(QUAL.fps),pixelRatio:renderer.getPixelRatio(),bloom:bloom.enabled,shadows:renderer.shadowMap.enabled,shadowSize:sun.shadow.mapSize.x,nearLOD:PROFILE.nearLOD,mirrorHz:PROFILE.mirrorHz};}};

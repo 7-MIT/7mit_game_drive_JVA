@@ -6,6 +6,11 @@ export function qualityProfile(level){
   const n=Math.max(0,Math.min(5,level));
   return {scale:[1,.9,.8,.7,.6,.5][n],shadowSize:n<2?2048:1024,shadowEvery:[2,3,4,6,8,10][n],shadows:n<4,bloom:n<2,nearLOD:[55,50,45,40,35,30][n],viewScale:[1,1,.9,.8,.7,.65][n],mirrorHz:n<2?20:n<4?10:0};
 }
+// The Tinggi preset: the player's explicit choice of the richest picture. Every vehicle keeps its full model at any distance,
+// sharp shadows refresh every frame over a wider area, the full screen resolution and a longer view; the governor leaves it alone.
+export function ultraProfile(mobile=false){
+  return {scale:1,shadowSize:mobile?2048:4096,shadowEvery:1,shadows:true,bloom:true,nearLOD:1e4,viewScale:mobile?1.2:1.35,mirrorHz:30,shadowSpan:mobile?140:180,ultra:true};
+}
 export function createQualityGovernor(level=0){
   const state={level,acc:0,n:0,slow:0,fast:0,cooldown:0,fps:60};
   return {state,reset(next){state.level=Math.max(0,Math.min(5,next));state.acc=state.n=state.slow=state.fast=0;state.cooldown=4;},sample(dt){

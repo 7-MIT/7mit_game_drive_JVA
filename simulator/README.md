@@ -474,3 +474,4 @@ Run `PHONE_DOM_MODULE=/path/to/jsdom node --test simulator/tests/startup.test.mj
 - **Aplikasi Musik di HP.** Pemutar musik pindah ke dalam aplikasi Musik.
 - **Penumpang taksi/ojek.** Selama menjadi penumpang, autopilot terkunci. Jika pesanan dibatalkan, pemain kembali ke kendaraan pribadi dan bisa menyetir manual lagi.
 - **Waktu nyata.** Ada opsi kecepatan waktu baru: 1 jam = 60 menit.
+- **Grafis Tinggi = paling realistis.** Di Pengaturan → Grafis → Tinggi, setiap kendaraan tetap memakai model 3D lengkapnya sejauh apa pun, tanpa model sederhana untuk kendaraan jauh. Resolusinya penuh (hingga 2× piksel layar). Bayangan dibuat tajam (peta bayangan 4096, atau 2048 di HP), mencakup area dua kali lebih luas, dan diperbarui setiap frame. Efek cahaya (bloom) aktif, jarak pandang lebih jauh, dan spion diperbarui 30 kali per detik. Grafis tidak diturunkan otomatis di preset ini, jadi pilih Otomatis kalau perangkat terasa berat.
