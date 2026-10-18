@@ -463,3 +463,14 @@ Opening the simulator displays a lightweight, interactive `driving.7mit` welcome
 `startup.js` imports `main.js` on demand. The loading screen reports actual preparation milestones: module download, renderer, services, interface/fonts, world/traffic, camera and shader compilation. The percentage represents these preparation stages, not transferred download bytes. Simulation and keyboard driving stay paused behind the cover, and the game is revealed only after its initial scene is prepared. Each normal visit enters the journey planner; direct tutorial/flight links automatically show loading and retain their requested mode. Download/WebGL failures expose a reload action, and slow loads show a status message. The welcome screen supports keyboard focus, phone layouts and reduced motion.
 
 Run `PHONE_DOM_MODULE=/path/to/jsdom node --test simulator/tests/startup.test.mjs` to check deferred loading, a single startup, ambience settings, readiness, failure recovery, direct tutorial entry and denied local storage.
+
+### Pembaruan 2.02
+
+- **Navigasi di aplikasi Peta HP mirip Google Maps.** Panah belokan menyesuaikan arah: lurus, serong, belok tajam, putar balik, keluar tol ke kiri, dan tiba. Banner tidak lagi muncul berkedip setiap kali diperbarui. Ada suara navigasi berbahasa Indonesia ("Dalam 600 meter, keluar ke kiri…"). Suara ini juga mengingatkan saat ngebut, menjelang gerbang tol, saat saldo e-Toll atau BBM menipis, saat mengantuk, serta saat hujan atau berkabut. Ketuk banner untuk mengulang suara, atau matikan lewat Pengaturan → Suara navigasi.
+- **Garis rute mengikuti jalan.** Di peta mini, peta HP dan peta besar, garis menuju tujuan mengikuti tikungan jalan OSM, bukan garis lurus antar-simpang.
+- **Data jalan langsung dari OpenStreetMap.** Data tol, arteri, jalan provinsi, kabupaten/kota dan jalan lingkungan diambil langsung dan disimpan di cache selama 14 hari. Garis pantai Jawa dan Madura memakai bentuk asli, tidak lagi kotak-kotak.
+- **Bentuk jalan 3D sinkron dengan OSM.** Kelokan jalan di dunia 3D mengikuti bentuk ruas aslinya. Jalan samping dari OSM muncul sebagai simpang lengkap dengan papan nama jalan.
+- **Mode Terbang di `/terbang`.** Simulator pesawat di atas Jawa dan Madura dengan 25 bandara asli beserta landasan dan bangunannya, ditambah jalan dari OSM.
+- **Aplikasi Musik di HP.** Pemutar musik pindah ke dalam aplikasi Musik.
+- **Penumpang taksi/ojek.** Selama menjadi penumpang, autopilot terkunci. Jika pesanan dibatalkan, pemain kembali ke kendaraan pribadi dan bisa menyetir manual lagi.
+- **Waktu nyata.** Ada opsi kecepatan waktu baru: 1 jam = 60 menit.
