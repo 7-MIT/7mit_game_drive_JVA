@@ -50,11 +50,21 @@ export function initOSM({onUpdate = () => {}, log = () => {}} = {}){
     return out; }
   async function cached(key){ try { const c = await caches.open(CACHE), r = await c.match('https://tj-osm.local/' + key); if (!r) return null; const j = await r.json(); return Date.now() - j.t < MAX_AGE ? j : null; } catch (e) { return null; } }
   async function store(key, data){ try { const c = await caches.open(CACHE); await c.put('https://tj-osm.local/' + key, new Response(JSON.stringify({t: Date.now(), d: data}), {headers: {'content-type': 'application/json'}})); } catch (e) {} }
-  async function overpass(q, ms){ let last = '';
-    for (const m of MIRRORS) { const ac = new AbortController(), to = setTimeout(() => ac.abort(), ms);
-      try { const r = await fetch(m, {method: 'POST', body: 'data=' + encodeURIComponent(q), headers: {'content-type': 'application/x-www-form-urlencoded'}, signal: ac.signal});
-        clearTimeout(to); if (!r.ok) { last = `${new URL(m).host}: HTTP ${r.status}`; continue; } const j = await r.json(); S.source = new URL(m).host; return j; }
-      catch (e) { clearTimeout(to); last = `${new URL(m).host}: ${e.name === 'AbortError' ? 'timeout' : e.message}`; } }
+  // every request goes through one queue, one at a time (the public Overpass servers allow only a couple of requests per user):
+  // the main roads near the car first, the coastline last; a busy server (429 / 504) is waited out and asked again
+  const Q = []; let running = false; S.queue = 0;
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  function overpass(q, ms, pri = 2){ return new Promise((res, rej) => { Q.push({q, ms, pri, res, rej, at: Q.length}); Q.sort((a, b) => a.pri - b.pri || a.at - b.at); S.queue = Q.length; pump(); }); }
+  async function pump(){ if (running || !Q.length) return; running = true; const job = Q.shift(); S.queue = Q.length;
+    try { job.res(await overpassNow(job.q, job.ms)); } catch (e) { job.rej(e); } finally { running = false; S.queue = Q.length; setTimeout(pump, 400); } }
+  async function overpassNow(q, ms){ let last = '';
+    for (let attempt = 0; attempt < 3; attempt++) { let busy = false;
+      for (const m of MIRRORS) { const ac = new AbortController(), to = setTimeout(() => ac.abort(), ms);
+        try { const r = await fetch(m, {method: 'POST', body: 'data=' + encodeURIComponent(q), headers: {'content-type': 'application/x-www-form-urlencoded'}, signal: ac.signal});
+          clearTimeout(to); if (!r.ok) { last = `${new URL(m).host}: HTTP ${r.status}`; if (r.status === 429 || r.status === 504 || r.status === 503) busy = true; continue; }
+          const j = await r.json(); S.source = new URL(m).host; return j; }
+        catch (e) { clearTimeout(to); last = `${new URL(m).host}: ${e.name === 'AbortError' ? 'timeout' : e.message}`; } }
+      if (!busy) break; await wait(12000*(attempt + 1)); }
     throw new Error(last || 'Overpass tidak terjangkau'); }
   const bb = (s, w, n, e) => `(${s},${w},${n},${e})`;
   const area = r => REGIONS[r].poly ? `(poly:"${REGIONS[r].poly.map(p => p.join(' ')).join(' ')}")` : bb(...REGIONS[r].bb);
@@ -62,21 +72,23 @@ export function initOSM({onUpdate = () => {}, log = () => {}} = {}){
   async function loadBase(force){
     if (S.status === 'loading') return; S.status = 'loading'; S.err = ''; onUpdate('loading');
     try { let c = force ? null : await cached('base');
-      if (!c) { const j = await overpass(`[out:json][timeout:180];way["highway"~"^(motorway|trunk)$"]${bb(...BBOX)};out geom;`, 200000); const d = parse(j); if (!d.length) throw new Error('data kosong'); await store('base', d); c = {t: Date.now(), d}; }
+      if (!c) { const j = await overpass(`[out:json][timeout:180];way["highway"~"^(motorway|trunk)$"]${bb(...BBOX)};out geom;`, 200000, 0); const d = parse(j); if (!d.length) throw new Error('data kosong'); await store('base', d); c = {t: Date.now(), d}; }
       roads.length = 0; grid.clear(); S.km = 0; tiles.clear(); for (const k in R) delete R[k]; for (const k in T2) delete T2[k]; add(c.d); S.at = c.t; S.status = 'ok'; log(`OSM: ${roads.length} ruas`); onUpdate('ok'); }
     catch (e) { S.status = 'fail'; S.err = e.message; onUpdate('fail'); }
     loadCoast(force); }
   // the main roads (toll, trunk) of another island (Sumatera, Bali) come per 2° tile around a point, so a request stays small;
   // the first tile of an island also asks for its coastline. R[region] = 'ok' once any of its tiles has loaded.
-  const T2 = {}; S.t2 = T2;
+  const T2 = {}, T2R = {}; S.t2 = T2;
   const t2key = (lat, lon) => `m${Math.floor(lat/2)}_${Math.floor(lon/2)}`;
-  async function loadMain(lat, lon){ const r = regionAt(lat, lon); if (r === 'jawa' || S.status !== 'ok') return; const key = t2key(lat, lon); if (T2[key]) return;
+  async function loadMain(lat, lon){ const r = regionAt(lat, lon); if (r === 'jawa' || S.status !== 'ok') return; const key = t2key(lat, lon); if (T2[key]) return; T2R[key] = r;
     const ti = Math.floor(lat/2)*2, tj = Math.floor(lon/2)*2; T2[key] = 'loading'; if (!R[r]) R[r] = 'loading';
     try { let c = await cached(key);
-      if (!c) { const j = await overpass(`[out:json][timeout:150];way["highway"~"^(motorway|trunk)$"]${bb(ti, tj, ti + 2, tj + 2)};out geom;`, 170000); const d = parse(j); await store(key, d); c = {d}; }
+      if (!c) { const j = await overpass(`[out:json][timeout:150];way["highway"~"^(motorway|trunk)$"]${bb(ti, tj, ti + 2, tj + 2)};out geom;`, 170000, 1); const d = parse(j); await store(key, d); c = {d}; }
       add(c.d); T2[key] = 'ok'; R[r] = 'ok'; onUpdate('region'); }
-    catch (e) { T2[key] = 'fail'; setTimeout(() => { if (T2[key] === 'fail') delete T2[key]; }, 90000); }
-    loadCoast(false, r); }
+    catch (e) { T2[key] = 'fail'; S.err = e.message; onUpdate('region'); setTimeout(() => { if (T2[key] === 'fail') delete T2[key]; }, 60000); }
+    // Bali's coastline is one small request; Sumatera's is far too big for the public servers (the built-in coastline stays)
+    if (r === 'bali') loadCoast(false, r); }
+  S.regionInfo = () => { const o = {}; for (const [k, v] of Object.entries(T2)) { const r = T2R[k] || 'jawa'; o[r] = o[r] || {ok: 0, loading: 0, fail: 0}; o[r][v]++; } return o; };
   const mainOK = (lat, lon) => regionAt(lat, lon) === 'jawa' ? S.status === 'ok' : T2[t2key(lat, lon)] === 'ok';
   const regionAt = (lat, lon) => { for (const r in REGIONS) if (inBB(REGIONS[r].bb, lat, lon) && !(r === 'sumatra' && lon > 105.85 && lat < -5.92)) return r; return 'jawa'; };
   // the coastline: OSM coastline ways joined end to end into closed rings (land on the left), simplified to ~25 m
@@ -100,7 +112,7 @@ export function initOSM({onUpdate = () => {}, log = () => {}} = {}){
   // across most of it), otherwise the built-in coastline stays
   async function loadCoast(force, r = 'jawa'){ const C = S.coastR; if (C[r] === 'loading' || (C[r] === 'ok' && !force)) return; C[r] = 'loading'; if (r === 'jawa') S.coast = 'loading';
     try { const key = r === 'jawa' ? 'coast' : 'coast-' + r, span = r === 'jawa' ? 7 : REGIONS[r].span; let c = force ? null : await cached(key);
-      if (!c) { const j = await overpass(`[out:json][timeout:180];way["natural"="coastline"]${r === 'jawa' ? bb(...BBOX) : area(r)};out body geom;`, 240000); const d = rings(j);
+      if (!c) { const j = await overpass(`[out:json][timeout:180];way["natural"="coastline"]${r === 'jawa' ? bb(...BBOX) : area(r)};out body geom;`, 240000, 4); const d = rings(j);
         if (!d.some(p => { let a = 180, b = -180; for (const q of p) { a = Math.min(a, q[0]); b = Math.max(b, q[0]); } return b - a > span; })) throw new Error('garis pantai tidak utuh');
         await store(key, d); c = {d}; }
       setLand(r, c.d); C[r] = 'ok'; if (r === 'jawa') S.coast = 'ok'; onUpdate('coast'); }
@@ -113,7 +125,7 @@ export function initOSM({onUpdate = () => {}, log = () => {}} = {}){
   // provincial, regency and city roads (primary, secondary, tertiary) of the 1° tile around a point;
   // the street network (residential, unclassified) of the 0.1° tile around a point, for close-up maps and the side streets in the game
   async function loadArea(key, q, ms){ if (S.status !== 'ok' || tiles.has(key)) return; tiles.set(key, 'loading');
-    try { let c = await cached(key); if (!c) { const j = await overpass(q, ms); const d = parse(j); await store(key, d); c = {d}; }
+    try { let c = await cached(key); if (!c) { const j = await overpass(q, ms, key[0] === 'r' ? 3 : 2); const d = parse(j); await store(key, d); c = {d}; }
       add(c.d); tiles.set(key, 'ok'); onUpdate('tile'); }
     catch (e) { tiles.set(key, 'fail'); setTimeout(() => tiles.delete(key), 60000); } }
   const covered = (la0, lo0, la1, lo1) => [BBOX, ...Object.values(REGIONS).map(q => q.bb)].some(b => la1 >= b[0] && la0 <= b[2] && lo1 >= b[1] && lo0 <= b[3]);

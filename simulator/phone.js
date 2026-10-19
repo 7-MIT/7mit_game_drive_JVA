@@ -654,7 +654,8 @@ export function initPhone(A){
     pg.querySelector('.ow').onchange = e => { P.owner = e.target.value.trim() || 'Pengemudi 7MIT'; save(); };
     // where the roads come from: OpenStreetMap, live
     const O = A.osm.S(), ost = {idle: 'Menunggu', loading: 'Sedang memuat…', ok: `Aktif · ${O.n.toLocaleString('id-ID')} ruas · ${Math.round(O.km).toLocaleString('id-ID')} km${O.source ? ' · ' + O.source : ''}`, fail: `Gagal (${O.err}) · memakai data bawaan`}[O.status];
-    html(pg, `<div class="card"><h4>Data jalan</h4><p>OpenStreetMap (diambil langsung dari internet, disimpan di perangkat)<br><b style="color:var(--ink)">${esc(ost)}</b></p><button class="btn sec osr" style="margin-top:8px">${ic('RefreshCw')} Muat ulang data jalan</button><p style="margin-top:6px;font-size:10.5px">Data peta © kontributor OpenStreetMap (ODbL)</p></div>`)
+    const RI = O.regionInfo ? O.regionInfo() : {}, rn = {sumatra: 'Sumatera', bali: 'Bali'}, rst = Object.entries(RI).map(([r, v]) => `${rn[r] || r}: ${v.ok} area dimuat${v.loading ? `, ${v.loading} sedang dimuat` : ''}${v.fail ? `, ${v.fail} gagal (dicoba lagi)` : ''}`).join(' · ') + (O.queue ? ` · antrean ${O.queue}` : '');
+    html(pg, `<div class="card"><h4>Data jalan</h4><p>OpenStreetMap (diambil langsung dari internet, disimpan di perangkat)<br><b style="color:var(--ink)">${esc(ost)}</b>${rst ? `<br>${esc(rst)}` : ''}</p><button class="btn sec osr" style="margin-top:8px">${ic('RefreshCw')} Muat ulang data jalan</button><p style="margin-top:6px;font-size:10.5px">Data peta © kontributor OpenStreetMap (ODbL)</p></div>`)
       .querySelector('.osr').onclick = e => { e.stopPropagation(); A.osm.reload(); A.toast('Memuat ulang data jalan dari OpenStreetMap…'); setTimeout(redraw, 300); };
     live(() => { if (A.osm.S().status !== O.status) redraw(); });
     html(pg, `<button class="btn sec">${ic('SlidersHorizontal')} Pengaturan game</button>`).onclick = () => { toggle(false); A.openSettings(); }; };
