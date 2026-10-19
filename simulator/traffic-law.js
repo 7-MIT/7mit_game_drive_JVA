@@ -14,6 +14,7 @@ export const TRAFFIC_LAWS=Object.freeze([
   {id:'closed',title:'Patuhi lajur ditutup dan marka',article:'Pasal 106(4)',detail:'Jangan masuk ke lajur yang ditutup cone. Beri ruang kendaraan yang bergabung ke lajur terbuka.',fine:50000,points:5},
   {id:'priority',title:'Beri jalan kendaraan darurat',article:'Pasal 134–135',detail:'Menepi dan perlambat untuk kendaraan bertugas dengan sirene. Hak utama tidak menghilangkan kewajiban mencegah tabrakan.',fine:50000,points:5},
   {id:'junction',title:'Jangan mengunci persimpangan',article:'Pasal 105, 106',detail:'Meskipun hijau, tunggu sebelum garis jika ruang setelah simpang tidak cukup. Kendaraan dari ramp menunggu celah di jalan utama.',fine:25000,points:3},
+  {id:'oddeven',title:'Ganjil-genap di Jakarta',article:'Pergub DKI 88/2019',detail:'Hari kerja pukul 06–10 dan 16–21 di jalan utama pusat Jakarta: angka terakhir plat harus sesuai tanggal (ganjil/genap). Taksi, angkot, bus, motor, kendaraan darurat dan mobil listrik dikecualikan.',fine:500000,points:5},
   {id:'toll',title:'Patuhi akses kendaraan dan gerbang',article:'Rambu ruas dalam simulasi',detail:'Sepeda dan motor memakai non-tol. Patuhi pembatasan MBZ dan berhenti untuk pembayaran e-Toll.',fine:100000,points:10}
 ]);
 export const LAW_BY_ID=Object.fromEntries(TRAFFIC_LAWS.map(r=>[r.id,r]));

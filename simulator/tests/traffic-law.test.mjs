@@ -7,7 +7,7 @@ const facts=(o={})=>({id:'p',plate:'B 1234 SIM',player:true,type:'car',u:0,sd:1,
 function run(a,v,base,seconds,dt=.05){const events=[];for(let i=0;i<Math.ceil(seconds/dt);i++)events.push(...a.sample(v,{...base,time:i*dt},dt));return events;}
 test('one policy evaluates player and AI; speed has a measured dwell and cooldown',()=>{
  for(const player of [true,false]){const a=createLawAuditor(),v={};assert.deepEqual(run(a,v,facts({player,speed:25}),2),[]);assert.ok(run(createLawAuditor(),{},facts({player,speed:25}),4).includes('speed'));assert.equal(run(createLawAuditor(),{},facts({player,speed:25}),10).filter(x=>x==='speed').length,1);}
- assert.equal(TRAFFIC_LAWS.length,11);
+ assert.equal(TRAFFIC_LAWS.length,12);
 });
 test('red light requires a real line crossing, respects priority, and ignores teleports',()=>{
  const a=createLawAuditor(),v={};a.sample(v,facts({front:9,speed:5,lights:[{line:10,signal:'R'}]}),.1);

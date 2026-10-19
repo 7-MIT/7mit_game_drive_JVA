@@ -2195,11 +2195,17 @@ function pickType(lane, n, p, sd){
   if (p != null && Math.random() < (regionAt(sd*p) === 'urban' ? 0.12 : 0.03)) return 'taxi';
   { const e = Math.random(); if (e < 0.012) return e < 0.005 ? 'ambulance' : e < 0.009 ? 'police' : 'damkar'; }
   if (p != null && !isToll(sd*p)) { const t = Math.random(), outer = lane === n - 1;
+    if (swarmAt(sd*p) && Math.random() < 0.5) return 'moto';                 // city streets: motorbikes everywhere
     if (Math.random() < (outer ? 0.2 : 0.08)) return 'angkot';
     return outer ? (t < .38 ? 'moto' : t < .5 ? 'van' : t < .62 ? 'truck' : t < .67 ? 'bus' : t < .85 ? 'car' : 'suv') : (t < .5 ? 'car' : t < .75 ? 'suv' : t < .9 ? 'van' : 'moto'); }
   const t = Math.random(), outer = lane >= n - 2 && lane >= heavyMin(n);
   let type = lane === 0 ? (t<.2?'suv':'car') : outer ? (t<.3?'truck':t<.4?'bus':t<.55?'van':t<.78?'suv':'car') : (t<.1?'van':t<.4?'suv':'car');
+  if (cfg.mudik && type === 'truck') type = Math.random() < 0.5 ? 'bus' : 'suv';      // mudik: trucks with 3+ axles are kept off the toll roads
   if (heavy({type}) && lane < heavyMin(n)) type = 'car'; return type; }
+// motorbike swarms on city streets (urban areas and towns, not toll roads)
+const swarmAt = u => !isToll(u) && (regionAt(u) === 'urban' || !!townNear(u));
+// mudik: the toll roads fill up (more cars, slower), only off the toll roads traffic stays as set
+const denAt = (sd, p) => cfg.den*(cfg.mudik && isToll(sd*p) ? 2.2 : 1);
 function addVehicle(sd, lane, p, type, vel){
   const v = makeVehicle(type);
   if (lane === 0 && !EMERG.has(type)) v.v0 = Math.min(v.v0 + 2, 27.7);
@@ -2223,7 +2229,7 @@ function fillTraffic(){
         if (lane >= n) { p += 30; continue; }
         const type = pickType(lane, n, p, sd), len = LEN(type);
         if (!spawnOK(sd, lane, p, len) || (PLR && PLR.sd === sd && PLR.lane === lane && Math.abs(PLR.p - p) < 30)) { p += 12; continue; }
-        const v = addVehicle(sd, lane, p, type); p += v.len + rnd(18, 60)*TRAFFIC_GAP/cfg.den; } } }
+        const v = addVehicle(sd, lane, p, type); p += v.len + (type === 'moto' && swarmAt(sd*p) && Math.random() < 0.75 ? rnd(2.5, 7) : rnd(18, 60)*TRAFFIC_GAP/denAt(sd, p)); } } }
 }
 let spawnT = 0;
 function maintainTraffic(dt){
@@ -2234,9 +2240,9 @@ function maintainTraffic(dt){
       for (const [edge, p] of [['up', lo + 6], ['down', hi - 6]]) {
         const n = nAvail(sd, p); if (lane >= n) continue;
         let near = null, gap = Infinity; for (const o of L) { const g2 = Math.abs(o.p - p) - o.len/2; if (g2 < gap) { gap = g2; near = o; } }
-        const want = 10 + rnd(18, 60)*TRAFFIC_GAP/cfg.den;
+        const sw = near && near.type === 'moto' && swarmAt(sd*p) && Math.random() < 0.7, want = sw ? rnd(3, 8) : 10 + rnd(18, 60)*TRAFFIC_GAP/denAt(sd, p);
         if (gap < want) continue;
-        const type = pickType(lane, n, p, sd), len = LEN(type);
+        const type = sw ? 'moto' : pickType(lane, n, p, sd), len = LEN(type);
         if (!spawnOK(sd, lane, p, len)) continue;
         const vel = near ? Math.min(near.vel + (edge === 'up' ? 1 : -1), 27) : undefined;
         addVehicle(sd, lane, p, type, vel); } } }
@@ -3140,7 +3146,7 @@ function sim(dt){
     if (v.yieldT > clock && (!v.player || cfg.auto)) v0 = Math.min(v0, v.yieldV);
     // angkot stop for passengers at the kerb now and then (ngetem)
     if (v.type === 'angkot' && !v.player) { if (v.ngStop) { if (clock > v.ngStop) { v.ngStop = 0; v.ngT = rnd(25, 60); } }
-      else if ((v.ngT -= dt) < 0 && v.lane === n - 1 && !isToll(uOfV(v))) v.ngStop = clock + rnd(4, 10); else if (v.ngT < 0) v.ngT = 5; }
+      else if ((v.ngT -= dt) < 0 && v.lane === n - 1 && !isToll(uOfV(v))) { v.ngStop = clock + (townNear(uOfV(v)) ? rnd(14, 40) : rnd(4, 10)); } else if (v.ngT < 0) v.ngT = 5; }
     const pz = plazaAhead(v.sd, front);
     if (pz && v.paid !== pz.s.id) { v0 = Math.min(v0, Math.sqrt(25 + 1.2*Math.max(0, pz.d))); }
     // on a climb loaded trucks and buses crawl (down to ~25 km/h on the steepest), cars ease off a little; downhill the heavies hold back on the engine brake
@@ -3741,7 +3747,22 @@ function payToll(s){
   if (WAL.etoll < 0) setTimeout(() => toast('Saldo e-Toll minus! Isi ulang di minimarket rest area', 'bad'), 1600);
   if ((s.kind === 't' || s.kind === 'te') && s.i === trip.destIdx) { stats.done = true; setTimeout(() => arrive(s), 1200); }
 }
-function playerRules(dt){
+// ganjil-genap (odd-even plates) in central Jakarta: weekdays 06–10 and 16–21 (game time) on the main city roads, private cars only;
+// the last number of the plate has to match the date (odd / even). Taxis, angkot, buses, motorbikes, emergency and electric cars are exempt.
+const GG_BOX = [-6.27, 106.76, -6.12, 106.90], GG_FREE = new Set(['taxi', 'angkot', 'bus', 'moto', 'bicycle', 'ambulance', 'damkar', 'police', 'truck']);
+let ggT = 0, ggIn = false, ggFined = 0;
+function ggRule(plate, date, hour, type, plateCat){ if (GG_FREE.has(type) || plateCat === 'umum' || plateCat === 'listrik' || plateCat === 'dinas' || plateCat === 'polri') return null;
+  const wd = date.getDay(); if (wd === 0 || wd === 6 || !((hour >= 6 && hour < 10) || (hour >= 16 && hour < 21))) return null;
+  const m = String(plate).match(/(\d+)\D*$/); if (!m) return null; const plateOdd = Number(m[1].slice(-1)) % 2 === 1, dayOdd = date.getDate() % 2 === 1;
+  return {ok: plateOdd === dayOdd, dayOdd, plateOdd}; }
+function tickGanjilGenap(dt){
+  if ((ggT -= dt) > 0 || !PLR || foot || tow || PLR.rp) return; ggT = 1;
+  const u = uOfV(PLR); let inside = false; if (!isToll(u)) { const ll = latLonAt(u); inside = ll.lat > GG_BOX[0] && ll.lat < GG_BOX[2] && ll.lon > GG_BOX[1] && ll.lon < GG_BOX[3]; }
+  const vi = vehInfo(), r = inside ? ggRule(vi.plate, new Date(), gameH, PLR.type, vi.plateCat) : null;
+  if (inside && !ggIn) { ggIn = true; if (r) toast(`Kawasan ganjil-genap · hari ini tanggal ${r.dayOdd ? 'ganjil' : 'genap'} · plat Anda ${r.plateOdd ? 'ganjil' : 'genap'}${r.ok ? ' (boleh lewat)' : ' — keluar dari kawasan ini!'}`, r.ok ? '' : 'warn'); }
+  if (!inside) ggIn = false;
+  if (r && !r.ok && clock - ggFined > 600 && Math.abs(PLR.vel) > 1) { ggFined = clock; violation(`Melanggar ganjil-genap (plat ${r.plateOdd ? 'ganjil' : 'genap'} di tanggal ${r.dayOdd ? 'ganjil' : 'genap'})`, 'oddeven'); } }
+function playerRules(dt){ tickGanjilGenap(dt);
   const v = PLR; if (!v || v.rp || foot || tow) return;
   if (cfg.auto) mbzSwitch(v);
   violCd -= dt; crashCd -= dt;
@@ -4648,6 +4669,7 @@ function rowsSpec(){
   return [
     ['cam', 'Kamera', [['chase','Belakang'],['cockpit','Kokpit'],['drone','Drone'],['ic','Simpang susun'],['orbit','Orbit']]],
     ['den', 'Lalu lintas', [[0.6,'Sepi'],[1,'Normal'],[1.7,'Padat'],[2.6,'Macet']]],
+    ['mudik', 'Mode mudik Lebaran', [[false,'Mati'],[true,'Aktif (tol padat pemudik, truk besar dilarang)']]],
     ['weather', 'Cuaca', [['cerah','Cerah'],['berawan','Berawan'],['hujan','Hujan'],['kabut','Kabut']]],
     ['roadStyle', 'Bentuk jalan', [['data','Sesuai aslinya (OpenStreetMap)'],['kelok','Lebih berkelok & berbukit'],['lurus','Lebih lurus']]],
     ['view', 'Jarak pandang', [['normal','Normal'],['jauh','Jauh (lebih berat)']]],
@@ -4749,6 +4771,7 @@ function apply(id, v, fromServer = false){
   else if (id === 'autoSteer') { if (PLR) PLR.autoLane = null; toast(`Setir otomatis: ${v ? 'aktif, gas & rem manual' : 'mati'}`); }
   else if (id === 'sound') { if (v) audioStart(); toast(`Suara: ${v ? 'nyala' : 'mati'}`); }
   else if (id === 'clean') setClean();
+  else if (id === 'mudik') { fillTraffic(); toast(v ? 'Mode mudik: arus padat pemudik di tol, truk sumbu 3 ke atas dilarang' : 'Mode mudik dimatikan'); }
   else if (id === 'gfx') { applyGfx(); toast(`Grafis: ${label()}`); }
   else if (id === 'steerAssist') toast(`Asisten setir: ${v ? 'aktif' : 'mati'}`);
   else if (id === 'den') { fillTraffic(); rebuildObjects(['site', 'ov']); toast(`Lalu lintas: ${label()}`); }
@@ -5611,7 +5634,7 @@ function tick(dt,stream=true){
   if(stream)streamWorld();
 }
 function streamWorld(){ensureAhead();setupBlocks(false);updateWorld(true);updateSignals();animGhosts();}
-window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
+window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.gg=ggRule; window.__tj.apply=apply; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
 window.__tj.moveSvg = moveSvg; window.__tj.nextMv = nextMove;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering
