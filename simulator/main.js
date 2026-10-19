@@ -3311,8 +3311,12 @@ function jobSpot(u, noToll = nonTollVehicle(cfg.veh)){ for (let k = 0; k < 120; 
 // where an order ends: a short ride for passengers and food; a truck delivery at least J.minKm (real km) on, at a warehouse off the
 // toll road when the route leaves it (the toll roads in between are fine), otherwise beside the toll road
 function jobDrop(J, a){ if (!J.minKm) return jobSpot(a + rnd(J.bicycle ? 220 : 600, J.bicycle ? 500 : 1500));
-  const u0 = a + J.minKm*1000/cfg.scale + rnd(0, 600);
-  return offTollSpot(u0); }
+  const u0 = a + J.minKm*1000/cfg.scale + rnd(0, 600), near = offTollSpot(u0);
+  // the unloading warehouse close to the minimum distance: off the toll road there, or off the toll road at the first exit after it
+  if (near != null && (near - u0)*cfg.scale/1000 < 12) return near;
+  const s = EV.find(e => e.u > Math.max(u0, (PLR ? uOfV(PLR) : 0) + LOCK) && e.kind === 'x' && e.i !== trip.destIdx && exitEdge(e));
+  if (s && seamlessExit(s)) { const v = offTollSpot(s.u + 30); if (v != null) { toast(`Gudang bongkar di luar tol: keluar di exit ${s.name}`); return v; } }
+  return near; }
 // a warehouse for the truck: never beside a toll road, the first place off the toll road from u on along the route (null if none)
 function offTollSpot(u0){ const last = EV[EV.length - 1].u - 120;
   for (let u = u0; u < last; u += 200) if (!isToll(u)) { const v = jobSpot(u, true); if (!isToll(v) && v < last) return v; }
@@ -4621,6 +4625,9 @@ function rowsSpec(){
   ];
 }
 function btn(text, on){ const b = document.createElement('button'); b.className = 'opt'; b.textContent = text; b.setAttribute('aria-pressed', on ? 'true' : 'false'); return b; }
+const FEEDBACK = {form: 'https://7mit.org/form/feedback-driving7mit', mail: 'halo@7mit.org',
+  text: 'Merasa ada fitur yang kurang atau punya saran? Kirim Saran & Kesan untuk driving.7mit lewat formulir, atau email / iMessage ke halo@7mit.org.'};
+FEEDBACK.links = [['Isi formulir saran', FEEDBACK.form], ['Email halo@7mit.org', `mailto:${FEEDBACK.mail}?subject=${encodeURIComponent('Saran & Kesan driving.7mit')}`], ['iMessage', `sms:${FEEDBACK.mail}`]];
 function renderUI(){
   const sc = ctrl.scrollTop; ctrl.innerHTML = '';
   for (const [id, label, opts, multi] of rowsSpec()) {
@@ -4649,6 +4656,12 @@ function renderUI(){
   const lbl = document.createElement('div'); lbl.className = 'lbl'; lbl.textContent = 'Rute';
   const cell = document.createElement('div'); cell.className = 'cell'; const b = btn('Ganti rute', false); b.onclick = () => openPlanner(); cell.append(b);
   ctrl.append(lbl, cell);
+  // feedback: the players' suggestions and impressions go to the 7 MIT team
+  const fl = document.createElement('div'); fl.className = 'lbl'; fl.textContent = 'Saran & Kesan';
+  const fc = document.createElement('div'); fc.className = 'cell';
+  for (const [t, url] of FEEDBACK.links) { const fb = btn(t, false); fb.onclick = () => window.open(url, url.startsWith('http') ? '_blank' : '_self', 'noopener'); fc.append(fb); }
+  const fh = document.createElement('div'); fh.className = 'hint'; fh.textContent = FEEDBACK.text; fc.append(fh);
+  ctrl.append(fl, fc);
   ctrl.scrollTop = sc;
 }
 function applyTraffic(types){ setupBlocks(true); rebuildObjects(types); }
@@ -5385,7 +5398,7 @@ PHONE = TUT ? null : initPhone({cfg, saveCfg, toast, rp: rp$, rpS, sfx: phoneSfx
     if (n === '110') return 'Polisi: laporan diterima, petugas PJR berpatroli'; if (n === '118') return 'Ambulans: siaga, sebutkan lokasi KM'; return ''; },
   view: () => renderer.domElement,
   snap(){ renderWorld(); const src = renderer.domElement, c = document.createElement('canvas'), w = 720, h = Math.round(w*src.height/src.width); c.width = w; c.height = h; c.getContext('2d').drawImage(src, 0, 0, w, h); return c.toDataURL('image/jpeg', 0.82); },
-  setWeather: w => apply('weather', w), setTod: t => apply('tod', t), fly: () => openFly(), osm: {S: () => OSM.S, reload: () => OSM.loadBase(true)},
+  setWeather: w => apply('weather', w), setTod: t => apply('tod', t), fly: () => openFly(), feedback: FEEDBACK, osm: {S: () => OSM.S, reload: () => OSM.loadBase(true)},
   music: {state: () => ({on: music.on, now: $('mus-now').textContent, src: music.cur ? music.cur.title : '', h: music.cur ? (music.cur.kind === 'audio' ? 54 : music.cur.h) : 0}), recent: () => music.recent,
     play: i => { const r = music.recent[i]; if (r) musPlay(r.item, r.label); }, stop: () => musStop(), dock: () => PHONE ? $('mus-player') : null,
     submit(v, resEl){ music.resEl = resEl; const it = parseMusic(v); if (it) { music.tok = (music.tok || 0) + 1; resEl.textContent = ''; musPlay(it); } else musSearch(v); }}});

@@ -505,4 +505,11 @@ Run `PHONE_DOM_MODULE=/path/to/jsdom node --test simulator/tests/startup.test.mj
 
   Yang tetap ditilang adalah melaju di bahu di atas 40 km/jam selama 3 detik.
 - **Bahu tidak lagi dianggap "lajur ditutup".** Sebelumnya, berhenti di bahu bisa salah tercatat sebagai pelanggaran lajur ditutup.
-- **Sopir truk: gudang muat dan bongkar selalu di luar jalan tol.** Kalau pekerjaan dimulai di jalan tol dan jalan non-tol berikutnya masih jauh, rute otomatis keluar di exit berikutnya menuju gudang. Truk boleh lewat tol di tengah perjalanan.
+- **Sopir truk: gudang muat dan bongkar selalu di luar jalan tol, dan tidak jauh.**
+  - Gudang muat: kalau pekerjaan dimulai di jalan tol dan jalan non-tol berikutnya masih jauh, rute otomatis keluar di exit berikutnya menuju gudang.
+  - Gudang bongkar: sedekat mungkin dari jarak minimal 25 km. Kalau jalan di sana masih tol, rute keluar di exit pertama setelahnya.
+  - Truk boleh lewat tol di tengah perjalanan.
+
+### Saran & Kesan
+
+Pemain yang merasa ada fitur yang kurang atau punya saran bisa mengirim Saran & Kesan untuk driving.7mit lewat [formulir](https://7mit.org/form/feedback-driving7mit), atau lewat email / iMessage ke halo@7mit.org. Tautannya ada di halaman sambutan, di Pengaturan (baris "Saran & Kesan") dan di HP → Pengaturan.
