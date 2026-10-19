@@ -16,6 +16,9 @@ import {createCareer, SHOP} from './career.js';
 import {initCareerUI} from './career-ui.js';
 import * as ACC from './account.js';
 import {cineShot, photoShot, createRecorder, initPhotoUI, lerpAngle} from './studio.js';
+import {manualDrive, shiftOK, createPads, startTilt} from './controls.js';
+import {createRadio} from './radio.js';
+import {createGlass} from './glass.js';
 import {initDEM} from './elevation.js';
 import {BICYCLE, isTwoWheeler, nonTollVehicle, bicycleAcceleration, staminaStep, springStep, ackermannAngle, roadResistance, FOOD_BICYCLE_JOB} from './vehicle-dynamics.js';
 import {buildBicycle, animateBicycle, buildBicycleView} from './bicycle.js';
@@ -2330,7 +2333,7 @@ function rampStep(dt){
     // traffic coming in from town waits at the end of the stem while the player crosses it on the link road
     if (!v.player && v.rp.kind === 'x' && v.rp.end === 'merge' && PLR && PLR.rp && PLR.rp.xl && PLR.rp.site === v.rp.site && PLR.q && PLR.q.u < 205 && q.o > 316) acc = Math.min(acc, v.vel > 0.1 ? -4 : 0);
     if (v.player && v.rp.kind === 'x' && !v.rp.paid) { const dg = GATE_O - 1 - q.o; if (dg > -1 && q.u > 170) acc = Math.min(acc, idm(v, STOP, Math.max(0, dg) + 2, cap)); }
-    if (v.player && !cfg.auto) { acc = playerAcc(v, dt); const st = (input.left ? 1 : 0) - (input.right ? 1 : 0);
+    if (v.player && !cfg.auto) { acc = playerAcc(v, dt); const st = clamp((input.left ? 1 : 0) - (input.right ? 1 : 0) - (input.steerA || 0), -1, 1);
       v.rpOff = clamp((v.rpOff || 0) + st*Math.min(Math.abs(v.vel), 12)*0.14*dt, -1.6, 1.6); }
     v.acc = acc; }
   for (const v of [...rampers]) { const rp = v.rp;
@@ -3501,6 +3504,12 @@ function openJobs(){
 const slopeG = v => v.rp ? 0 : 9.81*(v.sd || 1)*gYD(uOfV(v))*Math.cos(v.hd || 0);    // g · grade along the direction of travel
 const GEAR_UP = [5.5, 11, 17.5, 25, 33], GEAR_K = [1, 0.8, 0.64, 0.52, 0.43, 0.36];
 const gearOf = vel => 1 + GEAR_UP.filter(x => vel >= x).length;
+// manual gearbox (controls.js): 'manual' = the clutch works itself, 'manualc' = the player works the clutch
+const MANUAL = () => (cfg.trans === 'manual' || cfg.trans === 'manualc') && PLR && PLR.type !== 'bicycle', CLUTCH = () => cfg.trans === 'manualc';
+function shiftGear(d){ const v = PLR; if (!v || !MANUAL() || foot || tow) return; if (v.mg == null) v.mg = 1;
+  if (!shiftOK({clutchMode: CLUTCH(), clutch: !!input.clutch, vel: v.vel})) { tone({fs: [90, 137], type: 'sawtooth', dur: 0.25, gain: 0.08, lp: 700}); toast('Kretek! Injak kopling dulu (tahan Spasi) sebelum ganti gigi', 'warn'); return; }
+  v.mg = clamp(v.mg + d, 0, 5); gearUI(); }
+function gearUI(){ const b = !!MANUAL(); for (const id of ['gearupb', 'geardnb']) $(id).hidden = !b; $('clutchb').hidden = !(b && CLUTCH()); }
 function playerAcc(v, dt){
   if (v.noFuel && !input.brake) { input.gas = false; v.thr = 0; }     // empty tank: the engine has stopped, the car only rolls
   let a = playerAcc0(v, dt);
@@ -3520,9 +3529,13 @@ function playerAcc0(v, dt){
   if ((v.dmg || 0) >= 100) { if (!v.deadT) { v.deadT = clock; toast('Mesin mati: kendaraan rusak berat. Derek dipanggil…', 'bad'); }
     if (clock - v.deadT > 2.5 && !tow) callTow(true);
     return v.vel > 0.05 ? -4 : v.vel < -0.05 ? 4 : -v.vel/dt; }
-  v.thr = (v.thr || 0) + clamp((input.gas ? 1 : 0) - (v.thr || 0), -4*dt, 2.5*dt);
-  v.brk = input.brake ? Math.min(1, (v.brk || 0) + 3*dt) : 0;
-  const g = gearOf(Math.max(0, v.vel)/hv); if (g > (v.gear || 1) && v.thr > 0.2) v.shiftT = 0.28; v.gear = g; v.shiftT = Math.max(0, (v.shiftT || 0) - dt);
+  v.thr = (v.thr || 0) + clamp((input.gasA > 0.03 ? input.gasA : input.gas ? 1 : 0) - (v.thr || 0), -4*dt, 2.5*dt);
+  v.brk = input.brake ? Math.min(input.brakeA > 0.08 ? input.brakeA : 1, (v.brk || 0) + 3*dt) : 0;
+  let g, mk = null;
+  if (MANUAL()) { if (v.mg == null) v.mg = 1; const r = manualDrive({gear: v.mg, vel: v.vel, clutch: !!input.clutch && CLUTCH(), hv, gas: v.thr, clutchMode: CLUTCH()}); mk = r; v.rpm = r.rpm; g = Math.max(1, v.mg); v.gear = g;
+    if (r.stall && !v.stalled) { v.stalled = true; toast('Mesin mati: gigi terlalu tinggi untuk kecepatan ini. Injak kopling (Spasi), pindah ke gigi 1, lalu gas', 'warn'); gearUI(); }
+    if (v.stalled && input.clutch && v.mg <= 1) { v.stalled = false; gearUI(); } }
+  else { g = gearOf(Math.max(0, v.vel)/hv); if (g > (v.gear || 1) && v.thr > 0.2) v.shiftT = 0.28; v.gear = g; v.shiftT = Math.max(0, (v.shiftT || 0) - dt); v.mg = null; v.stalled = false; v.rpm = 0; }
   const drag = roadResistance(v.vel,{mass:MASS[v.type]||1300,cdA:heavy(v)?5.8:isTwoWheeler(v.type)?0.55:v.type==='suv'?0.95:0.66});
   if (input.brake) {
     if (v.vel > 0.3) { input.brakeT = 0; return Math.max(-(1.2 + 7.3*v.brk)*bo.brake, -muOf(v)*9.81) - drag - slopeG(v); }
@@ -3531,7 +3544,7 @@ function playerAcc0(v, dt){
   }
   input.brakeT = 0;
   if (input.gas || v.thr > 0.02) { if (v.vel < -0.2) return 6;
-    let a = spec.acc*1.75*GEAR_K[g - 1]*v.thr*(1 - Math.pow(Math.max(0, v.vel)/spec.vmax, 2)); if (v.shiftT > 0) a *= 0.25;
+    let a = spec.acc*1.75*(mk ? (v.stalled ? 0 : mk.k) : GEAR_K[g - 1])*v.thr*(1 - Math.pow(Math.max(0, v.vel)/spec.vmax, 2)); if (v.shiftT > 0) a *= 0.25;
     return a - drag - slopeG(v); }
   const coast = v.vel > 0.05 ? -0.25 - 0.18*Math.min(1, v.vel/8) - drag : v.vel < -0.05 ? 0.8 : -v.vel/dt;   // rolling + engine braking
   return Math.abs(v.vel) > 0.3 ? coast - slopeG(v) : coast;
@@ -3636,7 +3649,7 @@ function mbzHint(v){
 function steerPlayer(v, dt){
   if (nonTollVehicle(v.type) && !isToll(uOfV(v)) && isToll(uOfV(v)+v.sd*(v.len/2+8))) { v.vel=0; v.acc=0; if(clock-(v.tollWarn||-10)>5){v.tollWarn=clock;toast('Kendaraan ini hanya boleh di jalan non-tol. Pilih arah non-tol di Peta.','warn');} }
   mbzSwitch(v);
-  let st = (input.left ? 1 : 0) - (input.right ? 1 : 0); const spd = Math.abs(v.vel);
+  let st = clamp((input.left ? 1 : 0) - (input.right ? 1 : 0) - (input.steerA || 0), -1, 1); const spd = Math.abs(v.vel);
   // Setir otomatis: keeps the car centred in its lane (pedals stay yours); steering by hand picks the new lane
   if (cfg.autoSteer) { if (st) v.autoLane = null; else { if (v.autoLane == null) v.autoLane = clamp(Math.round(v.lx), 0, nAvail(v.sd, v.p) - 1);
     const want = clamp((v.autoLane - v.lx)*0.3, -0.12, 0.12), e = want - (v.hd || 0); st = Math.abs(e) > 0.003 ? clamp(e*14, -1, 1) : 0; } }
@@ -3915,7 +3928,10 @@ function audioStart(){
     const g = AC.createGain(); g.gain.value = 0; src.connect(bp); bp.connect(g); g.connect(master); src.start(); return g; };
   // two siren voices (the two nearest emergency vehicles), each panned left/right
   const voice = () => { const o = AC.createOscillator(), g = AC.createGain(), p = AC.createStereoPanner ? AC.createStereoPanner() : AC.createGain(); o.type = 'triangle'; g.gain.value = 0; o.connect(g); g.connect(p); p.connect(master); o.start(); return {o, g, p}; };
-  snd = {master, eng, eng2, lp, eg, buf, wind: mk(500, 0.6), rain: mk(2500, 0.4), rainLo: mk(700, 0.5), tyre: mk(260, 0.7), traffic: mk(180, 0.6), hum: mk(90, 0.8, 'lowpass'), sir: [voice(), voice()]};
+  const lfo = AC.createOscillator(), lfoG = AC.createGain(); lfoG.gain.value = 0; lfo.connect(lfoG); lfoG.connect(eg.gain); lfo.start();
+  const rOut = AC.createGain(); rOut.gain.value = 0.55; rOut.connect(AC.destination);
+  RADIO = createRadio({ctx: AC, out: rOut, state: radioState}); if (cfg.radio) RADIO.set(true);
+  snd = {lfo, lfoG, master, eng, eng2, lp, eg, buf, wind: mk(500, 0.6), rain: mk(2500, 0.4), rainLo: mk(700, 0.5), tyre: mk(260, 0.7), traffic: mk(180, 0.6), hum: mk(90, 0.8, 'lowpass'), sir: [voice(), voice()]};
 }
 const panOf = o => { if (!PLR || o.x == null) return 0; return clamp((o.x - PLR.x)/22*(PLR.sd || 1), -1, 1); };
 const attOf = dist => Math.pow(clamp(1 - dist/260, 0, 1), 1.6);
@@ -3944,14 +3960,26 @@ function horn(type, dist = 0, pan = 0, mood = Math.random()){
 function crashSound(dv){ if (!snd) return; noise({gain: Math.min(0.6, 0.12 + dv*0.025), lp: 900 + dv*60, dur: 0.35 + Math.min(0.6, dv*0.03)}); tone({fs: [180, 260], type: 'sawtooth', dur: 0.12, gain: Math.min(0.15, dv*0.01), lp: 900}); }
 function thunder(){ const far = Math.random(); noise({gain: 0.5 - far*0.3, lp: 160 + (1 - far)*200, dur: 3 + far*2, at: 0.3 + far*2});
   hemi.intensity *= 3; setTimeout(() => { hemi.intensity /= 3; }, 110); setTimeout(() => { hemi.intensity *= 2; setTimeout(() => { hemi.intensity /= 2; }, 70); }, 230); }
+const ENGINE = {car: {mul: 2, w: 'sawtooth', lp: 1, g: 1, trem: 0.15}, suv: {mul: 1.8, w: 'sawtooth', lp: 0.9, g: 1.05, trem: 0.2}, pickup: {mul: 1.7, w: 'sawtooth', lp: 0.85, g: 1.1, trem: 0.3},
+  taxi: {mul: 2, w: 'sawtooth', lp: 1, g: 1, trem: 0.15}, police: {mul: 2.1, w: 'sawtooth', lp: 1.15, g: 1.05, trem: 0.12}, ambulance: {mul: 1.8, w: 'sawtooth', lp: 0.9, g: 1, trem: 0.2},
+  angkot: {mul: 2.3, w: 'square', lp: 1.1, g: 0.9, trem: 0.35}, moto: {mul: 3.2, w: 'square', lp: 1.6, g: 0.75, trem: 0.6},
+  bus: {mul: 1.1, w: 'sawtooth', lp: 0.55, g: 1.3, trem: 0.45}, truck: {mul: 1.05, w: 'sawtooth', lp: 0.5, g: 1.35, trem: 0.5}, damkar: {mul: 1.1, w: 'sawtooth', lp: 0.55, g: 1.3, trem: 0.45}};
+// the radio's view of the drive: time, weather, where you are, how busy the road is
+let RADIO = null, tiltStop = null;
+function radioState(){ const u = PLR ? uOfV(PLR) : camU, W = WEATHER[cfg.weather] || {}, t = townNear(u, 3000); let jam = 0; for (const o of vehicles) if (!o.player && o.vel < 2.5 && Math.abs(o.sd*o.p - u) < 200) jam++;
+  return {hour: gameH, weather: {cerah: 'cerah', berawan: 'berawan', hujan: 'sedang hujan', kabut: 'berkabut'}[cfg.weather] || 'cerah', rain: !!W.rain, place: t ? t.name : '', road: EV.length ? (CORR[corrAt(u)] || {}).name || '' : '', jam}; }
 function updateSound(){
   if (!snd) return; const t = AC.currentTime, v = PLR ? Math.abs(PLR.vel) : 0, hv = PLR && heavy(PLR) ? 0.6 : 1;
   const dt = Math.min(0.1, clock - sndT); sndT = clock;
-  snd.master.gain.setTargetAtTime(cfg.sound && $('plan').hidden ? (music.on ? 0.22 : 0.5) : 0, t, 0.1);   // game sound ducks under the music
+  snd.master.gain.setTargetAtTime(cfg.sound && $('plan').hidden ? (music.on || RADIO?.on ? 0.22 : 0.5) : 0, t, 0.1);   // game sound ducks under the music
   const g = gearOf(v/hv), lo = g > 1 ? GEAR_UP[g - 2]*hv : 0, hi = (GEAR_UP[g - 1] || 45)*hv, rpm = 850 + clamp((v - lo)/(hi - lo), 0, 1)*4200*(g === 1 ? 1 : 0.75) + (input.gas ? 300 : 0);
-  const f = rpm/60*(heavy(PLR || {}) ? 1.5 : 2);
-  snd.eng.frequency.setTargetAtTime(f, t, 0.05); snd.eng2.frequency.setTargetAtTime(f*0.5, t, 0.05); snd.lp.frequency.setTargetAtTime(400 + rpm*0.25 + (input.gas ? 500 : 0), t, 0.08);
-  snd.eg.gain.setTargetAtTime(PLR?.type==='bicycle'?0:0.05 + (input.gas || cfg.auto ? 0.06 : 0.02) + rpm/90000, t, 0.1);
+  // each kind of vehicle has its own engine: a buzzing single-cylinder motorbike, the deep clatter of a diesel bus or truck, a smooth car
+  const E = ENGINE[PLR ? PLR.type : 'car'] || ENGINE.car, rpm2 = MANUAL() && PLR.rpm ? (PLR.stalled ? 0 : PLR.rpm + (input.gas ? 250 : 0)) : rpm, f = rpm2/60*E.mul;
+  if (snd.eng.type !== E.w) snd.eng.type = E.w;
+  snd.eng.frequency.setTargetAtTime(Math.max(20, f), t, 0.05); snd.eng2.frequency.setTargetAtTime(Math.max(10, f*0.5), t, 0.05); snd.lp.frequency.setTargetAtTime((400 + rpm2*0.25 + (input.gas ? 500 : 0))*E.lp, t, 0.08);
+  const eLevel = PLR?.type==='bicycle' || (PLR && PLR.stalled) ? 0 : (0.05 + (input.gas || cfg.auto ? 0.06 : 0.02) + rpm2/90000)*E.g;
+  snd.eg.gain.setTargetAtTime(eLevel, t, 0.1); snd.lfo.frequency.setTargetAtTime(Math.max(4, f*0.25), t, 0.05); snd.lfoG.gain.setTargetAtTime(eLevel*E.trem, t, 0.1);
+  if (RADIO) RADIO.tick(dt);
   const W = WEATHER[cfg.weather] || {}, uP = PLR ? uOfV(PLR) : camU, reg = regionAt(uP), night = gameH < 5.6 || gameH > 18.6;
   snd.wind.gain.setTargetAtTime(Math.min(0.5, v*v/2600) + (cfg.weather === 'berawan' ? 0.04 : 0), t, 0.2);
   // tyres on the road: louder with speed, a hiss on a wet road
@@ -3991,8 +4019,11 @@ function updateSound(){
 let myHorn = null;
 function playerHorn(on = true){ if (on) TUTF.horn = true;
   audioStart(); if (!snd || !PLR) return;
-  if (!on) { if (myHorn) { const t = AC.currentTime; myHorn.g.gain.setTargetAtTime(0, t, 0.02); myHorn.os.forEach(o => o.stop(t + 0.15)); myHorn = null; } return; }
+  if (!on) { if (myHorn) { if (myHorn.telolet) clearInterval(myHorn.telolet); else { const t = AC.currentTime; myHorn.g.gain.setTargetAtTime(0, t, 0.02); myHorn.os.forEach(o => o.stop(t + 0.15)); } myHorn = null; } return; }
   if (myHorn) return;
+  // a bus plays the telolet: the three-note melody of an Indonesian intercity bus horn, again and again while held
+  if (PLR.type === 'bus') { const play = () => [[659.3, 830.6], [880, 1108.7], [740, 987.8]].forEach((fs, i) => tone({fs, type: 'square', dur: i === 2 ? 0.34 : 0.2, gain: 0.09, lp: 3200, at: i*0.21}));
+    play(); myHorn = {telolet: setInterval(play, 820)}; for (const o of vehicles) if (!o.player && o.sd === PLR.sd && Math.abs(o.lx - PLR.lx) < 0.6 && o.p - PLR.p > 0 && o.p - PLR.p < 60) o.cd = Math.min(o.cd, 0.1); return; }
   const ty = PLR.type, fs = ty === 'truck' || ty === 'bus' || ty === 'damkar' ? [233, 294, 349] : ty === 'angkot' ? [470, 560] : [415, 523];
   const g = AC.createGain(), f = AC.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 2600; g.gain.value = 0; g.gain.setTargetAtTime(0.13, AC.currentTime, 0.01); f.connect(g); g.connect(snd.master);
   myHorn = {g, os: fs.map(fr => { const o = AC.createOscillator(); o.type = 'square'; o.frequency.value = fr; o.connect(f); o.start(); return o; })};
@@ -4201,7 +4232,7 @@ function updateHud(dt){
   hudT -= dt; if (hudT > 0 || !PLR) return; hudT = 0.15;
   const v = PLR, u = uOfV(v), rk = rkAt(u), dest = EV[trip.destIdx];
   $('spd').textContent = v.vel < -0.3 ? 'R ' + KMH(-v.vel) : KMH(Math.abs(v.vel));
-  const gr = v.type==='bicycle'?'KAYUH':v.vel < -0.3 ? 'R' : Math.abs(v.vel) < 0.3 && !input.gas ? 'N' : 'D' + (cfg.auto || !v.gear ? gearOf(Math.max(0, v.vel)/(heavy(v) ? 0.6 : 1)) : v.gear); if ($('gear').textContent !== gr) $('gear').textContent = gr;
+  const gr = v.type==='bicycle'?'KAYUH':MANUAL() ? (v.stalled ? 'MATI' : v.vel < -0.3 ? 'R' : !v.mg ? 'N' : 'M' + v.mg) : v.vel < -0.3 ? 'R' : Math.abs(v.vel) < 0.3 && !input.gas ? 'N' : 'D' + (cfg.auto || !v.gear ? gearOf(Math.max(0, v.vel)/(heavy(v) ? 0.6 : 1)) : v.gear); if ($('gear').textContent !== gr) $('gear').textContent = gr;
   const lim = v.rp ? rampLimit(v.rp) : Math.min(limitAt(u), postedCap(v.sd, v.p + v.len/2), v.lane < 0 ? 16.7 : 99);
   const limK = Math.round(KMH(lim)/10)*10; if ($('lim').dataset.v !== String(limK)) { $('lim').dataset.v = limK; $('lim').textContent = limK; replay($('lim'), 'chg'); }
   $('spdbox').classList.toggle('over', v.vel > lim + 1.4);
@@ -4695,6 +4726,9 @@ function rowsSpec(){
     ['roadStyle', 'Bentuk jalan', [['data','Sesuai aslinya (OpenStreetMap)'],['kelok','Lebih berkelok & berbukit'],['lurus','Lebih lurus']]],
     ['view', 'Jarak pandang', [['normal','Normal'],['jauh','Jauh (lebih berat)']]],
     ['gfx', 'Grafis', [['auto','Otomatis'],['hemat','Hemat (paling ringan)'],['sedang','Sedang'],['tinggi','Tinggi (paling realistis)']]],
+    ['trans', 'Transmisi', [['auto','Otomatis'],['manual','Manual (kopling otomatis) · , dan . ganti gigi'],['manualc','Manual + kopling (Spasi)']]],
+    ['tilt', 'Setir miring (HP/tablet)', [[false,'Mati'],[true,'Aktif (miringkan HP seperti setir)']]],
+    ['radio', 'Radio 7MIT FM', [[false,'Mati'],[true,'Nyala (penyiar & iklan fiktif, Y)']]],
     ['autoSteer', 'Setir otomatis', [[false,'Mati'],[true,'Aktif (gas & rem tetap manual)']]],
     ['sound', 'Suara', [[true,'Nyala'],[false,'Mati']]],
     ['voice', 'Suara navigasi', [[true,'Nyala (pemandu suara)'],[false,'Mati']]],
@@ -4792,6 +4826,9 @@ function apply(id, v, fromServer = false){
   else if (id === 'autoSteer') { if (PLR) PLR.autoLane = null; toast(`Setir otomatis: ${v ? 'aktif, gas & rem manual' : 'mati'}`); }
   else if (id === 'sound') { if (v) audioStart(); toast(`Suara: ${v ? 'nyala' : 'mati'}`); }
   else if (id === 'clean') setClean();
+  else if (id === 'trans') { if (PLR) { PLR.mg = v === 'auto' ? null : Math.max(1, Math.min(5, PLR.gear || 1)); PLR.stalled = false; } gearUI(); toast(v === 'auto' ? 'Transmisi otomatis' : v === 'manual' ? 'Transmisi manual: , turun gigi · . naik gigi (kopling otomatis)' : 'Manual + kopling: tahan Spasi untuk kopling, , dan . untuk ganti gigi'); }
+  else if (id === 'tilt') { tiltStop && tiltStop(); tiltStop = null; if (v) startTilt(input).then(f => { tiltStop = f; if (!f) { cfg.tilt = false; saveCfg(); renderUI(); toast('Sensor kemiringan tidak tersedia / tidak diizinkan', 'warn'); } else toast('Setir miring aktif: miringkan HP seperti memutar setir'); }); else toast('Setir miring mati'); }
+  else if (id === 'radio') { audioStart(); if (RADIO) RADIO.set(!!v); toast(v ? 'Radio 7MIT FM 97,7 menyala' : 'Radio mati'); }
   else if (id === 'mudik') { fillTraffic(); toast(v ? 'Mode mudik: arus padat pemudik di tol, truk sumbu 3 ke atas dilarang' : 'Mode mudik dimatikan'); }
   else if (id === 'gfx') { applyGfx(); toast(`Grafis: ${label()}`); }
   else if (id === 'steerAssist') toast(`Asisten setir: ${v ? 'aktif' : 'mati'}`);
@@ -5060,6 +5097,10 @@ addEventListener('keydown', e => { if(window.TJ_BOOT?.active)return;if (FLY && F
   else if (k === 'u' && !e.repeat) $('musb').click();
   else if (k === 'i' && !e.repeat) GARAGE.toggle();
   else if (k === 'q' && !e.repeat) photoToggle();
+  else if (k === 'y' && !e.repeat) apply('radio', !cfg.radio);
+  else if ((k === '.' || k === '>') && !e.repeat) shiftGear(1);
+  else if ((k === ',' || k === '<') && !e.repeat) shiftGear(-1);
+  else if (k === ' ') { input.clutch = true; e.preventDefault(); }
   else if (k === 'r' && !e.repeat) { if (REPLAY) replayEnd(); else replayStart(); }
   else if (k === 'j' && !e.repeat) { if ($('jobdlg').hidden) openJobs(); else $('jobdlg').hidden = true; }
   else if (k === 'l' && !e.repeat && !$('svcb').hidden) openSvc();
@@ -5070,7 +5111,7 @@ addEventListener('keydown', e => { if(window.TJ_BOOT?.active)return;if (FLY && F
   else if (k === 'f' && !e.repeat && fsOK) toggleFull();
   else if (k === 'n' && !e.repeat && PLR && EMERG.has(PLR.type)) $('sirb').click();
   else if (k === 'm' && !e.repeat) { if ($('atlas').hidden) openAtlas(); else closeAtlas(); } });
-addEventListener('keyup', e => { const k = e.key.toLowerCase(); if (k === 'h' || k === 'k') playerHorn(false); if (k === 'shift') input.run = false; if (k === 'arrowup' || k === 'w') input.gas = false; if (k === 'arrowdown' || k === 's') input.brake = false;
+addEventListener('keyup', e => { const k = e.key.toLowerCase(); if (k === ' ') input.clutch = false; if (k === 'h' || k === 'k') playerHorn(false); if (k === 'shift') input.run = false; if (k === 'arrowup' || k === 'w') input.gas = false; if (k === 'arrowdown' || k === 's') input.brake = false;
   if (k === 'arrowleft' || k === 'a') input.left = false; if (k === 'arrowright' || k === 'd') input.right = false; });
 addEventListener('blur', () => { input.gas = input.brake = input.left = input.right = false; playerHorn(false); });
 renderer.domElement.addEventListener('pointerdown', () => { if (MOBILE && camMode !== 'orbit') hud.classList.remove('open'); });
@@ -5719,6 +5760,15 @@ function replayStep(dt){
     v.g.position.set(c[1] + (d[1] - c[1])*k, c[2] + (d[2] - c[2])*k, c[3] + (d[3] - c[3])*k); v.g.rotation.set(lerpAngle(c[4], d[4], k), lerpAngle(c[5], d[5], k), lerpAngle(c[6], d[6], k)); }
   for (const v of vehicles.concat(rampers)) if (v.g && !shown.has(v.g) && v.g.visible) { v.g.visible = false; R.hid.push(v.g); }
   const sp = $('replaybar')?.querySelector('span'); if (sp) sp.textContent = `${Math.max(0, Math.ceil(R.dur - R.t))} s`; }
+// gamepads and steering wheels (controls.js): sticks/wheel steer, triggers/pedals give analog gas and brake
+const PADS = createPads({input, on: {active: () => { manualNow(); toast('Gamepad / setir terhubung'); }, horn: () => playerHorn(true), hornUp: () => playerHorn(false), cam: () => $('camb').click(),
+  up: () => shiftGear(1), down: () => shiftGear(-1), map: () => { if ($('atlas').hidden) openAtlas(); else closeAtlas(); }, left: () => setIndicator(PLR?.indicator === 1 ? 0 : 1),
+  right: () => setIndicator(PLR?.indicator === -1 ? 0 : -1), hazard: () => setIndicator(PLR?.indicator === 2 ? 0 : 2), photo: () => photoToggle()}});
+const GLASS = createGlass();
+if (cfg.tilt) cfg.tilt = false;                     // the sensor needs a tap to allow it again after a reload
+$('gearupb').onclick = () => shiftGear(1); $('geardnb').onclick = () => shiftGear(-1);
+{ const cb = $('clutchb'); cb.addEventListener('pointerdown', e => { e.preventDefault(); input.clutch = true; }); for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) cb.addEventListener(ev, () => { input.clutch = false; }); }
+gearUI();
 window.__tj.studio = {REC, replayStart, replayEnd, recordReplay, photoToggle, get replay(){ return REPLAY; }};
 function studioFrame(dt){ if (REPLAY) replayStep(dt); else placeGroups(); if (!PLR) return; updateCam(dt); updateLandmarks(); updateSky(dt); updateBend(); renderWorld(); }
 // shaders compiled up front, so new objects do not stutter the first time they appear
@@ -5734,12 +5784,14 @@ renderer.setAnimationLoop(now => {
   if(renderer.shadowMap.enabled)renderer.shadowMap.needsUpdate=(shadowFrame=(shadowFrame+1)%PROFILE.shadowEvery)===0;
   if (ARREST_DIALOG?.open||FERRY_ON) { renderWorld();return; }
   if (!$('plan').hidden && trip && !stats.done) { renderWorld(); return; }
+  PADS.poll();
   if (PHOTO.on || REPLAY) { studioFrame(dt); return; }
   simClock.advance(dt,d=>tick(d,false));streamWorld();
   // the full map is open: the drive goes on underneath (autopilot keeps driving), the map follows the car live
   if (!atlas.hidden) { placeGroups(); place(); updateCam(dt); updateHud(dt); atT -= dt; if (atT <= 0) { atT = 0.15; atFollow(); drawAtlas(); } return; }
   placeGroups(); place(); placeFoot(); placeTow(); placeJob(); mpPlace(); placeBeams(); placeAngry(); updateCam(dt); updateVolcanoes(dt); updateLandmarks(); updateRoadSigns(); updateFx(dt); updateSky(dt); updateSound(); flash(); updateBend(); updateHud(dt);
   mapT -= dt; if (mapT <= 0) { mapT = 0.2; drawMap(); }
+  GLASS.draw(dt, camMode === 'cockpit' && !foot && !tow && (WEATHER[cfg.weather] || {}).rain ? 1 : 0, PLR ? Math.abs(PLR.vel)*3.6 : 0);
   renderWorld(); drawMirrors(dt);captureEtleImages(); recordReplay(dt);
 });
 addEventListener('resize', () => { camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); syncQuality(); drawMap(); reqAtlas(); });
