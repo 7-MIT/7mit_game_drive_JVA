@@ -1,7 +1,7 @@
 // The Garasi & Karier window: vehicles to buy and use, upgrades, the career level, daily missions, achievements and the cloud save.
 import {SHOP, PARTS, PART_MAX, missionText, missionPrize, snapshot, restore, newSecret, fmtKey, parseKey, cloudPut, cloudGet} from './career.js';
 
-const TABS = [['garasi', 'Garasi', 'warehouse'], ['karier', 'Karier', 'trophy'], ['misi', 'Misi harian', 'list-checks'], ['simpan', 'Simpan cloud', 'cloud']];
+const TABS = [['garasi', 'Garasi', 'warehouse'], ['karier', 'Karier', 'trophy'], ['misi', 'Misi harian', 'list-checks'], ['simpan', 'Akun & simpan', 'cloud']];
 const rpJt = n => n >= 1e6 ? `Rp ${(n/1e6).toLocaleString('id-ID', {maximumFractionDigits: 1})} jt` : `Rp ${Math.round(n).toLocaleString('id-ID')}`;
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
@@ -58,6 +58,9 @@ export function initCareerUI(G){
       body.append(c); } }
 
   function cloud(){ let key = null; try { key = parseKey(localStorage.getItem('drive7_savekey')); } catch (e) {}
+    // the account is the main way: progress syncs on its own; the save key below is for playing without an account
+    if (G.account) { const u = G.user && G.user(), c = el('div', 'gar-card'); c.innerHTML = u ? `<h3><span>Akun: ${esc(G.userName())}</span><span>Sinkron otomatis</span></h3><p>${esc(u.email || '')} · progres tersimpan ke akun secara otomatis.</p>` : '<h3><span>Belum masuk akun</span></h3><p>Masuk atau daftar (email atau Google) agar semua progres tersimpan ke akun dan bisa bermain multiplayer.</p>';
+      const r = el('div', 'gar-row'), b = el('button', '', u ? 'Kelola akun' : 'Masuk / Daftar'); b.onclick = () => G.account(); r.append(b); c.append(r); body.append(c, el('h3', '', 'Kunci simpanan (tanpa akun)')); }
     body.append(el('p', 'help', 'Simpan uang, garasi, karier, pengaturan dan riwayat ke server driving.7mit, lalu lanjutkan di HP atau komputer lain dengan kunci simpanan. Simpan kunci di tempat aman: siapa pun yang tahu kunci ini bisa memuat dan menimpa simpanan Anda.'));
     if (key) body.append(el('div', 'gar-key', fmtKey(key.code, key.secret)));
     const row = el('div', 'gar-row'), msg = el('p', 'help'), sv = el('button', '', key ? 'Simpan sekarang' : 'Buat simpanan cloud');

@@ -2,7 +2,7 @@
 import {placeList,buildTrip,choicesAt,NODES,RULES,fmtKm} from './network.js';
 import {nonTollVehicle} from './vehicle-dynamics.js';
 import {TRIP_OPTIONS,ROUTE_OPTIONS,VEHICLE_OPTIONS,MOD_DEF,LIVERY,PRESETS} from './start-options.js';
-export function mountStartup({document:doc=globalThis.document,window:win=globalThis.window,load=()=>import('./main.js'),paint=()=>new Promise(resolve=>win.requestAnimationFrame(()=>win.requestAnimationFrame(resolve)))}={}){
+export function mountStartup({document:doc=globalThis.document,window:win=globalThis.window,load=()=>import('./main.js'),account=()=>import('./account.js'),paint=()=>new Promise(resolve=>win.requestAnimationFrame(()=>win.requestAnimationFrame(resolve)))}={}){
  const root=doc.getElementById('start-screen');if(!root)return null;
  const $=id=>doc.getElementById(id),home=$('start-home'),loading=$('start-loading'),play=$('start-play'),progress=$('start-progress'),status=$('start-load-status'),reload=$('start-reload');
  let begun=false,amount=0,slowTimer,choice='day';
@@ -40,10 +40,17 @@ export function mountStartup({document:doc=globalThis.document,window:win=global
  for(const b of root.querySelectorAll('[data-start-time]'))b.addEventListener('click',()=>select(b.dataset.startTime));
  const help=$('start-help-dialog');$('start-help-open').addEventListener('click',()=>help.showModal());
  reload.addEventListener('click',()=>win.location.reload());
+ // account: the button opens the account window; after signing in it shows the player's name
+ const acct=$('start-account');
+ if(acct){const label=A=>{const u=A.currentUser();acct.textContent=u?A.displayName(u):'Masuk / Daftar';if(u&&$('start-name')&&!$('start-name').value)$('start-name').value=A.displayName(u);};
+  account().then(A=>{A.setHooks({toast:t=>{status.textContent=t;},signedIn:()=>label(A)});A.init().then(u=>{label(A);if(u&&A.pending()==='mp-start'){$('start-trip').value='mp';$('start-trip').dispatchEvent(new Event('change'));}});
+   acct.addEventListener('click',()=>{A.open('',()=>label(A));const iv=setInterval(()=>{label(A);if(doc.getElementById('acct')?.hidden)clearInterval(iv);},800);});}).catch(()=>{});}
  function update(value,message){amount=Math.max(amount,Math.min(100,value));progress.value=amount;$('start-load-percent').textContent=Math.round(amount)+'%';status.textContent=message;}
  const boot={active:false,async stage(value,message){update(value,message);await paint();}};win.TJ_BOOT=boot;
  async function start({direct=false}={}){
   if(begun||(!direct&&!preview()))return;
+  // multiplayer needs an account: sign in first (a Google sign-in comes back to this page with Multiplayer still chosen)
+  if(!direct&&$('start-trip').value==='mp'){let ok=true;try{const A=await account();A.init();if(!await A.signedIn()){ok=false;A.remember('mp-start');A.open('Multiplayer wajib masuk akun dulu.',()=>start());}}catch{}if(!ok)return;}
   if(!direct){const plan={...journey(),gh:hours[choice]};win.TJ_START_PLAN=plan;try{win.localStorage.setItem('tj_cfg1',JSON.stringify({...config(),...plan}));}catch{}}
   begun=true;boot.active=true;play.disabled=true;home.hidden=true;loading.hidden=false;root.dataset.state='loading';root.setAttribute('aria-busy','true');loading.focus();
   slowTimer=win.setTimeout(()=>{$('start-load-detail').textContent='Persiapan masih berjalan. Pada perangkat atau koneksi lambat, proses ini membutuhkan waktu lebih lama.';reload.hidden=false;},20000);

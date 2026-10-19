@@ -14,6 +14,7 @@ import {initFly} from './fly.js';
 import {initOSM} from './osm.js';
 import {createCareer, SHOP} from './career.js';
 import {initCareerUI} from './career-ui.js';
+import * as ACC from './account.js';
 import {initDEM} from './elevation.js';
 import {BICYCLE, isTwoWheeler, nonTollVehicle, bicycleAcceleration, staminaStep, springStep, ackermannAngle, roadResistance, FOOD_BICYCLE_JOB} from './vehicle-dynamics.js';
 import {buildBicycle, animateBicycle, buildBicycleView} from './bicycle.js';
@@ -2707,18 +2708,21 @@ function mpStatus(t){ $('mp-stat').textContent = t; }
 function mpLine(txt, cls){ const d = document.createElement('div'); d.textContent = txt; if (cls) d.className = cls; const L = $('mp-log'); L.append(d); while (L.children.length > 60) L.firstChild.remove(); L.scrollTop = L.scrollHeight; }
 function mpMe(){ return {name: mpName(), type: PLR ? PLR.type : cfg.veh, mod: MODS(), no: PHONE ? PHONE.number : ''}; }
 async function mpConnect(){
-  if (mp.on) return; mp.on = true;
+  if (mp.on) return;
+  // multiplayer needs an account: sign in first, then connect
+  if (!window.__mpFake && !(await ACC.signedIn())) { ACC.remember('mp'); ACC.open('Multiplayer wajib masuk akun dulu.', () => mpConnect()); toast('Masuk ke akun dulu untuk bermain multiplayer', 'warn'); return; }
+  mp.on = true;
   if (!cfg.mpId || !/^[a-z0-9]{6,40}$/i.test(cfg.mpId)) { cfg.mpId = (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : Math.random().toString(36).slice(2) + Date.now().toString(36)).slice(0, 12); saveCfg(); }
   mp.id = cfg.mpId;
   // chat, contacts and calls between players live in the phone (the old chat panel stays hidden)
   if (!PHONE) $('mpbox').hidden = false; else toast('Menghubungkan multiplayer · chat, SMS dan telepon ada di HP (O)'); mpStatus('Menghubungkan ke server.7mit…'); mpLine(`Anda: ${mpName()} · mulai di GT Semanggi`, 'sys');
   let ch;
   if (window.__mpFake) ch = mp.fake = window.__mpFake(mp);                 // test transport
-  else { try { const {createClient} = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm');
-      mp.sb = createClient(MP_URL, MP_KEY, {realtime: {params: {eventsPerSecond: 20}}}); ch = mp.sb.channel('tj-world', {config: {broadcast: {self: false}, presence: {key: mp.id}}}); }
+  else { try { mp.sb = await ACC.client(); ch = mp.sb.channel('tj-world', {config: {private: true, broadcast: {self: false}, presence: {key: mp.id}}}); }
     catch (e) { mpStatus('Gagal terhubung (periksa internet)'); mp.on = false; return; } }
   mp.ch = ch;
   const pres = await mpPresence('join'); if (pres && pres.banned) { mp.on = false; mpKicked(true, pres.reason); return; }
+  if (pres && pres.login) { mp.on = false; mpStatus(''); ACC.open('Multiplayer wajib masuk akun dulu.', () => mpConnect()); return; }
   ch.on('broadcast', {event: 'kickhint'}, ({payload}) => { if (payload && payload.id === mp.id) mpCheckKick(); });
   ch.on('broadcast', {event: 'st'}, ({payload}) => mpState(payload));
   ch.on('broadcast', {event: 'chat'}, ({payload}) => { if (payload && payload.id !== mp.id) { mpLine(`${mpEsc(payload.name)}: ${mpEsc(payload.text)}`); if (PHONE) PHONE.groupIn(mpEsc(payload.name), mpEsc(payload.text)); } });
@@ -4969,8 +4973,12 @@ $('mus-in').addEventListener('keydown', e => { if (e.key === 'Escape' || (!e.tar
   grip.addEventListener('pointermove', e => { if (!d) return; const r = box.getBoundingClientRect(); Object.assign(box.style, {left: clamp(e.clientX - d.dx, 4, innerWidth - r.width - 4) + 'px', top: clamp(e.clientY - d.dy, 4, innerHeight - 40) + 'px', right: 'auto'}); });
   for (const ev of ['pointerup', 'pointercancel']) grip.addEventListener(ev, () => { d = null; }); }
 // Garasi & Karier (career-ui.js); the cloud save uses the multiplayer server's client, or a light one of its own
-async function sbClient(){ if (mp.sb) return mp.sb; if (!sbClient.c) { const {createClient} = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm'); sbClient.c = createClient(MP_URL, MP_KEY, {auth: {persistSession: false}}); } return sbClient.c; }
-const GARAGE = initCareerUI({CAR, VEH, cash: () => WAL.cash, pay: (n, why) => pay(n, why), current: () => PLR ? PLR.type : cfg.veh, toast, sb: sbClient,
+const sbClient = () => ACC.client();
+// accounts (account.js): progress is kept in the player's account; the multiplayer name comes from the account when none is set
+ACC.setHooks({toast, beforeRestore: () => { NOSAVE = true; }, flush: () => { cfg.wal = {...WAL}; cfg.car = CAR.S; saveCfg(); },
+  signedIn: u => { if (!cfg.name) { cfg.name = ACC.displayName(u); saveCfg(); } }});
+if (!TUT) ACC.init().then(u => { if (u && !cfg.name) { cfg.name = ACC.displayName(u); saveCfg(); } });
+const GARAGE = initCareerUI({account: () => ACC.open(), user: () => ACC.currentUser(), userName: () => ACC.displayName(), CAR, VEH, cash: () => WAL.cash, pay: (n, why) => pay(n, why), current: () => PLR ? PLR.type : cfg.veh, toast, sb: sbClient,
   icons: () => { try { window.lucide && window.lucide.createIcons(); } catch (e) {} },
   use: t => { if (!PLR || !trip) { cfg.veh = t; saveCfg(); return null; } if (ride) return 'Sedang jadi penumpang'; if (job) jobStop(); if (PLR.rp || foot || tow) return 'Kembali ke jalan utama dulu';
     if (nonTollVehicle(t) && isToll(uOfV(PLR))) return `${VEH[t].label} tidak boleh di jalan tol`; if (corrAt(uOfV(PLR)) === 'mbz' && !MBZ_OK.has(t)) return 'Kendaraan ini dilarang di Tol Layang MBZ';
