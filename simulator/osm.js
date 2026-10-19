@@ -63,16 +63,21 @@ export function initOSM({onUpdate = () => {}, log = () => {}} = {}){
     if (S.status === 'loading') return; S.status = 'loading'; S.err = ''; onUpdate('loading');
     try { let c = force ? null : await cached('base');
       if (!c) { const j = await overpass(`[out:json][timeout:180];way["highway"~"^(motorway|trunk)$"]${bb(...BBOX)};out geom;`, 200000); const d = parse(j); if (!d.length) throw new Error('data kosong'); await store('base', d); c = {t: Date.now(), d}; }
-      roads.length = 0; grid.clear(); S.km = 0; tiles.clear(); for (const k in R) delete R[k]; add(c.d); S.at = c.t; S.status = 'ok'; log(`OSM: ${roads.length} ruas`); onUpdate('ok'); }
+      roads.length = 0; grid.clear(); S.km = 0; tiles.clear(); for (const k in R) delete R[k]; for (const k in T2) delete T2[k]; add(c.d); S.at = c.t; S.status = 'ok'; log(`OSM: ${roads.length} ruas`); onUpdate('ok'); }
     catch (e) { S.status = 'fail'; S.err = e.message; onUpdate('fail'); }
     loadCoast(force); }
-  // the main roads and the coastline of another island (Sumatera, Bali), once
-  async function loadRegion(r){ if (!REGIONS[r] || S.status !== 'ok' || R[r]) return; R[r] = 'loading'; onUpdate('region');
-    try { let c = await cached('base-' + r);
-      if (!c) { const j = await overpass(`[out:json][timeout:180];way["highway"~"^(motorway|trunk)$"]${area(r)};out geom;`, 200000); const d = parse(j); if (!d.length) throw new Error('data kosong'); await store('base-' + r, d); c = {d}; }
-      add(c.d); R[r] = 'ok'; onUpdate('region'); }
-    catch (e) { R[r] = 'fail'; setTimeout(() => { if (R[r] === 'fail') delete R[r]; }, 120000); onUpdate('region'); }
+  // the main roads (toll, trunk) of another island (Sumatera, Bali) come per 2° tile around a point, so a request stays small;
+  // the first tile of an island also asks for its coastline. R[region] = 'ok' once any of its tiles has loaded.
+  const T2 = {}; S.t2 = T2;
+  const t2key = (lat, lon) => `m${Math.floor(lat/2)}_${Math.floor(lon/2)}`;
+  async function loadMain(lat, lon){ const r = regionAt(lat, lon); if (r === 'jawa' || S.status !== 'ok') return; const key = t2key(lat, lon); if (T2[key]) return;
+    const ti = Math.floor(lat/2)*2, tj = Math.floor(lon/2)*2; T2[key] = 'loading'; if (!R[r]) R[r] = 'loading';
+    try { let c = await cached(key);
+      if (!c) { const j = await overpass(`[out:json][timeout:150];way["highway"~"^(motorway|trunk)$"]${bb(ti, tj, ti + 2, tj + 2)};out geom;`, 170000); const d = parse(j); await store(key, d); c = {d}; }
+      add(c.d); T2[key] = 'ok'; R[r] = 'ok'; onUpdate('region'); }
+    catch (e) { T2[key] = 'fail'; setTimeout(() => { if (T2[key] === 'fail') delete T2[key]; }, 90000); }
     loadCoast(false, r); }
+  const mainOK = (lat, lon) => regionAt(lat, lon) === 'jawa' ? S.status === 'ok' : T2[t2key(lat, lon)] === 'ok';
   const regionAt = (lat, lon) => { for (const r in REGIONS) if (inBB(REGIONS[r].bb, lat, lon) && !(r === 'sumatra' && lon > 105.85 && lat < -5.92)) return r; return 'jawa'; };
   // the coastline: OSM coastline ways joined end to end into closed rings (land on the left), simplified to ~25 m
   function rings(j){ const ways = (j.elements || []).filter(e => e.type === 'way' && e.nodes && e.geometry && e.nodes.length === e.geometry.length && e.nodes.length > 1);
@@ -134,5 +139,5 @@ export function initOSM({onUpdate = () => {}, log = () => {}} = {}){
         const t = L ? Math.max(0, Math.min(1, ((px - x0)*dx + (lat - y0)*dy)/L)) : 0, qx = x0 + dx*t, qy = y0 + dy*t, d = (qx - px)**2 + (qy - lat)**2;
         if (d < bd) { bd = d; best = {lat: qy, lon: qx/COSL, road: r, j: j/2 - 1, t, km: Math.sqrt(d)*111}; } } }
     return best; }
-  return {S, get ready(){ return S.status === 'ok'; }, get coastReady(){ return S.coast === 'ok'; }, coastOK: r => S.coastR[r] === 'ok', regionAt, loadRegion, land, fillLand, roads, loadBase, loadTile, loadStreets, inBox, stroke, snap, tiles};
+  return {S, get ready(){ return S.status === 'ok'; }, get coastReady(){ return S.coast === 'ok'; }, coastOK: r => S.coastR[r] === 'ok', regionAt, loadMain, mainOK, land, fillLand, roads, loadBase, loadTile, loadStreets, inBox, stroke, snap, tiles};
 }

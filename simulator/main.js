@@ -4224,7 +4224,7 @@ function drawMap(cv = map, big = mapBig){
     if (OSM.ready) { const vis = OSM.inBox(Math.min(lat0, lat1), lon0, Math.max(lat0, lat1), lon1);
       for (const [k, w, col] of [['r', 0.4, 'rgba(80,88,94,0.25)'], ['c', 0.5, 'rgba(80,88,94,0.35)'], ['s', 0.6, 'rgba(80,88,94,0.4)'], ['p', 0.7, 'rgba(160,120,70,0.45)'], ['n', 1, 'rgba(138,90,40,0.55)'], ['t', 1.5, 'rgba(32,30,29,0.5)']]) {
         if (!follow && k !== 't' && k !== 'n') continue; if (k === 'r' && !big) continue; y.lineWidth = zk*w; y.strokeStyle = col; OSM.stroke(y, P, vis, [k]); }
-      y.setLineDash([3, 3]); y.lineWidth = zk*1.5; y.strokeStyle = 'rgba(32,30,29,0.4)'; for (const c of CORRIDORS) if (c.planned && roadInView(c.id, P, W, H)) strokeRoad(y, P, c.id); y.setLineDash([]); return; }
+      y.setLineDash([3, 3]); y.lineWidth = zk*1.5; y.strokeStyle = 'rgba(32,30,29,0.4)'; for (const c of CORRIDORS) if (c.planned && roadInView(c.id, P, W, H)) strokeRoad(y, P, c.id); y.setLineDash([]); fallbackRoads(y, P, W, H, zk); return; }
     for (const c of CORRIDORS) { if ((c.cls === 'a' && !follow) || c.cls === 'f' || !roadInView(c.id, P, W, H)) continue; y.lineWidth = zk*(c.cls === 'a' ? 0.6 : c.prov ? 0.7 : c.cls === 'n' ? 1 : 1.5); y.strokeStyle = c.prov ? 'rgba(160,120,70,0.45)' : c.cls === 'n' ? 'rgba(138,90,40,0.55)' : 'rgba(32,30,29,0.45)'; y.setLineDash(c.planned ? [3, 3] : []); strokeRoad(y, P, c.id); }
     y.setLineDash([]); };
   if (follow) { base(x); drawFerries(x, P, 2); }
@@ -4412,7 +4412,7 @@ function osmJunctions(ua, ub){ if (!OSM.ready || !EV.length) return []; const ke
 // while driving: the city and regency roads (and, at real scale, the streets) around the car and ahead come in by area
 let osmT = 0;
 function osmTick(dt){ if ((osmT -= dt) > 0 || !OSM.ready || !PLR || !EV.length) return; osmT = 3; const u = uOfV(PLR);
-  for (const du of [0, 6000]) { const q = latLonAt(u + du), r = regionOf(q.lat, q.lon); if (r !== 'jawa') OSM.loadRegion(r); }
+  for (const du of [0, 6000, 20000]) { const q = latLonAt(u + du); if (regionOf(q.lat, q.lon) !== 'jawa') OSM.loadMain(q.lat, q.lon); }
   for (const du of [0, 1500]) { const q = latLonMap(u + du); OSM.loadTile(q.lat, q.lon); if (cfg.scale <= 2 && !isToll(u + du)) OSM.loadStreets(q.lat, q.lon); } }
 const STREET_TEX = new Map();
 function streetTex(name){ if (STREET_TEX.has(name)) return STREET_TEX.get(name); const t = canvasTex(1.6, 0.36, (x, w, h) => { x.fillStyle = '#0b6b3a'; x.fillRect(0, 0, w, h); x.strokeStyle = '#fff'; x.lineWidth = 10; x.strokeRect(14, 14, w - 28, h - 28);
@@ -4435,6 +4435,17 @@ const OSM_STYLE = {t: '#201e1d', n: '#a0682e', p: '#c49a62', s: 'rgba(80,88,94,0
 const COAST_REG = COAST_RINGS.map(r => { let lo = 0, la = 0; for (const q of r) { lo += q[0]; la += q[1]; } return {r, reg: regionOf(la/r.length, lo/r.length)}; });
 function paintLand(x, P, la0, lo0, la1, lo1){ if (OSM.land.length) OSM.fillLand(x, P, Math.min(la0, la1), Math.min(lo0, lo1), Math.max(la0, la1), Math.max(lo0, lo1));
   x.beginPath(); for (const {r, reg} of COAST_REG) { if (OSM.coastOK(reg)) continue; r.forEach(([lo, la], i) => { const [a, b] = P(la, lo); i ? x.lineTo(a, b) : x.moveTo(a, b); }); x.closePath(); } x.fill(); }
+// the main roads of Sumatera and Bali load by area: ask for the areas in view (a few at a time)
+function osmMainIn(la0, lo0, la1, lo1){ let n = 0; const a0 = Math.min(la0, la1), a1 = Math.max(la0, la1);
+  for (let la = Math.floor(a0/2)*2 + 1; la < a1 + 2 && n < 6; la += 2) for (let lo = Math.floor(lo0/2)*2 + 1; lo < lo1 + 2 && n < 6; lo += 2) {
+    const qa = clamp(la, a0, a1), qo = clamp(lo, lo0, lo1); if (regionOf(qa, qo) === 'jawa' || OSM.mainOK(qa, qo)) continue; OSM.loadMain(qa, qo); n++; } }
+// where OpenStreetMap has not loaded yet (another island, or offline), the game's own roads are drawn instead
+const OUT_ROADS = CORRIDORS.filter(c => c.region && c.region !== 'laut');
+function fallbackRoads(x, P, W, H, w = 1){ x.save(); x.lineCap = x.lineJoin = 'round';
+  for (const c of OUT_ROADS) { if (!roadInView(c.id, P, W, H) || c.nodes.every(q => { const N = NODES.get(q.key); return N && OSM.mainOK(N.lat, N.lon); })) continue;
+    x.setLineDash(c.planned ? [4*w, 3*w] : []); x.lineWidth = (c.cls === 't' ? 1.8 : c.prov || c.cls === 'a' ? 0.8 : 1.3)*w;
+    x.strokeStyle = c.cls === 't' ? OSM_STYLE.t : c.cls === 'a' ? 'rgba(80,88,94,0.6)' : c.prov ? OSM_STYLE.p : OSM_STYLE.n; strokeRoad(x, P, c.id); }
+  x.restore(); }
 function osmAttrib(x, W, H){ x.save(); x.font = '600 9px Archivo, sans-serif'; x.textAlign = 'right'; x.textBaseline = 'bottom'; x.fillStyle = 'rgba(255,255,255,0.75)'; const t = DEM.size ? '© OpenStreetMap · elevasi Copernicus DEM' : '© OpenStreetMap', w = x.measureText(t).width + 6;
   x.fillRect(W - w - 2, H - 13, w + 2, 13); x.fillStyle = '#3c4043'; x.fillText(t, W - 4, H - 2); x.restore(); }
 function drawAtlas(){
@@ -4447,13 +4458,13 @@ function drawAtlas(){
   x.lineCap = 'round'; x.lineJoin = 'round';
   const z = Math.log2(k/100);   // 0 = whole island
   if (OSM.ready) {      // real roads from OpenStreetMap; the planned toll roads (not built yet) from the game's data
-    const [la1, lo0] = atLL(0, 0), [la0, lo1] = atLL(W, H), vis = OSM.inBox(la0, lo0, la1, lo1); { const [cla, clo] = atLL(W/2, H/2); if (z > 1.8) OSM.loadTile(cla, clo); if (z > 0.4 && regionOf(cla, clo) !== 'jawa') OSM.loadRegion(regionOf(cla, clo)); }
+    const [la1, lo0] = atLL(0, 0), [la0, lo1] = atLL(W, H), vis = OSM.inBox(la0, lo0, la1, lo1); { const [cla, clo] = atLL(W/2, H/2); if (z > 1.8) OSM.loadTile(cla, clo); if (z > 0.4) osmMainIn(la0, lo0, la1, lo1); }
     if (z > 3.3) { const [cla, clo] = atLL(W/2, H/2); OSM.loadStreets(cla, clo); x.strokeStyle = 'rgba(120,126,130,0.55)'; x.lineWidth = clamp(z - 3, 0.5, 2.5); OSM.stroke(x, atP, vis, ['r']); }
     if (z > 1.8) { x.strokeStyle = OSM_STYLE.s; x.lineWidth = clamp(0.5 + z*0.3, 0.5, 2); OSM.stroke(x, atP, vis, ['s', 'c']); }
     if (z > 1.2) { x.strokeStyle = OSM_STYLE.p; x.lineWidth = clamp(0.7 + z*0.45, 0.7, 3.2); OSM.stroke(x, atP, vis, ['p']); }
     x.strokeStyle = OSM_STYLE.n; x.lineWidth = clamp(1 + z*0.6, 1, 4.5); OSM.stroke(x, atP, vis, ['n']);
     x.strokeStyle = '#fff'; x.lineWidth = clamp(2.4 + z*0.9, 2.4, 8); OSM.stroke(x, atP, vis, ['t']); x.strokeStyle = OSM_STYLE.t; x.lineWidth = clamp(1.4 + z*0.7, 1.4, 6); OSM.stroke(x, atP, vis, ['t']);
-    x.setLineDash([7, 5]); x.strokeStyle = '#6d6a66'; x.lineWidth = clamp(1.4 + z*0.7, 1.4, 6); for (const c of NET.t) if (c.planned) line(c); }
+    x.setLineDash([7, 5]); x.strokeStyle = '#6d6a66'; x.lineWidth = clamp(1.4 + z*0.7, 1.4, 6); for (const c of NET.t) if (c.planned) line(c); x.setLineDash([]); fallbackRoads(x, atP, W, H, clamp(1 + z*0.6, 1, 4)); }
   else {
   x.setLineDash([4, 4]); x.strokeStyle = 'rgba(80,88,94,0.75)'; x.lineWidth = clamp(0.6 + z*0.35, 0.6, 2.2); for (const c of NET.a) line(c);
   x.setLineDash([]); x.strokeStyle = '#c49a62'; x.lineWidth = clamp(0.7 + z*0.45, 0.7, 3.2); for (const c of NET.n) if (c.prov) line(c);
@@ -5215,10 +5226,10 @@ function drawGMap(cv, view){
   const order = ['acc', 'prov', 'nat', 'toll'];
   if (OSM.ready) {      // real roads from OpenStreetMap (provincial and regency roads load per area when zoomed in)
     const la1 = view.lat + H/2/k, la0 = view.lat - H/2/k, lo0 = view.lon - W/2/(k*COSL), lo1 = view.lon + W/2/(k*COSL), ovis = OSM.inBox(la0, lo0, la1, lo1), OK = {acc: 's', prov: 'p', nat: 'n', toll: 't'};
-    if (z > 1.8) OSM.loadTile(view.lat, view.lon); if (z > 3.3) OSM.loadStreets(view.lat, view.lon); if (z > 0.6 && regionOf(view.lat, view.lon) !== 'jawa') OSM.loadRegion(regionOf(view.lat, view.lon));
+    if (z > 1.8) OSM.loadTile(view.lat, view.lon); if (z > 3.3) OSM.loadStreets(view.lat, view.lon); if (z > 0.6) osmMainIn(la0, lo0, la1, lo1);
     if (z > 3.3) for (const pass of [1, 0]) { const w = Math.max(0.6, (z - 3)*1.6); x.lineWidth = pass ? w + 1.5 : w; x.strokeStyle = GM.acc[pass]; OSM.stroke(x, P, ovis, ['r']); }
     for (const pass of [1, 0]) for (const kind of order) { if ((kind === 'acc' && z < 1.8) || (kind === 'prov' && z < 0.8)) continue; const w = Math.max(0.6, wid[kind]); x.lineWidth = pass ? w + 2 : w; x.strokeStyle = GM[kind][pass]; OSM.stroke(x, P, ovis, kind === 'acc' ? ['s', 'c'] : [OK[kind]]); }
-    x.setLineDash([4, 4]); x.lineWidth = Math.max(0.6, wid.toll); x.strokeStyle = GM.toll[1]; for (const c of CORRIDORS) if (c.planned && roadInView(c.id, P, W, H)) strokeRoad(x, P, c.id); }
+    x.setLineDash([4, 4]); x.lineWidth = Math.max(0.6, wid.toll); x.strokeStyle = GM.toll[1]; for (const c of CORRIDORS) if (c.planned && roadInView(c.id, P, W, H)) strokeRoad(x, P, c.id); x.setLineDash([]); fallbackRoads(x, P, W, H, Math.max(1, wid.nat)); }
   else { const vis = CORRIDORS.filter(c => c.cls !== 'f' && roadInView(c.id, P, W, H) && (c.cls !== 'a' || z > 2.2) && (!c.prov || z > 0.6));
   for (const pass of [1, 0]) for (const kind of order) { const w = Math.max(0.6, wid[kind]); x.lineWidth = pass ? w + 2 : w; x.strokeStyle = GM[kind][pass];
     for (const c of vis) if (cls(c) === kind) { x.setLineDash(c.planned ? [4, 4] : []); strokeRoad(x, P, c.id); } } }
