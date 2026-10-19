@@ -1,4 +1,6 @@
 // A local simulation policy inspired by UU 22/2009. Amounts are game penalties,
+// Below this speed (m/s, 40 km/h) a vehicle on the shoulder is stopping, pulling over or creeping along it, which is allowed.
+export const SHOULDER_CRAWL = 40/3.6;
 // not statutory maximum fines. Both player and AI are evaluated by the same code.
 export const LAW_SOURCE='https://jdih.kemenkeu.go.id/api/download/fulltext/2009/22TAHUN2009UU.htm';
 export const TRAFFIC_LAWS=Object.freeze([
@@ -8,7 +10,7 @@ export const TRAFFIC_LAWS=Object.freeze([
   {id:'left',title:'Kendaraan lambat di lajur kiri',article:'Pasal 108(3)–(4)',detail:'Sepeda, motor dan mobil barang kembali ke kiri jika tersedia. Mendahului, menghindari penutupan dan persiapan belok diperhitungkan.',fine:25000,points:3},
   {id:'signal',title:'Beri isyarat sebelum bergeser',article:'Pasal 112(1)–(2)',detail:'Nyalakan sein kiri/kanan sebelum pindah lajur. Pada sepeda, tombol ini mewakili isyarat tangan. Hazard bukan sein.',fine:25000,points:3},
   {id:'gap',title:'Jaga jarak dan pindah saat aman',article:'Pasal 105, 109, 112(2)',detail:'AI menjaga sela waktu sekitar 2 detik, lebih jauh saat hujan. Jangan membuntuti rapat atau memotong kendaraan lain.',fine:25000,points:3},
-  {id:'shoulder',title:'Bahu jalan untuk keadaan darurat',article:'Pasal 106(4), 108',detail:'Jangan memakai bahu untuk melaju. Berhenti untuk kerusakan, masuk/keluar ramp dan menepi memberi jalan diperhitungkan.',fine:50000,points:5},
+  {id:'shoulder',title:'Bahu jalan untuk keadaan darurat',article:'Pasal 106(4), 108',detail:'Jangan memakai bahu untuk melaju (di atas 40 km/jam). Berhenti, menepi, berjalan pelan di bahu, menyalakan hazard, masuk/keluar ramp dan memberi jalan tidak ditilang.',fine:50000,points:5},
   {id:'closed',title:'Patuhi lajur ditutup dan marka',article:'Pasal 106(4)',detail:'Jangan masuk ke lajur yang ditutup cone. Beri ruang kendaraan yang bergabung ke lajur terbuka.',fine:50000,points:5},
   {id:'priority',title:'Beri jalan kendaraan darurat',article:'Pasal 134–135',detail:'Menepi dan perlambat untuk kendaraan bertugas dengan sirene. Hak utama tidak menghilangkan kewajiban mencegah tabrakan.',fine:50000,points:5},
   {id:'junction',title:'Jangan mengunci persimpangan',article:'Pasal 105, 106',detail:'Meskipun hijau, tunggu sebelum garis jika ruang setelah simpang tidak cukup. Kendaraan dari ramp menunggu celah di jalan utama.',fine:25000,points:3},
@@ -34,7 +36,8 @@ export function createLawAuditor(){
     if(!continuous)s.timers={};
     age('speed',Math.abs(f.speed)>f.limit+1.4&&!f.priority,2.5);
     age('wrongway',f.wrongway&&!f.priority&&Math.abs(f.speed)>1,1);
-    age('shoulder',f.shoulder&&!f.exemptShoulder&&!f.priority&&Math.abs(f.speed)>2,2);
+    // Stopping or creeping on the shoulder (breakdown, letting traffic by, a pickup) is allowed; only driving along it at speed is not.
+    age('shoulder',f.shoulder&&!f.exemptShoulder&&!f.priority&&f.indicator!==2&&Math.abs(f.speed)>SHOULDER_CRAWL,3);
     age('left',f.leftRequired&&!f.leftException&&Math.abs(f.speed)>4,6);
     age('closed',f.closed&&!f.priority&&Math.abs(f.speed)>1,0.3);
     age('gap',f.gap>=0&&f.gap<Math.max(2,Math.abs(f.speed)*0.65)&&Math.abs(f.speed)>7&&!f.braking,2);
@@ -42,7 +45,9 @@ export function createLawAuditor(){
     age('junction',f.inJunction&&Math.abs(f.speed)<0.5&&!f.priority,5);
     if(continuous){
       for(const light of f.lights||[])if(s.front<light.line&&f.front>=light.line&&light.signal==='R'&&!f.priority)emit('red');
-      if(f.lane!==s.lane&&f.lane>=0&&s.lane>=0&&Math.abs(f.speed)>1){const direction=Math.sign(f.lane-s.lane);if(f.indicator!==direction)emit('signal');if(f.unsafeMerge)emit('gap');}
+      // pulling slowly onto the shoulder (or back off it) is stopping, not a lane change
+      const toShoulder=(f.lane>=f.lanes||s.lane>=f.lanes)&&Math.abs(f.speed)<SHOULDER_CRAWL;
+      if(f.lane!==s.lane&&f.lane>=0&&s.lane>=0&&Math.abs(f.speed)>1&&!toShoulder){const direction=Math.sign(f.lane-s.lane);if(f.indicator!==direction)emit('signal');if(f.unsafeMerge)emit('gap');}
     }
     s.front=f.front;s.lane=f.lane;s.route=f.route;s.sd=f.sd;return events;
   }};

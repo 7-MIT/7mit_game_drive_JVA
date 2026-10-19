@@ -3286,7 +3286,7 @@ const JOBS = {
   taksi:  {name: 'Sopir taksi', veh: 'taxi', desc: 'Antar penumpang dengan argo', pay: 'Rp 3.000.000 + Rp 50.000/km', base: JOB_MIN, perKm: 50000, kind: 'ride', who: 'penumpang'},
   bus:    {name: 'Sopir bus', veh: 'bus', desc: 'Berhenti di setiap halte: penumpang naik dan turun', pay: 'Rp 3.000.000 per halte + Rp 150.000 per penumpang', perStop: JOB_MIN, perPax: 150000, kind: 'line', stops: 5, gap: [380, 720]},
   angkot: {name: 'Sopir angkot', veh: 'angkot', desc: 'Banyak penumpang jarak pendek', pay: 'Rp 3.000.000 per halte + Rp 100.000 per penumpang', perStop: JOB_MIN, perPax: 100000, kind: 'line', stops: 6, gap: [200, 420]},
-  truk:   {name: 'Sopir truk ekspedisi', veh: 'truck', desc: 'Muat paket di gudang, antar minimal 25 km (boleh lewat tol); muatan rusak dipotong', pay: 'Rp 3.000.000 + Rp 100.000/km', base: JOB_MIN, perKm: 100000, kind: 'ride', who: 'paket', minKm: 25},
+  truk:   {name: 'Sopir truk ekspedisi', veh: 'truck', desc: 'Muat paket di gudang (di luar jalan tol), antar minimal 25 km ke gudang di luar tol (boleh lewat tol di tengah jalan); muatan rusak dipotong', pay: 'Rp 3.000.000 + Rp 100.000/km', base: JOB_MIN, perKm: 100000, kind: 'ride', who: 'paket', minKm: 25},
 };
 let job = null;
 // swap the player's vehicle in place (same spot, lane and speed), without rebuilding the world
@@ -3311,9 +3311,13 @@ function jobSpot(u, noToll = nonTollVehicle(cfg.veh)){ for (let k = 0; k < 120; 
 // where an order ends: a short ride for passengers and food; a truck delivery at least J.minKm (real km) on, at a warehouse off the
 // toll road when the route leaves it (the toll roads in between are fine), otherwise beside the toll road
 function jobDrop(J, a){ if (!J.minKm) return jobSpot(a + rnd(J.bicycle ? 220 : 600, J.bicycle ? 500 : 1500));
-  const u0 = a + J.minKm*1000/cfg.scale + rnd(0, 600), last = EV[EV.length - 1].u - 120;
-  for (let u = u0; u < Math.min(last, u0 + 30000/cfg.scale); u += 200) if (!isToll(u)) { const v = jobSpot(u, true); if (!isToll(v) && v < last) return v; }
-  return jobSpot(u0); }
+  const u0 = a + J.minKm*1000/cfg.scale + rnd(0, 600);
+  return offTollSpot(u0); }
+// a warehouse for the truck: never beside a toll road, the first place off the toll road from u on along the route (null if none)
+function offTollSpot(u0){ const last = EV[EV.length - 1].u - 120;
+  for (let u = u0; u < last; u += 200) if (!isToll(u)) { const v = jobSpot(u, true); if (!isToll(v) && v < last) return v; }
+  return null; }
+const jobPick = (J, u) => J.minKm ? offTollSpot(u) : jobSpot(u);
 // ---------- phone services: ride as a passenger (ojek or taksi, on autopilot), order food, send a parcel ----------
 let ride = null, rideBack = null; const FOOD = [], PARCELS = [];
 const RIDE = {ojek: {veh: 'moto', base: 10000, perKm: 2500, name: 'Ojek'}, taksi: {veh: 'taxi', base: 7500, perKm: 6500, name: 'Taksi Blue'}};
@@ -3354,7 +3358,12 @@ function jobStart(k){
   if (nonTollVehicle(J.veh)) { const i0 = Math.max(0, evAt(u)); if (EV.slice(i0, EV.length - 1).some(e => CORR[e.cNext] && CORR[e.cNext].cls === 't')) { const i = replanIdx(u), e = EV[i];
       if (trip.dest) setNav(trip.dest, true); else if (e) { const tail = walkFree(e.key, prevKeyOf(e), e.c, null, 50, 'mix'); if (tail) replan(i, tail, null); } } }
   const last = EV[EV.length-1].u, stops = [];
-  if (J.kind === 'ride') { const a = jobSpot(u + rnd(J.bicycle ? 120 : 350, J.bicycle ? 260 : 700)), b = jobDrop(J, a); stops.push({u: a, kind: 'pick'}, {u: b, kind: 'drop'}); }
+  // a truck on the toll road: the warehouse is off the toll road, so the route leaves it at the next exit when the next non-toll road is far
+  if (J.minKm && isToll(u)) { const a0 = offTollSpot(u + 350); if (a0 == null || (a0 - u)*cfg.scale/1000 > 15) { const s = EV.find(e => e.u > u + LOCK && e.kind === 'x' && exitEdge(e));
+      if (s && seamlessExit(s)) toast(`Gudang muat ada di luar tol: rute keluar di exit ${s.name}`); } }
+  if (J.kind === 'ride') { const a = jobPick(J, u + rnd(J.bicycle ? 120 : 350, J.bicycle ? 260 : 700)), b = a == null ? null : jobDrop(J, a);
+    if (a == null || b == null) return toast(J.minKm ? 'Gudang muat dan bongkar ada di luar jalan tol: pilih tujuan yang keluar tol (atau keliling bebas di jalan non-tol)' : 'Rute di depan terlalu pendek untuk pekerjaan ini', 'warn');
+    stops.push({u: a, kind: 'pick'}, {u: b, kind: 'drop'}); }
   else { let x = u; for (let i = 0; i < J.stops; i++) { x = jobSpot(x + rnd(J.gap[0], J.gap[1])); stops.push({u: x, kind: 'halte', on: 1 + Math.floor(Math.random()*(k === 'bus' ? 9 : 4)), off: 0}); } }
   if (stops[stops.length - 1].u > last - 100) return toast(J.minKm ? `Pengiriman truk minimal ${J.minKm} km: pilih tujuan yang lebih jauh (atau keliling bebas)` : 'Rute di depan terlalu pendek untuk pekerjaan ini: pilih tujuan yang lebih jauh', 'warn');
   job = {k, J, stops, i: 0, earned: 0, pax: 0, hold: 0, viol0: stats.viol, crash0: stats.crashes, dmg0: P.dmg || 0, t0: clock};
@@ -3401,7 +3410,7 @@ function jobTick(dt){
       const tip = stars === 5 && job.k !== 'truk' ? 5000 : 0; job.earned += fare + tip;
       earn(fare + tip, `${job.J.name} · ${fmtKm(km)} · ${'★'.repeat(stars)}${'☆'.repeat(5 - stars)}${tip ? ' · tip ' + rp$(tip) : ''}`);
       // next order straight away
-      const a = jobSpot(front + rnd(job.J.bicycle ? 120 : 350, job.J.bicycle ? 260 : 700)), b = jobDrop(job.J, a); if (b < EV[EV.length - 1].u - 100) { job.stops = [{u: a, kind: 'pick'}, {u: b, kind: 'drop'}]; job.i = 0; job.viol0 = stats.viol; job.crash0 = stats.crashes; job.dmg0 = P.dmg || 0; jobMarker(); setTimeout(() => job && toast(`Order baru: ${jobGoal()}`), 2800); }
+      const a = jobPick(job.J, front + rnd(job.J.bicycle ? 120 : 350, job.J.bicycle ? 260 : 700)), b = a == null ? null : jobDrop(job.J, a); if (b != null && b < EV[EV.length - 1].u - 100) { job.stops = [{u: a, kind: 'pick'}, {u: b, kind: 'drop'}]; job.i = 0; job.viol0 = stats.viol; job.crash0 = stats.crashes; job.dmg0 = P.dmg || 0; jobMarker(); setTimeout(() => job && toast(`Order baru: ${jobGoal()}`), 2800); }
       else { toast('Tidak ada order lagi di rute ini · pekerjaan selesai'); jobStop(); return; } }
     else { const off = Math.min(job.pax, 1 + Math.floor(Math.random()*Math.max(1, job.pax))), on = st.on; job.pax = job.pax - off + on;
       const fare = Math.max(JOB_MIN, (job.J.perStop || 0) + on*job.J.perPax); job.earned += fare; earn(fare, `${job.J.name} · ${off} turun, ${on} naik`); job.i++;
@@ -5430,7 +5439,7 @@ function trafficFacts(v){
     wrongway:(!legalCf&&v.lx<-.5&&Math.abs(v.hd||0)<Math.PI/2)||(v.lx>-.5&&Math.abs(v.hd||0)>2&&Math.abs(v.vel)>3)||v.vel<-2&&isToll(u),
     shoulder:v.lx>n-1+.55,exemptShoulder:!isToll(u)||!!tow||!!(sa&&Math.abs(sa.t)<400)||v.dmg>40||!!emergency||!!v.rp,
     leftRequired,leftException:!!v.rp||v.lx<0||blockAhead(v.sd,n-1,front)<160||!!(sa&&v.exitWant)||indicator===-1||(g.lead&&g.ld<70&&g.lead.vel<v.vel)||Math.abs(v.lane-v.lx)>.2,
-    gap:g.ld,braking:(v.brk||0)>.1||(v.acc||0)<-.8,unsafeMerge:(g.ld<3||g.fd<3),closed:!v.rp&&blockAhead(v.sd,Math.round(v.lx),front)===0,
+    gap:g.ld,braking:(v.brk||0)>.1||(v.acc||0)<-.8,unsafeMerge:(g.ld<3||g.fd<3),closed:!v.rp&&Math.round(v.lx)>=0&&Math.round(v.lx)<n&&blockAhead(v.sd,Math.round(v.lx),front)===0,
     emergencyBehind:!!emergency,givingWay:Math.abs(v.yx||0)>.12||v.lx>n-1+.3||v.vel<3||indicator===1,
     inJunction:!v.rp&&KSITES.some(s=>Math.abs(s.u-u)<XW/2),lights:v.rp?[]:KSITES.filter(s=>Math.abs(s.u-u)<40).map(s=>({line:v.sd*s.u-SL,signal:sigMain(s)})),signal:(lightAhead(v.sd,front)||{}).s?sigMain(lightAhead(v.sd,front).s):null};
 }

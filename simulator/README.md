@@ -495,3 +495,14 @@ Run `PHONE_DOM_MODULE=/path/to/jsdom node --test simulator/tests/startup.test.mj
   - Kemiringan dibatasi per kelas jalan: tol paling curam 5%, jalan nasional 13%, jalan provinsi 15%.
   - Rambu kuning "TANJAKAN" / "TURUNAN" dipasang mulai 3,5%, dan "TANJAKAN TAJAM" / "TURUNAN TAJAM" mulai 8%. Suara navigasi mengingatkan sebelum tanjakan atau turunan tajam.
   - Mobil, truk dan sepeda melambat di tanjakan sesuai fisika kendaraan.
+
+### Perbaikan: bahu jalan dan gudang truk
+
+- **Berhenti atau berjalan pelan di bahu jalan tidak ditilang.** Hal-hal berikut bukan pelanggaran:
+  - menepi atau berhenti di bahu, dengan atau tanpa hazard;
+  - berjalan pelan di bahu, di bawah 40 km/jam;
+  - pindah perlahan ke bahu atau kembali dari bahu (tidak dianggap pindah lajur tanpa sein).
+
+  Yang tetap ditilang adalah melaju di bahu di atas 40 km/jam selama 3 detik.
+- **Bahu tidak lagi dianggap "lajur ditutup".** Sebelumnya, berhenti di bahu bisa salah tercatat sebagai pelanggaran lajur ditutup.
+- **Sopir truk: gudang muat dan bongkar selalu di luar jalan tol.** Kalau pekerjaan dimulai di jalan tol dan jalan non-tol berikutnya masih jauh, rute otomatis keluar di exit berikutnya menuju gudang. Truk boleh lewat tol di tengah perjalanan.

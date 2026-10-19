@@ -24,6 +24,10 @@ test('signals are directional; hazard is not a turn signal; allowed contraflow i
  assert.equal(run(createLawAuditor(),{},facts({wrongway:false,speed:10}),4).includes('wrongway'),false);
  assert.ok(run(createLawAuditor(),{},facts({wrongway:true,speed:10}),2).includes('wrongway'));
  assert.equal(run(createLawAuditor(),{},facts({shoulder:true,exemptShoulder:true,speed:10}),4).includes('shoulder'),false);
+ // Stopping, creeping or hazard lights on the shoulder are not offences; driving along it at speed is.
+ for(const speed of [0,3,10])assert.equal(run(createLawAuditor(),{},facts({shoulder:true,exemptShoulder:false,speed}),6).includes('shoulder'),false);
+ assert.equal(run(createLawAuditor(),{},facts({shoulder:true,exemptShoulder:false,speed:20,indicator:2}),6).includes('shoulder'),false);
+ assert.equal(run(createLawAuditor(),{},facts({shoulder:true,exemptShoulder:false,speed:20}),6).includes('shoulder'),true);
 });
 test('every corridor segment and each direction receive cameras, including short non-toll roads',()=>{
  const events=[{u:0},{u:100},{u:3400},{u:6000}],cams=makeEtleCameras(events,[{u:100,name:'Simpang'}],u=>u<3400?'nasional':'tol');
