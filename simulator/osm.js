@@ -15,7 +15,7 @@ const REGIONS = {
   bali: {bb: [-8.9, 114.42, -8.0, 115.75], span: 0.9}};
 const inBB = (b, lat, lon) => lat >= b[0] && lat <= b[2] && lon >= b[1] && lon <= b[3];
 const CACHE = 'tj-osm-v1', MAX_AGE = 14*24*3600e3, CELL = 0.05;
-const KIND = {motorway: 't', trunk: 'n', primary: 'p', secondary: 's', tertiary: 'c', residential: 'r', unclassified: 'r', living_street: 'r'};
+const KIND = {motorway: 't', trunk: 'n', primary: 'p', secondary: 's', tertiary: 'c', residential: 'r', unclassified: 'r', living_street: 'r', road: 'r'};
 const COSL = Math.cos(7.2*Math.PI/180);
 
 // Douglas–Peucker in metres on [lon, lat] pairs
@@ -132,7 +132,7 @@ export function initOSM({onUpdate = () => {}, log = () => {}} = {}){
   function loadTile(lat, lon){ const ti = Math.floor(lat), tj = Math.floor(lon); if (!covered(ti, tj, ti + 1, tj + 1)) return;
     return loadArea(`u${ti}_${tj}`, `[out:json][timeout:150];way["highway"~"^(primary|secondary|tertiary)$"]${bb(ti, tj, ti + 1, tj + 1)};out geom;`, 180000); }
   function loadStreets(lat, lon){ const ti = Math.floor(lat*10), tj = Math.floor(lon*10); if (!covered(lat, lon, lat, lon)) return;
-    return loadArea(`r${ti}_${tj}`, `[out:json][timeout:90];way["highway"~"^(residential|unclassified|living_street)$"]${bb(ti/10, tj/10, (ti + 1)/10, (tj + 1)/10)};out geom;`, 120000); }
+    return loadArea(`r${ti}_${tj}`, `[out:json][timeout:90];way["highway"~"^(residential|unclassified|living_street|road)$"]${bb(ti/10, tj/10, (ti + 1)/10, (tj + 1)/10)};out geom;`, 120000); }
   // roads with a part inside a lat/lon box
   function inBox(la0, lo0, la1, lo1){ const seen = new Set(), out = [];
     if ((la1 - la0)*(lo1 - lo0)/(CELL*CELL) > 6000) { for (const r of roads) if (r.bb[2] >= la0 && r.bb[0] <= la1 && r.bb[3] >= lo0 && r.bb[1] <= lo1) out.push(r); return out; }
