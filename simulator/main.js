@@ -886,7 +886,13 @@ function buildChunkNat(i){
     if (town) {
       // shophouses (ruko) with coloured awnings, gaps for side streets
       let u = u0 + R()*4;
+      // the town's traditional market (pasar) by the main crossing: stalls with tarps in front of an open market hall
+      const mkt = u2 => Math.abs(u2 - town.u - 70*s) < 34;
+      for (let u2 = Math.ceil((town.u + 70*s - 32)/3.4)*3.4; u2 < town.u + 70*s + 32; u2 += 3.4) if (u2 >= u0 && u2 < u1 && !xGap(u2)) {
+        for (const o of [7.5, 11]) nearbyBuildings.push({x: s*(eAt(u2) + o), z: Z(u2), d: 2.6, w: 3, type: 'lapak', color: [0x2d6fb7, 0xe07a2a, 0x3b8f4a, 0xc33a2e, 0xd8b82a][Math.floor(R()*5)]});
+        if (Math.abs(u2 - town.u - 70*s) < 1.8) nearbyBuildings.push({x: s*(eAt(u2) + 20), z: Z(u2), d: 11, w: 26, type: 'joglo', open: true, roofColor: 0x7c7f83}); }
       while (u < u1) { const w = 7 + R()*5, h = 6 + R()*5, d = 12, x = s*(eAt(u) + 6 + d/2);
+        if (mkt(u) || mkt(u + w)) { u += w; continue; }
         if (!xGap(u) && !xGap(u + w) && !jGap(SJ, s, u, u + w) && R() > 0.08 && !rampFoot(6, u + w/2, w)) {
           nearbyBuildings.push({x,z:Z(u+w/2),d,w:w-.4,h,type:'shop',color:RUKO[Math.floor(R()*RUKO.length)].color,awning:AWN[Math.floor(R()*AWN.length)].color}); }
         u += w; }
@@ -896,7 +902,9 @@ function buildChunkNat(i){
       if (regionAt(u0 + CH/2) === 'paddy') for (let k = 0; k < 2; k++) { const w = 30 + R()*120, o = 14 + R()*40;
         g.add(flat(w, CH*(0.4 + R()*0.6), PADDY[Math.floor(R()*3)], s*(eAt(u0) + o + w/2), 0.002, -CH/2)); }
       for (let u = u0 + R()*30; u < u1; u += 30 + R()*40) { if (R() < 0.45) continue; const o = 9 + R()*14, x = s*(eAt(u) + o + 3); if (rampFoot(o, u, 8) || jGap(SJ, s, u - 5, u + 5)) continue;
-        nearbyBuildings.push({x,z:Z(u),d:6,w:7,h:3.2,type:'house',color:RUKO[Math.floor(R()*RUKO.length)].color}); }
+        const sty = archStyle(...(ll => [ll.lat, ll.lon])(latLonAt(u)));
+        if (sty && R() < 0.45) { const [d2, w2] = ARCH_SIZE[sty]; nearbyBuildings.push({x: s*(eAt(u) + o + 1.5 + d2/2), z: Z(u), d: d2, w: w2, h: 3.2, type: sty}); }
+        else nearbyBuildings.push({x,z:Z(u),d:6,w:7,h:3.2,type:'house',color:RUKO[Math.floor(R()*RUKO.length)].color}); }
     }
     if (!town && s > 0) roadside(g, u0, u1, Z, R, false);
     // a billboard now and then outside towns, alternating sides
@@ -1017,7 +1025,7 @@ function buildChunk(i){
 // Pantura, Cipali and the Trans-Jawa plains are rice fields with villages, Cipularang, Bawen–Salatiga, Bocimi,
 // Cisumdawu and Pandaan–Malang run through hills and forest. Volcanoes stand on the horizon where they really are.
 // ================================================================
-const CITIES = [[-6.917, 107.61, 11], [-6.99, 110.42, 10], [-7.26, 112.75, 13], [-7.80, 110.37, 9], [-7.57, 110.82, 8], [-7.98, 112.63, 8], [-6.72, 108.55, 6], [-6.12, 106.15, 6], [-7.33, 108.22, 5], [-7.42, 109.24, 5], [-6.87, 109.13, 5], [-6.89, 109.67, 4]];
+const CITIES = [[3.59, 98.67, 12], [-2.98, 104.76, 10], [-0.95, 100.35, 8], [0.51, 101.45, 9], [-5.43, 105.26, 9], [-1.61, 103.61, 6], [-3.80, 102.27, 5], [-0.30, 100.37, 3], [-8.66, 115.21, 9], [-6.917, 107.61, 11], [-6.99, 110.42, 10], [-7.26, 112.75, 13], [-7.80, 110.37, 9], [-7.57, 110.82, 8], [-7.98, 112.63, 8], [-6.72, 108.55, 6], [-6.12, 106.15, 6], [-7.33, 108.22, 5], [-7.42, 109.24, 5], [-6.87, 109.13, 5], [-6.89, 109.67, 4]];
 const HILLS = new Set(['cipularang', 'semsol', 'bocimi', 'gempan', 'cisumdawu', 'soroja', 'puncak', 'magelang', 'wonosobo', 'batu', 'pelratu', 'garut', 'lembang']);
 const kmTo = (la1, lo1, la2, lo2) => Math.hypot((la1 - la2)*111, (lo1 - lo2)*110.4);
 function regionAt(u){
@@ -1029,6 +1037,15 @@ function regionAt(u){
   for (const [la, lo, r] of CITIES) if (kmTo(p.lat, p.lon, la, lo) < r) return 'urban';
   return 'paddy';
 }
+// regional house style by place: Betawi in Jakarta, joglo in Central / East Java and Yogyakarta, rumah gadang in the Minangkabau
+// highlands, rumah panggung elsewhere in Sumatera, Balinese compounds in Bali; West Java keeps the plain village house
+function archStyle(lat, lon){ const r = regionOf(lat, lon);
+  if (r === 'bali') return 'bali';
+  if (r === 'sumatra') return lat > -1.7 && lat < 0.5 && lon > 99.6 && lon < 101.6 ? 'gadang' : 'panggung';
+  if (lon > 106.6 && lon < 107.1 && lat > -6.42 && lat < -6.05) return 'betawi';
+  if (lon > 109.6) return 'joglo';
+  return null; }
+const ARCH_SIZE = {joglo: [9, 10], betawi: [7, 9], gadang: [7, 15], panggung: [6, 8], bali: [6, 6]};
 const bldMat = new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 0.85}), bldRoof = new THREE.MeshStandardMaterial({color: 0xffffff, roughness: 0.8});
 const WALLS = [0xe8d9b5, 0xd9c3a0, 0xf0e6d2, 0xc9d6c3, 0xe3c8c0, 0xd2d8e0, 0xf2efe8, 0xe6b98a, 0xbfc7cc, 0xdedad0].map(c => new THREE.Color(c));
 const ROOFS = [0x8a4b35, 0x6b3b2a, 0x9a5a3a, 0x7c7f83, 0x4f6f8a, 0xa3402f].map(c => new THREE.Color(c));
@@ -1036,7 +1053,7 @@ const hillGeo = (() => { const g = new THREE.IcosahedronGeometry(1, 1); g.scale(
 const hillMat = M(0x5f7d45, {flatShading: true});
 // buildings / fields / hills on both sides of a chunk; toll = keep clear of ramps, the parallel road and plazas
 function roadside(g, u0, u1, Z, R, toll){
-  const reg = regionAt(u0 + CH/2), buildings=[], fields = [];
+  const reg = regionAt(u0 + CH/2), buildings=[], fields = [], llc = EV.length ? latLonAt(u0 + CH/2) : null, sty = llc ? archStyle(llc.lat, llc.lon) : null;
   const free = (o, u, w) => { if (eAt(u) + o - w/2 < mbzClear(u) + 3) return false;    // never build on Japek under/beside the MBZ
     if (rampFoot(o, u, w)) return false;
     if (!toll) return o > 9 && !KSITES.some(t => Math.abs(t.u - u) < TOWN_R + 60);
@@ -1046,7 +1063,11 @@ function roadside(g, u0, u1, Z, R, toll){
     return true; };
   const house = (s, u, o, w, d, h, roof = true, wc, rc) => { const x = s*(eAt(u) + o);
     if (o < 70) addSolid(g, 'Menabrak bangunan', u - w/2, u + w/2, x - d/2, x + d/2);     // buildings near the road are solid when you drive off it
+    if (roof && sty && h < 6 && R() < (reg === 'urban' ? 0.2 : 0.5)) { const [d2, w2] = ARCH_SIZE[sty]; buildings.push({x: s*(eAt(u) + o + (d2 - d)/2), z: Z(u), d: d2, w: w2, h, type: sty, open: sty === 'joglo' && R() < 0.2}); return; }
     buildings.push({x,z:Z(u),d,w,h,type:roof?'house':h>18?'tower':'warehouse',color:wc??WALLS[Math.floor(R()*WALLS.length)]}); };
+  // Bali: a candi bentar at the entrance of a village and now and then a pura with its meru towers
+  const pura = (s, u, o) => { if (!free(o, u, 16)) return; const x = s*(eAt(u) + o); buildings.push({x, z: Z(u), type: 'gapura', h: 6 + R()*3});
+    if (free(o + 14, u, 14)) { buildings.push({x: s*(eAt(u) + o + 12), z: Z(u - 5), type: 'meru', tiers: [3, 5, 7, 9][Math.floor(R()*4)], s: 3.6 + R()*1.4}); if (R() < 0.6) buildings.push({x: s*(eAt(u) + o + 13), z: Z(u + 6), type: 'meru', tiers: 3, s: 3}); } };
   for (const s of toll ? [-1, 1] : [-1, 1]) {
     if (reg === 'urban') {
       // dense kampung / housing estates close to the road, ruko and apartment towers further out
@@ -1061,10 +1082,11 @@ function roadside(g, u0, u1, Z, R, toll){
     } else if (reg === 'paddy') {
       // rice fields (sawah) right up to the fence, a village every few hundred metres
       for (let k = 0; k < 3; k++) { const o = 16 + k*70 + R()*20, w = 50 + R()*40; for (const h of [0, 1]) if (free(o + w/2, u0 + 30 + h*60, 60)) fields.push([s, o + w/2, w, h]); }
-      if (R() < 0.3) { const uc = u0 + R()*CH, oc = 60 + R()*160; for (let j = 0; j < 7; j++) { const u = uc + (R() - 0.5)*50, o = oc + (R() - 0.5)*40; if (free(o, u, 8)) house(s, u, o, 6 + R()*2, 7, 3 + R()); } }
+      if (R() < 0.3) { const uc = u0 + R()*CH, oc = 60 + R()*160; if (sty === 'bali') pura(s, uc - 34, Math.max(20, oc - 30)); for (let j = 0; j < 7; j++) { const u = uc + (R() - 0.5)*50, o = oc + (R() - 0.5)*40; if (free(o, u, 8)) house(s, u, o, 6 + R()*2, 7, 3 + R()); } }
     } else {
       // hills: rolling green slopes beside the road, terraced rice (terasering) on the lower slopes
       if (R() < 0.5) { const o = 20 + R()*40, w = 30 + R()*30; for (const h of [0, 1]) if (free(o + w/2, u0 + 30 + h*60, 60)) fields.push([s, o + w/2, w, h]); }
+      if (sty && R() < 0.35) { const uc = u0 + R()*CH, oc = 30 + R()*60; if (sty === 'bali' && R() < 0.5) pura(s, uc, oc); else for (let j = 0; j < 4; j++) { const u = uc + (R() - 0.5)*40, o = oc + (R() - 0.5)*20; if (free(o, u, 10)) house(s, u, o, 6, 7, 3 + R()); } }
       for (let k = 0; k < 3; k++) { const u = u0 + R()*CH, o = 70 + R()*230, r = 50 + R()*90; if (free(o, u, r)) { const m = new THREE.Mesh(hillGeo, hillMat); m.position.set(s*(eAt(u) + o + r*0.4), 0, Z(u)); m.scale.set(r, r*(0.6 + R()*0.6), r*1.4); m.receiveShadow = true; g.add(m); } }
     }
   }
@@ -2452,6 +2474,7 @@ function tickNeeds(dt){
   // microsleep at 100 %: the hands drift off the wheel for a moment
   if (WAL.sleep >= 100 && !cfg.auto && !foot && (msT -= dt) < 0) { msT = rnd(15, 30); PLR.steer = (PLR.steer || 0) + (Math.random() - 0.5)*0.12; toast('Microsleep! Anda tertidur sesaat', 'bad'); shake = 0.3; }
   if ((walT -= dt) < 0) { walT = 0.5; cfg.wal = {...WAL}; saveCfgSoon(); uiNeeds();
+    try { const ll = latLonAt(uOfV(PLR)), r = regionOf(ll.lat, ll.lon); if (r !== islandNow) { islandNow = r; const k = document.querySelector('#hud .kick') || document.querySelector('.kick'); if (k) k.innerHTML = `<b>Jalan</b> Pulau ${REGIONS[r].name} · Lajur kiri`; } } catch (e) {}
     if (carReturn && !job && !ride && swapPlayerVeh(carReturn)) { toast(`Kendaraan perusahaan dikembalikan · kembali ke ${VEH[carReturn].label}`); carReturn = null; } }
 }
 // career distance: at night, in the rain, and on which island (checked once a kilometre or so)
@@ -3390,7 +3413,7 @@ function jobStart(k){
 function jobStop(){ if (!job) return; if (job.mk) { scene.remove(job.mk); job.mk.traverse(o => {if(o.geometry&&!o.geometry.userData.keep)o.geometry.dispose();}); } const back = job.prevVeh; job = null; jobUI();
   // a company vehicle goes back: the player continues in their own one (when it can be swapped here)
   if (PLR && !CAR.owns(PLR.type) && back && CAR.owns(back) && back !== PLR.type) { if (swapPlayerVeh(back)) toast(`Kendaraan perusahaan dikembalikan · kembali ke ${VEH[back].label}`); else carReturn = back; } }
-let carReturn = null;
+let carReturn = null, islandNow = 'jawa';
 const JOB_COL = {pick: 0x2fa84f, drop: 0xec3013, halte: 0x1f5fbf};
 // the marker: a glowing post and a waiting person (or a bus-stop shelter) on the verge
 function jobMarker(){
