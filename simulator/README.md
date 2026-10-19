@@ -513,3 +513,21 @@ Run `PHONE_DOM_MODULE=/path/to/jsdom node --test simulator/tests/startup.test.mj
 ### Saran & Kesan
 
 Pemain yang merasa ada fitur yang kurang atau punya saran bisa mengirim Saran & Kesan untuk driving.7mit lewat [formulir](https://7mit.org/form/feedback-driving7mit), atau lewat email / iMessage ke halo@7mit.org. Tautannya ada di halaman sambutan, di Pengaturan (baris "Saran & Kesan") dan di HP → Pengaturan.
+
+### Paket data jalan OSM (tanpa menunggu server Overpass)
+
+Setiap minggu, GitHub Action **Data jalan OSM** (`.github/workflows/osm-data.yml`) menjalankan `tools/osm-build.mjs`. Skrip ini mengunduh data OpenStreetMap yang dipakai game dan menerbitkannya ke branch `osm-data`. Isinya:
+
+- tol dan jalan arteri Jawa;
+- tol dan jalan arteri Sumatera dan Bali, per area 2°;
+- jalan provinsi dan kabupaten/kota di semua pulau, per area 1°;
+- garis pantai Jawa, Sumatera dan Bali.
+
+Game (`simulator/osm.js`, `PACK`) mengambil file dari paket ini lebih dulu. Hasilnya:
+
+- Data jalan langsung masuk tanpa antre di server Overpass publik, yang sering sibuk atau menolak permintaan.
+- Garis pantai Sumatera dari OSM kini juga tersedia.
+- Overpass hanya dipakai untuk file yang belum ada di paket, dan untuk jalan lingkungan/desa, yang tetap diambil langsung per area 0,1°.
+- File yang gagal dibangun ulang minggu ini tidak menimpa file minggu sebelumnya.
+
+Workflow juga bisa dijalankan manual dari tab **Actions → Data jalan OSM → Run workflow**, dan berjalan otomatis setiap kali skrip pembangunnya berubah.

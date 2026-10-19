@@ -1,0 +1,39 @@
+# Packages the OpenStreetMap road and coastline data for driving.7mit every week (tools/osm-build.mjs)
+# and publishes it to the branch osm-data, which the game reads first (simulator/osm.js, PACK).
+name: Data jalan OSM
+on:
+  schedule:
+    - cron: '23 18 * * 0'      # Monday 01:23 WIB
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['tools/osm-build.mjs', '.github/workflows/osm-data.yml']
+permissions:
+  contents: write
+concurrency:
+  group: osm-data
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # keep last week's files: a file that cannot be rebuilt this time stays as it was
+      - name: Ambil paket sebelumnya
+        run: |
+          mkdir -p out
+          git fetch --depth=1 origin osm-data && git --work-tree=out checkout origin/osm-data -- . || echo "belum ada paket sebelumnya"
+          git reset -q
+      - name: Bangun paket data
+        run: node tools/osm-build.mjs out
+      - name: Terbitkan ke branch osm-data
+        run: |
+          cd out
+          git init -q -b osm-data
+          git add -A
+          git -c user.name="driving.7mit bot" -c user.email="halo@7mit.org" commit -q -m "Data jalan OSM $(date -u +%Y-%m-%d)"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" osm-data
