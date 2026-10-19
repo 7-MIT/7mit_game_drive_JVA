@@ -475,3 +475,22 @@ Run `PHONE_DOM_MODULE=/path/to/jsdom node --test simulator/tests/startup.test.mj
 - **Penumpang taksi/ojek.** Selama menjadi penumpang, autopilot terkunci. Jika pesanan dibatalkan, pemain kembali ke kendaraan pribadi dan bisa menyetir manual lagi.
 - **Waktu nyata.** Ada opsi kecepatan waktu baru: 1 jam = 60 menit.
 - **Grafis Tinggi = paling realistis.** Di Pengaturan → Grafis → Tinggi, setiap kendaraan tetap memakai model 3D lengkapnya sejauh apa pun, tanpa model sederhana untuk kendaraan jauh. Resolusinya penuh (hingga 2× piksel layar). Bayangan dibuat tajam (peta bayangan 4096, atau 2048 di HP), mencakup area dua kali lebih luas, dan diperbarui setiap frame. Efek cahaya (bloom) aktif, jarak pandang lebih jauh, dan spion diperbarui 30 kali per detik. Grafis tidak diturunkan otomatis di preset ini, jadi pilih Otomatis kalau perangkat terasa berat.
+
+### Sumatera & Bali (Beta), kapal feri, tanjakan dan turunan
+
+- **Sumatera (Beta).** Jaringan baru:
+  - Jalan Lintas Timur (Bakauheni–Bandar Lampung–Palembang–Jambi–Pekanbaru–Medan–Banda Aceh), Lintas Tengah (Bandar Jaya–Lubuk Linggau–Padang, Padang–Bukittinggi–Tarutung–Tebing Tinggi), dan jalan penghubung ke Bengkulu, Prabumulih, Muara Enim, Dumai, Belawan dan Kota Agung.
+  - Ruas Tol Trans-Sumatera yang sudah beroperasi: Bakauheni–Terbanggi Besar–Kayu Agung–Palembang, Palembang–Indralaya–Prabumulih, Pekanbaru–Dumai, Belmera, Medan–Kualanamu–Tebing Tinggi, Medan–Binjai, Sigli–Banda Aceh, Padang–Sicincin, dan Bengkulu–Taba Penanjung. Kramasan–Betung ditandai sebagai rencana.
+- **Bali (Beta).** Jalan nasional Gilimanuk–Denpasar, Denpasar–Nusa Dua, Denpasar–Amlapura, pantai utara Gilimanuk–Singaraja–Amlapura, Singaraja–Bedugul–Mengwi, dan Tol Bali Mandara. Tol Gilimanuk–Mengwi ditandai sebagai rencana.
+- **Data dari OpenStreetMap per pulau.** Tol, jalan arteri dan garis pantai OSM Sumatera dan Bali dimuat saat mobil atau peta sampai di sana, lalu disimpan di cache. Sebelum data OSM masuk, peta memakai garis pantai Natural Earth 1:10m.
+  - Titik kota dan gerbang tol memakai koordinat sebenarnya, dan KM dihitung dari koordinat itu. Bentuk jalan yang persis datang dari OSM.
+  - Pelat nomor kendaraan mengikuti daerah: DK untuk Bali; BE, BG, BH, BD, BA, BM, BK dan BL untuk Sumatera.
+- **Kapal feri: Merak–Bakauheni dan Ketapang–Gilimanuk.** Rute yang menyeberang laut berhenti di pelabuhan; ada rambu "PELABUHAN" di jalan menuju dermaga.
+  - Di loket, pilih layanan: Reguler atau Eksekutif di Merak, Reguler atau LCT/LCM di Ketapang. Tarif mengikuti golongan kendaraan, dari Gol I (sepeda) sampai Gol VII (truk), dan merupakan perkiraan.
+  - Selama berlayar, jam permainan maju sesuai lama penyeberangan dan rasa kantuk berkurang. Perjalanan lalu berlanjut dari pelabuhan seberang, disambut rambu "SELAMAT DATANG DI SUMATERA/BALI".
+  - Perjalanan yang dimulai di pelabuhan langsung berlayar lebih dulu. Saat keliling bebas, feri bisa dipilih di simpang pelabuhan. Garis feri tampil putus-putus di semua peta.
+- **Tanjakan dan turunan biasa maupun tajam.** Tinggi jalan memakai elevasi asli dari model Copernicus 90 m (lewat Open-Meteo, diambil di browser dan disimpan di cache).
+  - Jalan juga punya tanjakan pendeknya sendiri di daerah berbukit.
+  - Kemiringan dibatasi per kelas jalan: tol paling curam 5%, jalan nasional 13%, jalan provinsi 15%.
+  - Rambu kuning "TANJAKAN" / "TURUNAN" dipasang mulai 3,5%, dan "TANJAKAN TAJAM" / "TURUNAN TAJAM" mulai 8%. Suara navigasi mengingatkan sebelum tanjakan atau turunan tajam.
+  - Mobil, truk dan sepeda melambat di tanjakan sesuai fisika kendaraan.

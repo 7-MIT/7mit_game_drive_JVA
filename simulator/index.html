@@ -341,6 +341,14 @@
   @media (max-width:700px){ #jobcard{bottom:198px;font-size:12px;padding:6px 10px} #jc-pay{display:none} }
   @media (max-height:500px){ #jobcard{bottom:auto;top:8px;font-size:12px;padding:5px 10px} #jc-pay{display:none} }
   .svc-grid button:disabled{opacity:.4;cursor:default}
+  .ferry-sea{position:relative;height:96px;border:2px solid var(--color-text);overflow:hidden;background:linear-gradient(#cfe7f6,#5d9fcc 55%,#3f7fae)}
+  .ferry-sea .fp{position:absolute;bottom:0;width:16%;height:44%;background:#e9e3d2;border-top:2px solid var(--color-text);font:700 11px/1.2 var(--font-sans,sans-serif);padding:4px 6px;color:#201e1d}
+  .fp-a{left:0;border-right:2px solid var(--color-text)}.fp-b{right:0;border-left:2px solid var(--color-text);text-align:right}
+  .ferry-wave{position:absolute;inset:auto 0 18% 0;height:10px;background:repeating-linear-gradient(90deg,transparent 0 18px,rgba(255,255,255,.55) 18px 30px);animation:ferryWave 2.4s linear infinite}
+  .ferry-ship{position:absolute;bottom:30%;left:14%;transform:translateX(-50%);color:#fff;background:#c8341f;border:2px solid #201e1d;padding:4px 7px;line-height:0;transition:left .25s linear}
+  .ferry-ship svg{width:26px;height:26px}
+  @keyframes ferryWave{to{background-position:48px 0}}
+  @media (prefers-reduced-motion:reduce){.ferry-wave{animation:none}.ferry-ship{transition:none}}
   /* dialogs */
   .dlg-back{position:fixed;inset:0;background:color-mix(in srgb,#201e1d 45%,transparent);display:grid;place-items:center;z-index:10;padding:16px}
   .dlg-back[hidden]{display:none}
@@ -677,6 +685,20 @@
       <b>Diblokir (ban aktif)</b>
       <div id="adm-bans" class="adm-list"></div>
       <p class="help" style="opacity:.75;font-size:12px">Kick: keluar dari multiplayer (bisa masuk lagi setelah 3 menit). Ban: tidak bisa masuk dari IP dan perangkat itu sampai dibuka atau habis waktunya. Data IP dan perangkat hanya terlihat oleh admin.</p>
+    </div>
+  </div>
+</div>
+<div id="ferry" class="dlg-back" hidden>
+  <div class="dlg panel" role="dialog" aria-labelledby="ferry-title">
+    <div class="dlg-head"><h2 id="ferry-title">Pelabuhan</h2></div>
+    <div class="dlg-body">
+      <p id="ferry-info" class="help" style="opacity:1;font-size:14px"></p>
+      <div id="ferry-list" class="svc-grid"></div>
+      <div id="ferry-cross" hidden>
+        <div class="ferry-sea" aria-hidden="true"><span class="fp fp-a" id="ferry-a"></span><span class="fp fp-b" id="ferry-b"></span><span class="ferry-wave"></span><span class="ferry-ship" id="ferry-ship"><i data-lucide="ship"></i></span></div>
+        <p id="ferry-status" class="help" style="opacity:1;font-size:13px;margin:8px 0 0" aria-live="polite"></p>
+      </div>
+      <div class="actions"><button id="ferry-skip" hidden>Percepat</button><button id="ferry-back">Tidak jadi menyeberang</button></div>
     </div>
   </div>
 </div>

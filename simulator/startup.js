@@ -26,7 +26,7 @@ export function mountStartup({document:doc=globalThis.document,window:win=global
   const out=$('start-route-preview');let valid=true;
   if(kind==='mp'){valid=choicesAt('Semanggi',null,'mix').length>0;out.textContent=valid?'Multiplayer dimulai dari Semanggi.':'Kendaraan ini tidak dapat memulai perjalanan di Semanggi. Pilih kendaraan yang diizinkan di tol.';}
   else if(free){valid=alternatives.length>0;out.textContent=valid?`Mulai dari ${NODES.get($('start-from').value)?.name||'lokasi terpilih'} · arah ${first.selectedOptions[0]?.textContent||'otomatis'}.`: 'Tidak ada jalan yang bisa dilewati dari titik awal ini.';}
-  else{const from=$('start-from').value,to=$('start-to').value,t=from!==to?buildTrip(from,to,$('start-route-mode').value):null;valid=!!t;out.textContent=t?`${fmtKm(t.total)} · ${t.corridors.length} ruas · ${NODES.get(from)?.name} → ${NODES.get(to)?.name}`:from===to?'Pilih titik awal dan tujuan yang berbeda.':'Rute tidak tersedia untuk pilihan jalan dan kendaraan ini.';}
+  else{const from=$('start-from').value,to=$('start-to').value,t=from!==to?buildTrip(from,to,$('start-route-mode').value):null;valid=!!t;out.textContent=t?`${fmtKm(t.fullKm??t.total)} · ${t.corridors.length} ruas${t.viaFerry?' · lewat '+t.viaFerry:''} · ${NODES.get(from)?.name} → ${NODES.get(to)?.name}`:from===to?'Pilih titik awal dan tujuan yang berbeda.':'Rute tidak tersedia untuk pilihan jalan dan kendaraan ini.';}
   play.disabled=!valid;out.classList.toggle('error',!valid);return valid;
  }
  for(const id of ['start-trip','start-vehicle','start-from','start-to','start-route-mode','start-first'])$(id).addEventListener('change',()=>{if(['start-trip','start-vehicle','start-from'].includes(id))$('start-first').value='';preview();});

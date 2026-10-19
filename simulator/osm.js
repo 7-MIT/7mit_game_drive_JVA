@@ -8,6 +8,12 @@
 const MIRRORS = ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter',
   'https://overpass.private.coffee/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
 const BBOX = [-8.95, 105.1, -5.75, 114.75];                  // south, west, north, east
+// the other islands (beta), loaded when the car or a map gets there: Sumatera by a polygon that leaves out Malaysia and Singapore
+const REGIONS = {
+  sumatra: {bb: [-6.0, 95.0, 5.95, 106.2], span: 8, poly: [[6.0, 95.0], [5.9, 97.0], [4.6, 98.4], [3.8, 99.0], [3.0, 100.0], [2.2, 100.9], [1.7, 101.8], [1.25, 102.6], [0.95, 103.4],
+    [0.6, 104.0], [-0.5, 104.6], [-1.6, 105.2], [-3.0, 106.2], [-6.0, 106.2], [-6.0, 104.5], [-4.5, 101.5], [-2.0, 99.0], [0.0, 97.5], [2.0, 95.8], [3.5, 95.0]]},
+  bali: {bb: [-8.9, 114.42, -8.0, 115.75], span: 0.9}};
+const inBB = (b, lat, lon) => lat >= b[0] && lat <= b[2] && lon >= b[1] && lon <= b[3];
 const CACHE = 'tj-osm-v1', MAX_AGE = 14*24*3600e3, CELL = 0.05;
 const KIND = {motorway: 't', trunk: 'n', primary: 'p', secondary: 's', tertiary: 'c', residential: 'r', unclassified: 'r', living_street: 'r'};
 const COSL = Math.cos(7.2*Math.PI/180);
@@ -23,7 +29,8 @@ function simplify(pts, tolM){
 export function initOSM({onUpdate = () => {}, log = () => {}} = {}){
   const roads = [], grid = new Map(), tiles = new Map();    // tiles: key -> 'loading' | 'ok' | 'fail'
   const S = {status: 'idle', source: '', n: 0, km: 0, at: 0, err: '', coast: 'idle'};
-  const land = [];      // the real coastline: closed rings [{xy: Float32Array lon,lat…, bb}] (Java, Madura and every island)
+  const land = [], landR = {};      // the real coastline: closed rings [{xy: Float32Array lon,lat…, bb}] (Java, Madura and every island), per region
+  const R = {}; S.regions = R; S.coastR = {};
   const cellKey = (la, lo) => Math.floor(la/CELL) + ',' + Math.floor(lo/CELL);
   function add(list){
     for (const r of list) { const i = roads.length, xy = new Float32Array(r.p.length*2); let la0 = 90, lo0 = 180, la1 = -90, lo1 = -180, km = 0;
@@ -50,14 +57,23 @@ export function initOSM({onUpdate = () => {}, log = () => {}} = {}){
       catch (e) { clearTimeout(to); last = `${new URL(m).host}: ${e.name === 'AbortError' ? 'timeout' : e.message}`; } }
     throw new Error(last || 'Overpass tidak terjangkau'); }
   const bb = (s, w, n, e) => `(${s},${w},${n},${e})`;
+  const area = r => REGIONS[r].poly ? `(poly:"${REGIONS[r].poly.map(p => p.join(' ')).join(' ')}")` : bb(...REGIONS[r].bb);
   // the main roads of the whole island
   async function loadBase(force){
     if (S.status === 'loading') return; S.status = 'loading'; S.err = ''; onUpdate('loading');
     try { let c = force ? null : await cached('base');
       if (!c) { const j = await overpass(`[out:json][timeout:180];way["highway"~"^(motorway|trunk)$"]${bb(...BBOX)};out geom;`, 200000); const d = parse(j); if (!d.length) throw new Error('data kosong'); await store('base', d); c = {t: Date.now(), d}; }
-      roads.length = 0; grid.clear(); S.km = 0; tiles.clear(); add(c.d); S.at = c.t; S.status = 'ok'; log(`OSM: ${roads.length} ruas`); onUpdate('ok'); }
+      roads.length = 0; grid.clear(); S.km = 0; tiles.clear(); for (const k in R) delete R[k]; add(c.d); S.at = c.t; S.status = 'ok'; log(`OSM: ${roads.length} ruas`); onUpdate('ok'); }
     catch (e) { S.status = 'fail'; S.err = e.message; onUpdate('fail'); }
     loadCoast(force); }
+  // the main roads and the coastline of another island (Sumatera, Bali), once
+  async function loadRegion(r){ if (!REGIONS[r] || S.status !== 'ok' || R[r]) return; R[r] = 'loading'; onUpdate('region');
+    try { let c = await cached('base-' + r);
+      if (!c) { const j = await overpass(`[out:json][timeout:180];way["highway"~"^(motorway|trunk)$"]${area(r)};out geom;`, 200000); const d = parse(j); if (!d.length) throw new Error('data kosong'); await store('base-' + r, d); c = {d}; }
+      add(c.d); R[r] = 'ok'; onUpdate('region'); }
+    catch (e) { R[r] = 'fail'; setTimeout(() => { if (R[r] === 'fail') delete R[r]; }, 120000); onUpdate('region'); }
+    loadCoast(false, r); }
+  const regionAt = (lat, lon) => { for (const r in REGIONS) if (inBB(REGIONS[r].bb, lat, lon) && !(r === 'sumatra' && lon > 105.85 && lat < -5.92)) return r; return 'jawa'; };
   // the coastline: OSM coastline ways joined end to end into closed rings (land on the left), simplified to ~25 m
   function rings(j){ const ways = (j.elements || []).filter(e => e.type === 'way' && e.nodes && e.geometry && e.nodes.length === e.geometry.length && e.nodes.length > 1);
     const byStart = new Map(); for (const w of ways) byStart.set(w.nodes[0], w); const used = new Set(), out = [], open = [];
@@ -72,16 +88,18 @@ export function initOSM({onUpdate = () => {}, log = () => {}} = {}){
       const j = open.findIndex((d, k) => d && k !== i && near(c[c.length - 1], d[0])); if (j >= 0) { open[i] = c.concat(open[j]); open[j] = null; i--; } }
     // a closed ring starts and ends on one point: simplify its two halves separately
     return out.map(p => { const m = p.length >> 1; return simplify(p.slice(0, m + 1), 25).concat(simplify(p.slice(m), 25).slice(1)); }); }
-  function setLand(list){ land.length = 0; for (const p of list) { const xy = new Float32Array(p.length*2); let la0 = 90, lo0 = 180, la1 = -90, lo1 = -180;
-      p.forEach(([lo, la], j) => { xy[j*2] = lo; xy[j*2 + 1] = la; la0 = Math.min(la0, la); la1 = Math.max(la1, la); lo0 = Math.min(lo0, lo); lo1 = Math.max(lo1, lo); }); land.push({xy, bb: [la0, lo0, la1, lo1]}); } }
-  async function loadCoast(force){ if (S.coast === 'loading') return; S.coast = 'loading';
-    try { let c = force ? null : await cached('coast');
-      if (!c) { const j = await overpass(`[out:json][timeout:180];way["natural"="coastline"]${bb(...BBOX)};out body geom;`, 200000); const d = rings(j);
-        // only when Java itself came out whole (a ring across most of the island), otherwise keep the built-in coastline
-        if (!d.some(p => { let a = 180, b = -180; for (const q of p) { a = Math.min(a, q[0]); b = Math.max(b, q[0]); } return b - a > 7; })) throw new Error('garis pantai Jawa tidak utuh');
-        await store('coast', d); c = {d}; }
-      setLand(c.d); S.coast = 'ok'; onUpdate('coast'); }
-    catch (e) { S.coast = 'fail'; } }
+  function setLand(r, list){ landR[r] = list.map(p => { const xy = new Float32Array(p.length*2); let la0 = 90, lo0 = 180, la1 = -90, lo1 = -180;
+      p.forEach(([lo, la], j) => { xy[j*2] = lo; xy[j*2 + 1] = la; la0 = Math.min(la0, la); la1 = Math.max(la1, la); lo0 = Math.min(lo0, lo); lo1 = Math.max(lo1, lo); }); return {xy, bb: [la0, lo0, la1, lo1]}; });
+    land.length = 0; for (const k in landR) land.push(...landR[k]); }
+  // r = 'jawa' (Java, Madura and the islands around them) or another region; the region's main island has to come out whole (a ring
+  // across most of it), otherwise the built-in coastline stays
+  async function loadCoast(force, r = 'jawa'){ const C = S.coastR; if (C[r] === 'loading' || (C[r] === 'ok' && !force)) return; C[r] = 'loading'; if (r === 'jawa') S.coast = 'loading';
+    try { const key = r === 'jawa' ? 'coast' : 'coast-' + r, span = r === 'jawa' ? 7 : REGIONS[r].span; let c = force ? null : await cached(key);
+      if (!c) { const j = await overpass(`[out:json][timeout:180];way["natural"="coastline"]${r === 'jawa' ? bb(...BBOX) : area(r)};out body geom;`, 240000); const d = rings(j);
+        if (!d.some(p => { let a = 180, b = -180; for (const q of p) { a = Math.min(a, q[0]); b = Math.max(b, q[0]); } return b - a > span; })) throw new Error('garis pantai tidak utuh');
+        await store(key, d); c = {d}; }
+      setLand(r, c.d); C[r] = 'ok'; if (r === 'jawa') S.coast = 'ok'; onUpdate('coast'); }
+    catch (e) { C[r] = 'fail'; if (r === 'jawa') S.coast = 'fail'; } }
   // fill the land inside the view (one path, every ring that reaches into it)
   function fillLand(x, P, la0, lo0, la1, lo1){ x.beginPath();
     for (const r of land) { if (r.bb[2] < la0 || r.bb[0] > la1 || r.bb[3] < lo0 || r.bb[1] > lo1) continue; const xy = r.xy; let [a, b] = P(xy[1], xy[0]); x.moveTo(a, b);
@@ -93,9 +111,10 @@ export function initOSM({onUpdate = () => {}, log = () => {}} = {}){
     try { let c = await cached(key); if (!c) { const j = await overpass(q, ms); const d = parse(j); await store(key, d); c = {d}; }
       add(c.d); tiles.set(key, 'ok'); onUpdate('tile'); }
     catch (e) { tiles.set(key, 'fail'); setTimeout(() => tiles.delete(key), 60000); } }
-  function loadTile(lat, lon){ const ti = Math.floor(lat), tj = Math.floor(lon); if (ti + 1 < BBOX[0] || ti > BBOX[2] || tj + 1 < BBOX[1] || tj > BBOX[3]) return;
+  const covered = (la0, lo0, la1, lo1) => [BBOX, ...Object.values(REGIONS).map(q => q.bb)].some(b => la1 >= b[0] && la0 <= b[2] && lo1 >= b[1] && lo0 <= b[3]);
+  function loadTile(lat, lon){ const ti = Math.floor(lat), tj = Math.floor(lon); if (!covered(ti, tj, ti + 1, tj + 1)) return;
     return loadArea(`u${ti}_${tj}`, `[out:json][timeout:150];way["highway"~"^(primary|secondary|tertiary)$"]${bb(ti, tj, ti + 1, tj + 1)};out geom;`, 180000); }
-  function loadStreets(lat, lon){ const ti = Math.floor(lat*10), tj = Math.floor(lon*10); if (lat < BBOX[0] || lat > BBOX[2] || lon < BBOX[1] || lon > BBOX[3]) return;
+  function loadStreets(lat, lon){ const ti = Math.floor(lat*10), tj = Math.floor(lon*10); if (!covered(lat, lon, lat, lon)) return;
     return loadArea(`r${ti}_${tj}`, `[out:json][timeout:90];way["highway"~"^(residential|unclassified|living_street)$"]${bb(ti/10, tj/10, (ti + 1)/10, (tj + 1)/10)};out geom;`, 120000); }
   // roads with a part inside a lat/lon box
   function inBox(la0, lo0, la1, lo1){ const seen = new Set(), out = [];
@@ -115,5 +134,5 @@ export function initOSM({onUpdate = () => {}, log = () => {}} = {}){
         const t = L ? Math.max(0, Math.min(1, ((px - x0)*dx + (lat - y0)*dy)/L)) : 0, qx = x0 + dx*t, qy = y0 + dy*t, d = (qx - px)**2 + (qy - lat)**2;
         if (d < bd) { bd = d; best = {lat: qy, lon: qx/COSL, road: r, j: j/2 - 1, t, km: Math.sqrt(d)*111}; } } }
     return best; }
-  return {S, get ready(){ return S.status === 'ok'; }, get coastReady(){ return S.coast === 'ok'; }, land, fillLand, roads, loadBase, loadTile, loadStreets, inBox, stroke, snap, tiles};
+  return {S, get ready(){ return S.status === 'ok'; }, get coastReady(){ return S.coast === 'ok'; }, coastOK: r => S.coastR[r] === 'ok', regionAt, loadRegion, land, fillLand, roads, loadBase, loadTile, loadStreets, inBox, stroke, snap, tiles};
 }
