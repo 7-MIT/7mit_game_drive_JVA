@@ -213,6 +213,7 @@
   /* messages live in the open road area, not over instruments */
   #toast{grid-area:mid;align-self:start;justify-self:center;padding:8px 14px;font-size:13px;font-weight:600;max-width:min(520px,100%);pointer-events:none;opacity:0;transform:scale(.96);transform-origin:top center;transition:opacity .2s,transform .2s;z-index:3}
   #toast.show{opacity:1;transform:none}
+  #replaybar{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:50;display:flex;gap:12px;align-items:center;background:#f4f1eaee;color:#201e1d;border:2px solid #201e1d;padding:6px 12px;font-size:13px}#replaybar b{color:#ec3013;letter-spacing:.08em}#replaybar button{font:inherit;font-size:12px;border:2px solid #201e1d;background:#fff;padding:3px 8px;cursor:pointer}#replaybar[hidden]{display:none}
   #toast.good{background:#1f8a4c;color:#fff;border-color:#145c33}
   #toast.warn{background:#f2c230;color:#111;border-color:#111}
   #toast.bad{background:var(--color-accent);color:#fff;border-color:var(--color-accent-800)}
@@ -597,6 +598,8 @@
       <button id="phbtn" class="dbtn" aria-label="Handphone" title="Handphone (O)" aria-pressed="false"><i data-lucide="smartphone"></i><span class="bl">HP</span></button>
       <button id="jobb" class="dbtn" aria-label="Kerja" title="Mode pekerjaan (J)"><i data-lucide="briefcase"></i><span class="bl">Kerja</span></button>
       <button id="garb" class="dbtn" aria-label="Garasi &amp; Karier" title="Garasi, karier, misi harian, simpan cloud (I)"><i data-lucide="warehouse"></i><span class="bl">Garasi</span></button>
+      <button id="photob" class="dbtn" aria-label="Mode foto" title="Mode foto (Q)"><i data-lucide="aperture"></i><span class="bl">Foto</span></button>
+      <button id="replayb" class="dbtn" aria-label="Replay" title="Replay 20 detik terakhir (R)"><i data-lucide="history"></i><span class="bl">Replay</span></button>
       <button id="musb" class="dbtn" aria-label="Musik" title="Musik (U)"><i data-lucide="music"></i><span class="bl">Musik</span></button>
       <button id="peaceb" class="dbtn" hidden aria-label="Minta maaf &amp; ganti rugi" title="Minta maaf & bayar ganti rugi"><i data-lucide="handshake"></i><span class="bl">Minta maaf</span></button>
       <button id="towb" class="dbtn" hidden title="Panggil derek (T)" aria-label="Panggil derek"><i data-lucide="truck"></i><span class="bl">Panggil derek</span></button>

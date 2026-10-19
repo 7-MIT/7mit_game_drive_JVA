@@ -15,6 +15,7 @@ import {initOSM} from './osm.js';
 import {createCareer, SHOP} from './career.js';
 import {initCareerUI} from './career-ui.js';
 import * as ACC from './account.js';
+import {cineShot, photoShot, createRecorder, initPhotoUI, lerpAngle} from './studio.js';
 import {initDEM} from './elevation.js';
 import {BICYCLE, isTwoWheeler, nonTollVehicle, bicycleAcceleration, staminaStep, springStep, ackermannAngle, roadResistance, FOOD_BICYCLE_JOB} from './vehicle-dynamics.js';
 import {buildBicycle, animateBicycle, buildBicycleView} from './bicycle.js';
@@ -1142,7 +1143,14 @@ const LMK = [
   ['Masjid Raya Sheikh Zayed', -7.5560, 110.8500, 'mosque', {dome: 32, color: 0xf4f4f0, min: 4, mh: 60}],
   ['Candi Brahu', -7.5420, 112.3730, 'candi', {h: 25}], ['Candi Bajang Ratu', -7.5670, 112.4000, 'candi', {h: 16}],
   ['Tugu Pahlawan', -7.2458, 112.7378, 'tugu', {h: 41}], ['Monumen Kapal Selam', -7.2650, 112.7500, 'kapal'], ['Jembatan Suramadu', -7.1800, 112.7800, 'suramadu'],
-  ['Masjid Al-Akbar Surabaya', -7.3370, 112.7150, 'mosque', {dome: 40, color: 0x3f8f6e, min: 1, mh: 99}]];
+  ['Masjid Al-Akbar Surabaya', -7.3370, 112.7150, 'mosque', {dome: 40, color: 0x3f8f6e, min: 1, mh: 99}],
+  // Sumatera
+  ['Masjid Raya Al-Mashun', 3.5752, 98.6876, 'mosque', {dome: 14, color: 0x1f2a2a, min: 1, mh: 33}], ['Istana Maimun', 3.5753, 98.6837, 'palace'],
+  ['Jam Gadang', -0.3051, 100.3693, 'jamgadang'], ['Istano Basa Pagaruyung', -0.4712, 100.6206, 'gadang', {s: 2.2}], ['Masjid Raya Sumatera Barat', -0.9244, 100.3627, 'gadang', {s: 2.6, color: 0xe9e2d0}],
+  ['Jembatan Ampera', -2.9917, 104.7631, 'ampera'], ['Menara Siger', -5.8818, 105.7453, 'menara', {h: 32, color: 0xd9b23a}], ['Tugu Adipura', -5.4266, 105.2611, 'tugu', {h: 20}],
+  // Bali
+  ['Garuda Wisnu Kencana', -8.8104, 115.1676, 'gwk'], ['Monumen Bajra Sandhi', -8.6720, 115.2338, 'candi', {h: 45}], ['Pura Ulun Danu Beratan', -8.2752, 115.1668, 'pura', {tiers: 11}],
+  ['Pura Tanah Lot', -8.6212, 115.0868, 'pura', {tiers: 3}], ['Pura Besakih', -8.3741, 115.4510, 'pura', {tiers: 11}], ['Patung Satria Gatotkaca', -8.7400, 115.1820, 'gwk', {h: 20}]];
 const stoneMat = M(0x77736a, {flatShading: true}), brickMat = M(0xa4553a), whiteStone = M(0xf2f0ea), goldMat = M(0xd9b23a, {metalness: 0.7, roughness: 0.3, emissive: 0x6a4a00, emissiveIntensity: 0.4}),
   redLac = M(0xb5261e), roofTile = M(0x4a3a2e), lmSteel = M(0xe8ecef, {metalness: 0.5, roughness: 0.4}), glassBlue = M(0x7fa8c8, {metalness: 0.6, roughness: 0.2});
 const cyl = (r0, r1, h, mat, x, y, z, g, seg = 16) => { const m = new THREE.Mesh(new THREE.CylinderGeometry(r1, r0, h, seg), mat); m.position.set(x, y + h/2, z); m.castShadow = true; g.add(m); return m; };
@@ -1150,6 +1158,15 @@ const dome = (r, mat, x, y, z, g) => { const m = new THREE.Mesh(new THREE.Sphere
 const bell = (r, x, y, z, g) => { dome(r, stoneMat, x, y, z, g); cyl(r*0.25, 0.02, r*1.1, stoneMat, x, y + r*0.9, z, g, 6); };
 const pramMat = M(0x6e6a62, {flatShading: true});
 const LMK_BUILD = {
+  // Jam Gadang: the Bukittinggi clock tower with its gonjong roof
+  jamgadang(g){ box(9, 2, 9, whiteStone, 0, 1, 0, g); box(6.5, 22, 6.5, whiteStone, 0, 13, 0, g); for (const [x, z] of [[0, 3.3], [0, -3.3], [3.3, 0], [-3.3, 0]]) cyl(1.2, 1.2, 0.2, M(0xf6f2e4), x, 20, z, g, 20).rotation[x ? 'z' : 'x'] = Math.PI/2;
+    const top = new THREE.Group(); buildArchitecture(top, [{x: 0, z: 0, d: 6, w: 7, h: 0.1, type: 'gadang', color: 0xb5261e}]); top.position.y = 20.5; g.add(top); },
+  gadang(g, o){ const k = o.s || 2, inner = new THREE.Group(); buildArchitecture(inner, [{x: 0, z: 0, d: 8, w: 18, h: 3.2, type: 'gadang', color: o.color}]); inner.scale.setScalar(k); g.add(inner); },
+  pura(g, o){ buildArchitecture(g, [{x: -14, z: 0, type: 'gapura', h: 9}, {x: 0, z: -6, type: 'meru', tiers: o.tiers, s: 6}, {x: 2, z: 9, type: 'meru', tiers: 3, s: 4}, {x: 8, z: 2, d: 6, w: 8, h: 2.8, type: 'bali'}]); },
+  ampera(g){ box(260, 2, 22, M(0x9a2a22), 0, 12, 0, g); for (const x of [-38, 38]) { for (const z of [-10, 10]) box(3, 63, 3, M(0xb5261e), x, 31.5, z, g); box(3, 4, 23, M(0xb5261e), x, 60, 0, g); }
+    for (const z of [-10, 10]) box(76, 2, 2, M(0xb5261e), 0, 58, z, g); },
+  gwk(g, o){ const h = o.h || 75; box(h*0.6, h*0.3, h*0.6, stoneMat, 0, h*0.15, 0, g); cyl(h*0.09, h*0.12, h*0.45, M(0x6f8a7a, {metalness: 0.5, roughness: 0.4}), 0, h*0.3, 0, g, 10);
+    for (const s2 of [-1, 1]) box(h*0.4, h*0.05, h*0.12, M(0x6f8a7a, {metalness: 0.5}), s2*h*0.22, h*0.72, 0, g).rotation.z = s2*0.35; dome(h*0.07, goldMat, 0, h*0.78, 0, g); },
   monas(g){ box(46, 3, 46, whiteStone, 0, 1.5, 0, g); cyl(22, 14, 14, whiteStone, 0, 3, 0, g, 4).rotation.y = Math.PI/4; box(48, 1.2, 48, whiteStone, 0, 17.6, 0, g);
     cyl(5.2, 3.6, 98, whiteStone, 0, 18, 0, g, 4).rotation.y = Math.PI/4; box(7, 3, 7, whiteStone, 0, 117, 0, g); cyl(2.6, 0.5, 14, goldMat, 0, 118, 0, g, 8); },
   mosque(g, o){ const r = o.dome; box(r*2.6, r*0.55, r*2.6, whiteStone, 0, r*0.275, 0, g); cyl(r*1.05, r*1.05, r*0.25, whiteStone, 0, r*0.55, 0, g, 24);
@@ -4129,6 +4146,10 @@ function updateCam(dt){
     const s = RSITES.concat(PLAZAS, KSITES).reduce((b, s2) => !b || Math.abs(s2.u - camU) < Math.abs(b.u - camU) ? s2 : b, null);
     const cz = s ? camU - s.u : -100, cx = s && RAMPK.has(s.kind) ? -(eAt(s.u) + 75) : 0, a = clock*0.06, r = camera.aspect < 1 ? 210 : 170;
     camera.position.set(cx + bendAt(cz) + r*Math.cos(a), camera.aspect < 1 ? 190 : 130, cz + r*Math.sin(a)); camera.lookAt(cx + bendAt(cz), 0, cz); camera.fov = fovFor(50);
+  } else if (camMode === 'cine' || camMode === 'photo') {
+    // cinematic drone shots (a new shot every few seconds) or the photo-mode camera, both placed relative to the car
+    const sh = camMode === 'photo' ? photoShot(PHOTO.P) : cineShot(REPLAY ? REPLAY.t : clock), rx = -headV.z, rz = headV.x;
+    camera.position.set(pPos.x + headV.x*sh.a + rx*sh.b, qh + sh.c, pPos.z + headV.z*sh.a + rz*sh.b); camera.lookAt(pPos.x + headV.x*sh.la, qh + sh.lc, pPos.z + headV.z*sh.la); camera.fov = fovFor(sh.fov);
   } else if (camMode === 'dbg') { const d = window.__tjCam; camera.position.set(d[0], d[1], d[2]); camera.lookAt(d[3], d[4], d[5]); camera.fov = d[6] || 55;
   } else { controls.target.lerp(pPos, Math.min(1, dt*4)); controls.update(); camera.fov = fovFor(50); }
   // up and down the hills: the camera rides the road's height where it stands and looks at the road's height where it looks
@@ -4667,7 +4688,7 @@ function curN(){ return PLR ? Math.round(nAvail(1, PLR.p)) : 4; }
 function rowsSpec(){
   const n = 5, laneOpts = Array.from({length:n}, (_,i) => [i+1, `Lajur ${i+1}`]);
   return [
-    ['cam', 'Kamera', [['chase','Belakang'],['cockpit','Kokpit'],['drone','Drone'],['ic','Simpang susun'],['orbit','Orbit']]],
+    ['cam', 'Kamera', [['chase','Belakang'],['cockpit','Kokpit'],['drone','Drone'],['cine','Sinematik (drone otomatis)'],['ic','Simpang susun'],['orbit','Orbit']]],
     ['den', 'Lalu lintas', [[0.6,'Sepi'],[1,'Normal'],[1.7,'Padat'],[2.6,'Macet']]],
     ['mudik', 'Mode mudik Lebaran', [[false,'Mati'],[true,'Aktif (tol padat pemudik, truk besar dilarang)']]],
     ['weather', 'Cuaca', [['cerah','Cerah'],['berawan','Berawan'],['hujan','Hujan'],['kabut','Kabut']]],
@@ -5007,7 +5028,7 @@ const GARAGE = initCareerUI({account: () => ACC.open(), user: () => ACC.currentU
     if (nonTollVehicle(t) && isToll(uOfV(PLR))) return `${VEH[t].label} tidak boleh di jalan tol`; if (corrAt(uOfV(PLR)) === 'mbz' && !MBZ_OK.has(t)) return 'Kendaraan ini dilarang di Tol Layang MBZ';
     if (!swapPlayerVeh(t)) return 'Tidak bisa sekarang'; toast(`Kendaraan: ${VEH[t].label}`); return null; },
   flush: () => { cfg.wal = {...WAL}; cfg.car = CAR.S; saveCfg(); }, beforeRestore: () => { NOSAVE = true; }});
-$('garb').onclick = () => GARAGE.toggle();
+$('garb').onclick = () => GARAGE.toggle(); $('photob').onclick = () => photoToggle(); $('replayb').onclick = () => REPLAY ? replayEnd() : replayStart();
 $('jobb').onclick = openJobs; $('job-close').onclick = () => { $('jobdlg').hidden = true; }; $('job-stop').onclick = () => { jobStop(); $('jobdlg').hidden = true; toast('Berhenti bekerja'); };
 $('peaceb').onclick = makePeace; $('svcb').onclick = openSvc; $('svc-close').onclick = () => { $('svc').hidden = true; }; $('towb').onclick = () => callTow();
 $('mirb').onclick = () => { cfg.mirror = cfg.mirror === false; saveCfg(); $('mirb').setAttribute('aria-pressed', cfg.mirror !== false ? 'true' : 'false'); toast(cfg.mirror !== false ? 'Spion menyala (kokpit: spion kiri, tengah, kanan)' : 'Spion dimatikan'); };
@@ -5038,6 +5059,8 @@ addEventListener('keydown', e => { if(window.TJ_BOOT?.active)return;if (FLY && F
   else if (k === 'v' && !e.repeat) $('mirb').click();
   else if (k === 'u' && !e.repeat) $('musb').click();
   else if (k === 'i' && !e.repeat) GARAGE.toggle();
+  else if (k === 'q' && !e.repeat) photoToggle();
+  else if (k === 'r' && !e.repeat) { if (REPLAY) replayEnd(); else replayStart(); }
   else if (k === 'j' && !e.repeat) { if ($('jobdlg').hidden) openJobs(); else $('jobdlg').hidden = true; }
   else if (k === 'l' && !e.repeat && !$('svcb').hidden) openSvc();
   else if (k === 't' && !e.repeat && !$('towb').hidden) callTow();
@@ -5634,7 +5657,7 @@ function tick(dt,stream=true){
   if(stream)streamWorld();
 }
 function streamWorld(){ensureAhead();setupBlocks(false);updateWorld(true);updateSignals();animGhosts();}
-window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.gg=ggRule; window.__tj.apply=apply; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
+window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.LMK_BUILD=LMK_BUILD; window.__tj.gg=ggRule; window.__tj.apply=apply; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
 window.__tj.moveSvg = moveSvg; window.__tj.nextMv = nextMove;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering
@@ -5668,6 +5691,36 @@ function renderWorld(){
   if(bloom.enabled)composer.render();else renderer.render(scene,camera);
   scene.fog.far=far;
 }
+// ---------- studio: photo mode (Q), replay of the last 20 s (R), cinematic camera (studio.js) ----------
+// photo mode freezes the drive and frees the camera; the replay plays back what the recorder kept, filmed by the cinematic camera
+const REC = createRecorder({max: 20, hz: 15}); let REPLAY = null, photoPrev = null;
+const PHOTO = initPhotoUI({canvas: () => renderer.domElement, render: () => { placeGroups(); updateCam(0); updateBend(); renderWorld(); }, toast,
+  getHour: () => gameH, setHour: h => { gameH = h; todT = 0; lastSign = -1; tickClock(0); }, close: () => photoToggle(false)});
+function photoToggle(on = !PHOTO.on){
+  if (on === PHOTO.on || !PLR || (on && REPLAY)) return;
+  if (on) { photoPrev = camMode; Object.assign(PHOTO.P, {yaw: 0.6, pitch: 0.18, dist: heavy(PLR) ? 16 : 9}); setCam('photo'); PHOTO.open(); for (const k of ['gas', 'brake', 'left', 'right']) input[k] = false; }
+  else { PHOTO.close(); setCam(photoPrev || cfg.cam || 'chase'); last = performance.now(); simClock.reset(); }
+}
+function recordReplay(dt){ if (!PLR || foot) return; const c = PLR.g.position;
+  REC.push(dt, () => ({camU, cars: vehicles.concat(rampers).filter(v => v.g && v.g.parent && Math.abs(v.g.position.z - c.z) < 260 && Math.abs(v.g.position.x - c.x) < 260)
+    .map(v => [v, v.g.position.x, v.g.position.y, v.g.position.z, v.g.rotation.x, v.g.rotation.y, v.g.rotation.z])})); }
+function replayStart(){
+  if (REPLAY || PHOTO.on || !PLR) return; if (REC.seconds < 2) return toast('Belum ada rekaman: berkendara dulu beberapa detik', 'warn');
+  REPLAY = {t: 0, dur: REC.seconds, prev: camMode, hid: []}; setCam('cine'); document.body.classList.add('photo-on');
+  const bar = $('replaybar') || Object.assign(document.createElement('div'), {id: 'replaybar'}); bar.innerHTML = '<b>REPLAY</b><span></span><button type="button">Lewati</button>'; bar.hidden = false;
+  bar.querySelector('button').onclick = replayEnd; document.body.append(bar); }
+function replayEnd(){ if (!REPLAY) return; for (const g of REPLAY.hid) g.visible = true; setCam(REPLAY.prev); REPLAY = null; document.body.classList.remove('photo-on');
+  if ($('replaybar')) $('replaybar').hidden = true; if (PLR) camU = foot ? foot.u : uOfV(PLR); last = performance.now(); simClock.reset(); }
+function replayStep(dt){
+  const R = REPLAY; R.t += dt; if (R.t >= R.dur) return replayEnd(); const fr = REC.at(R.t); if (!fr) return replayEnd(); const {A, B, k} = fr;
+  camU = A.camU + (B.camU - A.camU)*k; updateWorld(true); placeGroups();
+  const inB = new Map(B.cars.map(c => [c[0], c])), shown = new Set();
+  for (const c of A.cars) { const v = c[0]; if (!v.g || !v.g.parent) continue; const d = inB.get(v) || c; shown.add(v.g);
+    v.g.position.set(c[1] + (d[1] - c[1])*k, c[2] + (d[2] - c[2])*k, c[3] + (d[3] - c[3])*k); v.g.rotation.set(lerpAngle(c[4], d[4], k), lerpAngle(c[5], d[5], k), lerpAngle(c[6], d[6], k)); }
+  for (const v of vehicles.concat(rampers)) if (v.g && !shown.has(v.g) && v.g.visible) { v.g.visible = false; R.hid.push(v.g); }
+  const sp = $('replaybar')?.querySelector('span'); if (sp) sp.textContent = `${Math.max(0, Math.ceil(R.dur - R.t))} s`; }
+window.__tj.studio = {REC, replayStart, replayEnd, recordReplay, photoToggle, get replay(){ return REPLAY; }};
+function studioFrame(dt){ if (REPLAY) replayStep(dt); else placeGroups(); if (!PLR) return; updateCam(dt); updateLandmarks(); updateSky(dt); updateBend(); renderWorld(); }
 // shaders compiled up front, so new objects do not stutter the first time they appear
 let precompiled = false;
 function precompile(){ if (precompiled || MOBILE) return; precompiled = true; try { renderer.compile(scene, camera); } catch (e) {} }
@@ -5681,12 +5734,13 @@ renderer.setAnimationLoop(now => {
   if(renderer.shadowMap.enabled)renderer.shadowMap.needsUpdate=(shadowFrame=(shadowFrame+1)%PROFILE.shadowEvery)===0;
   if (ARREST_DIALOG?.open||FERRY_ON) { renderWorld();return; }
   if (!$('plan').hidden && trip && !stats.done) { renderWorld(); return; }
+  if (PHOTO.on || REPLAY) { studioFrame(dt); return; }
   simClock.advance(dt,d=>tick(d,false));streamWorld();
   // the full map is open: the drive goes on underneath (autopilot keeps driving), the map follows the car live
   if (!atlas.hidden) { placeGroups(); place(); updateCam(dt); updateHud(dt); atT -= dt; if (atT <= 0) { atT = 0.15; atFollow(); drawAtlas(); } return; }
   placeGroups(); place(); placeFoot(); placeTow(); placeJob(); mpPlace(); placeBeams(); placeAngry(); updateCam(dt); updateVolcanoes(dt); updateLandmarks(); updateRoadSigns(); updateFx(dt); updateSky(dt); updateSound(); flash(); updateBend(); updateHud(dt);
   mapT -= dt; if (mapT <= 0) { mapT = 0.2; drawMap(); }
-  renderWorld(); drawMirrors(dt);captureEtleImages();
+  renderWorld(); drawMirrors(dt);captureEtleImages(); recordReplay(dt);
 });
 addEventListener('resize', () => { camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); syncQuality(); drawMap(); reqAtlas(); });
 
