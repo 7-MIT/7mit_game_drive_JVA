@@ -10,7 +10,9 @@ export function mountStartup({document:doc=globalThis.document,window:win=global
  function config(){try{const c=JSON.parse(win.localStorage.getItem('tj_cfg1')||'{}');return c&&typeof c==='object'&&!Array.isArray(c)?c:{};}catch{return {};}}
  const saved=config(),places=placeList(),placeKeys=new Set(places.map(p=>p.key));
  function options(id,list,selected){const el=$(id);for(const [value,label] of list){const o=doc.createElement('option');o.value=value;o.textContent=label;el.append(o);}if([...el.options].some(o=>o.value===selected))el.value=selected;}
- options('start-trip',TRIP_OPTIONS,saved.trip||'route');options('start-vehicle',VEHICLE_OPTIONS,saved.veh||'car');options('start-route-mode',ROUTE_OPTIONS,saved.mode||'mix');
+ options('start-trip',TRIP_OPTIONS,saved.trip||'route');options('start-vehicle',VEHICLE_OPTIONS,saved.veh||'car');
+ // vehicles not in the garage yet (career.js) cannot be picked here; players from before the garage keep the one they drove
+ {const own=Array.isArray(saved.car?.owned)?saved.car.owned:['car','moto','bicycle',...(saved.wal&&saved.veh?[saved.veh]:[])];for(const o of $('start-vehicle').options)if(!own.includes(o.value)){o.disabled=true;o.textContent+=' (beli di Garasi)';}if($('start-vehicle').selectedOptions[0]?.disabled)$('start-vehicle').value='car';}options('start-route-mode',ROUTE_OPTIONS,saved.mode||'mix');
  for(const id of ['start-from','start-to']){const sel=$(id),groups=new Map();for(const p of places){if(!groups.has(p.group))groups.set(p.group,[]);const o=doc.createElement('option');o.value=p.key;o.textContent=p.name+(p.planned?' (rencana)':'');groups.get(p.group).push(o);}for(const [label,items] of groups){const g=doc.createElement('optgroup');g.label=label;g.append(...items);sel.append(g);}}
  $('start-from').value=placeKeys.has(saved.from)?saved.from:'Bekasi Barat';$('start-to').value=placeKeys.has(saved.to)?saved.to:'Pasteur';
  options('start-preset',PRESETS.map(([label],i)=>[String(i),label]));options('start-livery',Object.entries(LIVERY));

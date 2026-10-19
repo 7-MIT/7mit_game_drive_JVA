@@ -12,6 +12,8 @@ import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 import {initPhone, phIcon} from './phone.js';
 import {initFly} from './fly.js';
 import {initOSM} from './osm.js';
+import {createCareer, SHOP} from './career.js';
+import {initCareerUI} from './career-ui.js';
 import {initDEM} from './elevation.js';
 import {BICYCLE, isTwoWheeler, nonTollVehicle, bicycleAcceleration, staminaStep, springStep, ackermannAngle, roadResistance, FOOD_BICYCLE_JOB} from './vehicle-dynamics.js';
 import {buildBicycle, animateBicycle, buildBicycleView} from './bicycle.js';
@@ -53,7 +55,7 @@ const OSNAP = new Map(), OSM_KINDS = {t: ['t'], n: ['n', 'p'], a: ['s', 'p', 'n'
 let cfg; try { cfg = {...DEF, ...JSON.parse(localStorage.getItem('tj_cfg1') || '{}')}; } catch(e) { cfg = {...DEF}; }
 if(window.TJ_START_PLAN&&!TUT&&!FLYPAGE)cfg={...cfg,...window.TJ_START_PLAN};
 if (TUT) cfg = {...DEF, gfx: cfg.gfx, sound: cfg.sound, veh: 'car', mod: cfg.mod, den: 0.7, tod: 'day', gh: 9, cam: 'chase', auto: false, trip: 'route', from: 'Bekasi Barat', to: 'Cikarang Timur', mirror: cfg.mirror};
-const saveCfg = () => { if (TUT) return; try { localStorage.setItem('tj_cfg1', JSON.stringify(cfg)); } catch(e) {} };
+let NOSAVE = false; const saveCfg = () => { if (TUT || NOSAVE) return; try { localStorage.setItem('tj_cfg1', JSON.stringify(cfg)); } catch(e) {} };
 const mod = (a, n) => ((a % n) + n) % n;
 const rnd = (a, b) => a + Math.random()*(b - a);
 const pick = a => a[Math.floor(Math.random()*a.length)];
@@ -2287,7 +2289,7 @@ function rampStep(dt){
     v.acc = acc; }
   for (const v of [...rampers]) { const rp = v.rp;
     if (rp.parked) { rp.park.t -= dt; if (rp.park.t <= 0) { const occ = rp.site.bays[rp.sd]; if (occ) occ[rp.park.i] = null; rp.P = mkPath(restPath('leave', BAYS[rp.park.i])); rp.d = 0; rp.i = 0; rp.parked = false; rp.park = null; if (v.player) { setRest(false); toast('Keluar dari rest area'); } } continue; }
-    v.vel = v.player && !cfg.auto ? Math.min((VEH[v.type] || VEH.car).vmax, Math.max(-5, v.vel + v.acc*dt)) : Math.max(0, v.vel + v.acc*dt); rp.d = Math.max(0, rp.d + v.vel*dt);
+    v.vel = v.player && !cfg.auto ? Math.min(vmaxOf(v), Math.max(-5, v.vel + v.acc*dt)) : Math.max(0, v.vel + v.acc*dt); rp.d = Math.max(0, rp.d + v.vel*dt);
     for (const w of v.wh) w.rotation.x += v.vel*dt / v.r;
     const q = v.q = pathAt(rp.P, rp.d, rp.i); rp.i = q.i;
     v.p = rp.pc + q.u - rp.shift;
@@ -2425,15 +2427,22 @@ function placeFoot(){ if (!foot) return; const f = foot, sd = PLR.sd || 1; f.g.p
 const TANK = {moto: 4, car: 42, taxi: 42, police: 50, suv: 55, pickup: 45, van: 55, ambulance: 60, angkot: 40, bus: 200, truck: 300, damkar: 150, derek: 120};
 const KM_L = {moto: 40, car: 13, taxi: 13, police: 11, suv: 9, pickup: 10, van: 9, ambulance: 8, angkot: 11, bus: 4, truck: 3.5, damkar: 3, derek: 5};
 const WAL = Object.assign({cash: 750000, etoll: 300000, fuel: null, sleep: 0}, cfg.wal || {});
+// garage, career, daily missions and achievements (career.js); its state is saved inside cfg
+const CAR = createCareer({state: TUT ? null : cfg.car, save: () => saveCfg(), reward: (n, why) => earn(n, why), notify: (k, t) => { if (k === 'xp') return; toast(t, k === 'level' || k === 'ach' ? 'good' : ''); if (k !== 'mission') sfxCoin(); if (PHONE) PHONE.notify('dompet', k === 'level' ? 'Naik level' : k === 'ach' ? 'Pencapaian' : 'Misi harian', t); }});
+if (!TUT && !cfg.car && cfg.wal && SHOP[cfg.veh] && !CAR.owns(cfg.veh)) CAR.S.owned.push(cfg.veh);     // players from before the garage keep the vehicle they drove
+if (!TUT && SHOP[cfg.veh] && !CAR.owns(cfg.veh)) cfg.veh = 'car';
+cfg.car = CAR.S;
+const SHOP_PRICE = t => (SHOP[t] || {price: 0}).price;
+const vmaxOf = v => (VEH[v.type] || VEH.car).vmax*(v.player ? CAR.boost(v.type).vmax : 1);
 const rp$ = n => 'Rp ' + Math.round(n).toLocaleString('id-ID');
 const rpS = n => { const a = Math.abs(n), sg = n < 0 ? '−' : ''; return sg + (a >= 1e6 ? (a/1e6).toFixed(a >= 1e7 ? 0 : 1).replace('.', ',') + 'jt' : Math.round(a/1000) + 'rb'); };
 let walT = 0, lowFuelSaid = false, sleepSaid = 0, msT = 0;
 function tankOf(){ return TANK[PLR ? PLR.type : cfg.veh] || 42; }
 function tickNeeds(dt){
   if (!PLR || !trip) return;
-  if (PLR.type === 'bicycle') {PLR.noFuel=false;PLR.stamina=staminaStep(PLR.stamina??100,!foot&&!tow&&(PLR.thr||0)>0.1,dt);if(!foot&&!tow&&Math.abs(PLR.vel)>0.2)driveEarn(dt,Math.abs(PLR.vel)*dt*cfg.scale/1000);if((walT-=dt)<0){walT=0.5;cfg.wal={...WAL};saveCfgSoon();uiNeeds();}return;} if (WAL.fuel == null || WAL.fuel > tankOf()) WAL.fuel = tankOf();
+  if (PLR.type === 'bicycle') {PLR.noFuel=false;PLR.stamina=staminaStep(PLR.stamina??100,!foot&&!tow&&(PLR.thr||0)>0.1,dt);if(!foot&&!tow&&Math.abs(PLR.vel)>0.2){const km=Math.abs(PLR.vel)*dt*cfg.scale/1000;driveEarn(dt,km);careerKm(km);}if((walT-=dt)<0){walT=0.5;cfg.wal={...WAL};saveCfgSoon();uiNeeds();}return;} if (WAL.fuel == null || WAL.fuel > tankOf()) WAL.fuel = tankOf();
   if (!foot && !tow) { const km = Math.abs(PLR.vel)*dt*cfg.scale/1000; WAL.fuel = Math.max(0, WAL.fuel - km/(KM_L[PLR.type] || 12)*(input.gas || cfg.auto ? 1 : 0.6));
-    if (Math.abs(PLR.vel) > 1) { WAL.sleep = Math.min(100, WAL.sleep + dt*(100/9000)*(gameH < 5 || gameH > 22 ? 1.6 : 1)); driveEarn(dt, km); } }
+    if (Math.abs(PLR.vel) > 1) { WAL.sleep = Math.min(100, WAL.sleep + dt*(100/9000)*(gameH < 5 || gameH > 22 ? 1.6 : 1)); driveEarn(dt, km); careerKm(km); } }
   const f = WAL.fuel/tankOf();
   if (f < 0.15 && !lowFuelSaid) { lowFuelSaid = true; toast('BBM menipis: isi di SPBU rest area atau kota berikutnya', 'warn'); } if (f > 0.3) lowFuelSaid = false;
   if (WAL.fuel <= 0 && !PLR.noFuel) { PLR.noFuel = true; toast('BBM habis! Panggil derek untuk mengantar BBM', 'bad'); }
@@ -2442,8 +2451,13 @@ function tickNeeds(dt){
   if (WAL.sleep < 60) sleepSaid = 0;
   // microsleep at 100 %: the hands drift off the wheel for a moment
   if (WAL.sleep >= 100 && !cfg.auto && !foot && (msT -= dt) < 0) { msT = rnd(15, 30); PLR.steer = (PLR.steer || 0) + (Math.random() - 0.5)*0.12; toast('Microsleep! Anda tertidur sesaat', 'bad'); shake = 0.3; }
-  if ((walT -= dt) < 0) { walT = 0.5; cfg.wal = {...WAL}; saveCfgSoon(); uiNeeds(); }
+  if ((walT -= dt) < 0) { walT = 0.5; cfg.wal = {...WAL}; saveCfgSoon(); uiNeeds();
+    if (carReturn && !job && !ride && swapPlayerVeh(carReturn)) { toast(`Kendaraan perusahaan dikembalikan · kembali ke ${VEH[carReturn].label}`); carReturn = null; } }
 }
+// career distance: at night, in the rain, and on which island (checked once a kilometre or so)
+let carReg = null, carRegKm = 0;
+function careerKm(km){ if (cfg.auto) return; if ((carRegKm -= km) < 0) { carRegKm = 1; try { const ll = latLonAt(uOfV(PLR)); carReg = regionOf(ll.lat, ll.lon); } catch (e) {} }
+  CAR.ev.km(km, {night: gameH < 5 || gameH > 18.6, rain: !!(WEATHER[cfg.weather] || {}).rain, region: carReg}); }
 // money for driving (only while the car is moving): Rp 30.000 every 1–2 minutes, Rp 50.000 every 5 minutes, Rp 100.000 every 2 km
 function driveEarn(dt, km){
   const E = WAL.earn || (WAL.earn = {a: 0, aT: rnd(60, 120), b: 0, km: 0});
@@ -2499,7 +2513,7 @@ function openSvc(){
   $('svc-stat').textContent = `Tunai ${rp$(WAL.cash)} · e-Toll ${rp$(WAL.etoll)} · BBM ${Math.round(WAL.fuel/tankOf()*100)}% · Kantuk ${Math.round(WAL.sleep)}% · Kerusakan ${Math.round(PLR.dmg || 0)}%`;
   for (const sv of SVC) { if (sv.only && sv.only !== ctx) continue; const b = document.createElement('button'), pr = sv.price();
     b.innerHTML = `<b>${sv.t}</b><span>${sv.d()}</span><span>${pr ? rp$(pr) : 'Gratis'}</span>`; b.disabled = sv.ok ? !sv.ok() : false;
-    b.onclick = () => { const pr2 = sv.price(); if (pr2 > WAL.cash) { toast('Uang tunai tidak cukup: tarik tunai di ATM', 'warn'); return; } WAL.cash -= pr2; const msg = sv.act(); if (msg) toast(msg); uiNeeds(); openSvc(); };
+    b.onclick = () => { const pr2 = sv.price(); if (pr2 > WAL.cash) { toast('Uang tunai tidak cukup: tarik tunai di ATM', 'warn'); return; } WAL.cash -= pr2; const msg = sv.act(); if (msg) toast(msg); if (sv.id === 'bbm') CAR.ev.fuel(); else if (ctx === 'rest' && pr2 > 0) CAR.ev.rest(); uiNeeds(); openSvc(); };
     list.append(b); }
   $('svc').hidden = false;
 }
@@ -2617,7 +2631,7 @@ function vehInfo(){ const m = MODS(), t = PLR ? PLR.type : cfg.veh, cat = m.plat
   return {type: t, label: (VEH[t] || VEH.car).label, gol: (VEH[t] || VEH.car).gol, plate: t==='bicycle'?'SEPEDA':(m.plate || autoPlate(cat)).toUpperCase(), plateCat: cat, plateName: PLATE_NAME[cat], plateStyle: PLATE_STYLE[cat],
     valid: `${String(d.getMonth() + 1).padStart(2, '0')} · ${String((d.getFullYear() + 5) % 100).padStart(2, '0')}`, paint: fixed ? 'Warna dinas / armada' : (COLOR_NAME[m.paint] || 'Kustom ' + m.paint), paintHex: fixed ? '#f4f4f2' : m.paint,
     paint2: COLOR_NAME[m.paint2] || m.paint2, rim: COLOR_NAME[m.rim] || m.rim, livery: LIVERY[m.livery] || 'Polos', tint: m.tint ? 'Gelap' : 'Standar', spoiler: m.spoiler, low: m.low, stripe: m.stripe,
-    vmax: Math.round(((VEH[t] || VEH.car).vmax)*3.6), tank: t==='bicycle'?0:TANK[t] || 42, kml:t==='bicycle'?0:KM_L[t] || 12, km: EV.length && PLR ? Math.round(rkAt(uOfV(PLR)) + (stats.km0 || 0)) : 0, dmg: Math.round(PLR && PLR.dmg || 0),
+    vmax: Math.round(((VEH[t] || VEH.car).vmax)*CAR.boost(t).vmax*3.6), tank: t==='bicycle'?0:TANK[t] || 42, kml:t==='bicycle'?0:KM_L[t] || 12, km: EV.length && PLR ? Math.round(rkAt(uOfV(PLR)) + (stats.km0 || 0)) : 0, dmg: Math.round(PLR && PLR.dmg || 0),
     year: 2018 + (parseInt(cfg.mpId || '7', 36) % 7 || 3), cats: Object.entries(PLATE_NAME)}; }
 function applyMods(v, m){
   if (!v || !m) return; if (v.type === 'bicycle') {v.lowered=0;return;}
@@ -3155,7 +3169,7 @@ function sim(dt){
   for (const v of vehicles){
     const man = v.player && !cfg.auto;
     if(!man)prepareLawLane(v);
-    if (man) { v.vel = Math.min((VEH[v.type] || VEH.car).vmax, Math.max(-5, v.vel + (v.acc || 0)*dt)); v.p += v.vel*Math.cos(v.hd || 0)*dt; }
+    if (man) { v.vel = Math.min(vmaxOf(v), Math.max(-5, v.vel + (v.acc || 0)*dt)); v.p += v.vel*Math.cos(v.hd || 0)*dt; }
     else {
       v.vel = Math.max(0,Math.min(v.vel+v.acc*dt,v.em?Infinity:Math.min(limitAt(uOfV(v)),postedCap(v.sd,v.p+v.len/2))));
       let step = v.vel*dt;
@@ -3357,7 +3371,7 @@ function jobStart(k){
   if (nonTollVehicle(J.veh) && isToll(u)) return toast(`${VEH[J.veh].label} tidak boleh di jalan tol: mulai dari jalan non-tol`, 'warn');
   if (k === 'angkot' && isToll(u)) return toast('Angkot tidak beroperasi di jalan tol: mulai dari jalan non-tol', 'warn');
   if (corrAt(u) === 'mbz' && !MBZ_OK.has(J.veh)) return toast('Kendaraan ini tidak boleh di Tol Layang MBZ', 'warn');
-  if (cfg.veh !== J.veh && !swapPlayerVeh(J.veh)) return;
+  const prevVeh = carReturn || cfg.veh; carReturn = null; if (cfg.veh !== J.veh && !swapPlayerVeh(J.veh)) return;
   // a motorbike may not use toll roads: the road ahead is planned again without them
   if (nonTollVehicle(J.veh)) { const i0 = Math.max(0, evAt(u)); if (EV.slice(i0, EV.length - 1).some(e => CORR[e.cNext] && CORR[e.cNext].cls === 't')) { const i = replanIdx(u), e = EV[i];
       if (trip.dest) setNav(trip.dest, true); else if (e) { const tail = walkFree(e.key, prevKeyOf(e), e.c, null, 50, 'mix'); if (tail) replan(i, tail, null); } } }
@@ -3370,10 +3384,13 @@ function jobStart(k){
     stops.push({u: a, kind: 'pick'}, {u: b, kind: 'drop'}); }
   else { let x = u; for (let i = 0; i < J.stops; i++) { x = jobSpot(x + rnd(J.gap[0], J.gap[1])); stops.push({u: x, kind: 'halte', on: 1 + Math.floor(Math.random()*(k === 'bus' ? 9 : 4)), off: 0}); } }
   if (stops[stops.length - 1].u > last - 100) return toast(J.minKm ? `Pengiriman truk minimal ${J.minKm} km: pilih tujuan yang lebih jauh (atau keliling bebas)` : 'Rute di depan terlalu pendek untuk pekerjaan ini: pilih tujuan yang lebih jauh', 'warn');
-  job = {k, J, stops, i: 0, earned: 0, pax: 0, hold: 0, viol0: stats.viol, crash0: stats.crashes, dmg0: P.dmg || 0, t0: clock};
+  job = {k, J, stops, i: 0, earned: 0, pax: 0, hold: 0, prevVeh, viol0: stats.viol, crash0: stats.crashes, dmg0: P.dmg || 0, t0: clock};
   $('jobdlg').hidden = true; jobMarker(); jobUI(); toast(`${J.name}: ${jobGoal()}`);
 }
-function jobStop(){ if (!job) return; if (job.mk) { scene.remove(job.mk); job.mk.traverse(o => {if(o.geometry&&!o.geometry.userData.keep)o.geometry.dispose();}); } job = null; jobUI(); }
+function jobStop(){ if (!job) return; if (job.mk) { scene.remove(job.mk); job.mk.traverse(o => {if(o.geometry&&!o.geometry.userData.keep)o.geometry.dispose();}); } const back = job.prevVeh; job = null; jobUI();
+  // a company vehicle goes back: the player continues in their own one (when it can be swapped here)
+  if (PLR && !CAR.owns(PLR.type) && back && CAR.owns(back) && back !== PLR.type) { if (swapPlayerVeh(back)) toast(`Kendaraan perusahaan dikembalikan · kembali ke ${VEH[back].label}`); else carReturn = back; } }
+let carReturn = null;
 const JOB_COL = {pick: 0x2fa84f, drop: 0xec3013, halte: 0x1f5fbf};
 // the marker: a glowing post and a waiting person (or a bus-stop shelter) on the verge
 function jobMarker(){
@@ -3411,13 +3428,13 @@ function jobTick(dt){
     else if (st.kind === 'drop') { const km = Math.max(0.5, (st.u - job.pickU)/1000*cfg.scale), stars = jobStars();
       let fare = Math.max(JOB_MIN, Math.round((job.J.base + job.J.perKm*km)/500)*500);
       if (job.k === 'truk') { const dd = Math.max(0, (P.dmg || 0) - job.dmg0); if (dd > 2) { fare = Math.round(fare*(1 - Math.min(0.6, dd/100))/500)*500; } }
-      const tip = stars === 5 && job.k !== 'truk' ? 5000 : 0; job.earned += fare + tip;
+      const tip = stars === 5 && job.k !== 'truk' ? 5000 : 0; job.earned += fare + tip; CAR.ev.job(stars);
       earn(fare + tip, `${job.J.name} · ${fmtKm(km)} · ${'★'.repeat(stars)}${'☆'.repeat(5 - stars)}${tip ? ' · tip ' + rp$(tip) : ''}`);
       // next order straight away
       const a = jobPick(job.J, front + rnd(job.J.bicycle ? 120 : 350, job.J.bicycle ? 260 : 700)), b = a == null ? null : jobDrop(job.J, a); if (b != null && b < EV[EV.length - 1].u - 100) { job.stops = [{u: a, kind: 'pick'}, {u: b, kind: 'drop'}]; job.i = 0; job.viol0 = stats.viol; job.crash0 = stats.crashes; job.dmg0 = P.dmg || 0; jobMarker(); setTimeout(() => job && toast(`Order baru: ${jobGoal()}`), 2800); }
       else { toast('Tidak ada order lagi di rute ini · pekerjaan selesai'); jobStop(); return; } }
     else { const off = Math.min(job.pax, 1 + Math.floor(Math.random()*Math.max(1, job.pax))), on = st.on; job.pax = job.pax - off + on;
-      const fare = Math.max(JOB_MIN, (job.J.perStop || 0) + on*job.J.perPax); job.earned += fare; earn(fare, `${job.J.name} · ${off} turun, ${on} naik`); job.i++;
+      const fare = Math.max(JOB_MIN, (job.J.perStop || 0) + on*job.J.perPax); job.earned += fare; earn(fare, `${job.J.name} · ${off} turun, ${on} naik`); CAR.ev.job(jobStars()); job.i++;
       if (job.i >= job.stops.length) { let x = front; for (let i = 0; i < job.J.stops; i++) { x = jobSpot(x + rnd(job.J.gap[0], job.J.gap[1])); job.stops.push({u: x, kind: 'halte', on: 1 + Math.floor(Math.random()*(job.k === 'bus' ? 9 : 4))}); }
         if (job.stops[job.stops.length - 1].u > EV[EV.length - 1].u - 100) { toast('Trayek selesai'); jobStop(); return; } }
       jobMarker(); } }
@@ -3444,12 +3461,12 @@ function playerAcc(v, dt){
   if (v.vel < 0 && v.vel + a*dt > 0 && !input.gas) return -v.vel/dt;
   return a;
 }
-const muOf = v => (v.offroad ? 0.6 : 1)*(heavy(v) || v.type === 'damkar' ? 0.62 : 0.92)*((WEATHER[cfg.weather] || {}).rain ? 0.68 : 1)*(1 - Math.min(0.25, (v.dmg || 0)*0.0025));
+const muOf = v => (v.player ? CAR.boost(v.type).grip : 1)*(v.offroad ? 0.6 : 1)*(heavy(v) || v.type === 'damkar' ? 0.62 : 0.92)*((WEATHER[cfg.weather] || {}).rain ? 0.68 : 1)*(1 - Math.min(0.25, (v.dmg || 0)*0.0025));
 function playerAcc0(v, dt){
   if (v.type === 'bicycle') { v.thr = (v.thr || 0) + clamp((input.gas ? 1 : 0) - (v.thr || 0), -3*dt, 2*dt); v.brk = input.brake ? Math.min(1,(v.brk||0)+4*dt) : 0; v.gear=0; input.brakeT=0;
     const a=bicycleAcceleration({speed:v.vel,pedal:v.thr,brake:v.brk,grade:slopeG(v)/9.81,stamina:v.stamina,wet:!!(WEATHER[cfg.weather]||{}).rain,offroad:v.offroad,damage:v.dmg});
     return v.vel+a*dt<0 ? -v.vel/dt : a; }
-  const sp0 = VEH[v.type] || VEH.car, dk = 1 - Math.min(0.6, (v.dmg || 0)*0.006), spec = {...sp0, vmax: sp0.vmax*dk, acc: sp0.acc*dk}, hv = heavy(v) ? 0.6 : 1;
+  const sp0 = VEH[v.type] || VEH.car, bo = CAR.boost(v.type), dk = 1 - Math.min(0.6, (v.dmg || 0)*0.006), spec = {...sp0, vmax: sp0.vmax*bo.vmax*dk, acc: sp0.acc*bo.acc*dk}, hv = heavy(v) ? 0.6 : 1;
   if ((v.dmg || 0) >= 100) { if (!v.deadT) { v.deadT = clock; toast('Mesin mati: kendaraan rusak berat. Derek dipanggil…', 'bad'); }
     if (clock - v.deadT > 2.5 && !tow) callTow(true);
     return v.vel > 0.05 ? -4 : v.vel < -0.05 ? 4 : -v.vel/dt; }
@@ -3458,7 +3475,7 @@ function playerAcc0(v, dt){
   const g = gearOf(Math.max(0, v.vel)/hv); if (g > (v.gear || 1) && v.thr > 0.2) v.shiftT = 0.28; v.gear = g; v.shiftT = Math.max(0, (v.shiftT || 0) - dt);
   const drag = roadResistance(v.vel,{mass:MASS[v.type]||1300,cdA:heavy(v)?5.8:isTwoWheeler(v.type)?0.55:v.type==='suv'?0.95:0.66});
   if (input.brake) {
-    if (v.vel > 0.3) { input.brakeT = 0; return Math.max(-(1.2 + 7.3*v.brk), -muOf(v)*9.81) - drag - slopeG(v); }
+    if (v.vel > 0.3) { input.brakeT = 0; return Math.max(-(1.2 + 7.3*v.brk)*bo.brake, -muOf(v)*9.81) - drag - slopeG(v); }
     input.brakeT = (input.brakeT || 0) + dt;                        // hold the brake at a standstill to reverse
     return input.brakeT > 0.6 ? (v.vel > -5 ? -1.6 : 0) : -v.vel/dt;
   }
@@ -3684,7 +3701,7 @@ function playerCollide(v){
       if (latV > 0.3) { v.vel *= 1 - Math.min(0.3, latV*0.06); v.hd = (v.hd || 0)*0.15; } hitFx(latV*1.3, so.name, 'side'); }
     else { const dv = Math.abs(v.vel); pushBack(pu + 0.05); v.vel = 0; hitFx(dv, so.name); } }
 }
-function crash(msg){ if (crashCd > 0) return; crashCd = 3; stats.crashes++; shake = 0.6; toast(msg, 'bad'); stats.log.push(msg);
+function crash(msg){ if (crashCd > 0) return; crashCd = 3; stats.crashes++; CAR.ev.crash(); shake = 0.6; toast(msg, 'bad'); stats.log.push(msg);
   if (PLR && !PLR.rp) { MAP_CRASHES.push({u: uOfV(PLR), sd: PLR.sd, type: 'crash', title: 'Kecelakaan', until: clock + 45, route: EV}); TRAFFIC_CACHE = null; }
 }
 function violation(msg,code=inferLaw(msg)){if(!PLR)return;recordLaw(PLR,code||'closed',msg,trafficFacts(PLR));}
@@ -3692,7 +3709,7 @@ function payToll(s){
   tone({fs: [1850], type: 'sine', dur: 0.12, gain: 0.07}); tone({fs: [2350], type: 'sine', dur: 0.16, gain: 0.07, at: 0.14});
   if (s.kind === 'ti') { stats.lastPay = rkAt(PLR.sd*PLR.p); toast(`Tap masuk ${nodeLabel(s)}`); return; }
   const rk = rkAt(PLR.sd*PLR.p), km = Math.max(0, rk - stats.lastPay), rp = Math.max(500, Math.round(km*(VEH[cfg.veh] || VEH.car).rate/500)*500);
-  stats.lastPay = rk; stats.toll += rp; WAL.etoll -= rp;
+  stats.lastPay = rk; stats.toll += rp; WAL.etoll -= rp; CAR.ev.toll();
   toast(`Tap e-Toll ${nodeLabel(s)} · Rp ${rp.toLocaleString('id-ID')} · sisa saldo ${rp$(WAL.etoll)}`);
   if (WAL.etoll < 0) setTimeout(() => toast('Saldo e-Toll minus! Isi ulang di minimarket rest area', 'bad'), 1600);
   if ((s.kind === 't' || s.kind === 'te') && s.i === trip.destIdx) { stats.done = true; setTimeout(() => arrive(s), 1200); }
@@ -4770,7 +4787,8 @@ function openPlanner(){
   buildModUI(); $('mp-field').hidden = cfg.trip !== 'mp'; $('m-name').value = cfg.name || '';
   $('m-name').onchange = e => { cfg.name = e.target.value.replace(/[^\w .\-]/g, '').slice(0, 16).trim(); saveCfg(); };
   const vs = $('vehsel'); vs.innerHTML = '';
-  for (const [k, s] of Object.entries(VEH)) { const x = btn(`${s.label} · ${s.gol}`, cfg.veh === k); x.onclick = () => { cfg.veh = k; [...vs.children].forEach(c => c.setAttribute('aria-pressed', 'false')); x.setAttribute('aria-pressed', 'true'); }; vs.append(x); }
+  if (!CAR.owns(cfg.veh)) cfg.veh = 'car';
+  for (const [k, s] of Object.entries(VEH)) { const own = CAR.owns(k), x = btn(own ? `${s.label} · ${s.gol}` : `${s.label} · ${(SHOP_PRICE(k)/1e6).toLocaleString('id-ID')} jt`, cfg.veh === k); if (!own) { x.disabled = true; x.title = 'Beli di Garasi'; } x.onclick = () => { cfg.veh = k; [...vs.children].forEach(c => c.setAttribute('aria-pressed', 'false')); x.setAttribute('aria-pressed', 'true'); }; vs.append(x); }
   firstPick = null; planPreview(); $('plan').hidden = false; $('done').hidden = true;
 }
 $('from').onchange = () => { firstPick = null; planPreview(); }; $('to').onchange = planPreview;
@@ -4865,7 +4883,7 @@ function ferryArrive(f){
   stats.done = false;
   const ok = rest.length ? startDrive({from: far, legs: rest, dest: f.dest, cont: true, home}) : startDrive({from: far, cont: true, home});
   if (!ok) return;
-  stats.ferry = (stats.ferry || 0) + 1;
+  stats.ferry = (stats.ferry || 0) + 1; CAR.ev.ferry();
   toast(`Tiba di Pelabuhan ${B.name}${rest.length && f.dest ? ' · lanjut ke ' + NODES.get(f.dest).name : ''} · selamat datang di ${REGIONS[regionOf(B.lat, B.lon)].name}${REGIONS[regionOf(B.lat, B.lon)].beta ? ' (Beta)' : ''}`);
   if (f.dest === far) setTimeout(() => arrive(EV[0]), 400);
 }
@@ -4927,6 +4945,15 @@ $('mus-in').addEventListener('keydown', e => { if (e.key === 'Escape' || (!e.tar
   grip.addEventListener('pointerdown', e => { const r = box.getBoundingClientRect(); d = {dx: e.clientX - r.left, dy: e.clientY - r.top}; grip.setPointerCapture(e.pointerId); e.preventDefault(); });
   grip.addEventListener('pointermove', e => { if (!d) return; const r = box.getBoundingClientRect(); Object.assign(box.style, {left: clamp(e.clientX - d.dx, 4, innerWidth - r.width - 4) + 'px', top: clamp(e.clientY - d.dy, 4, innerHeight - 40) + 'px', right: 'auto'}); });
   for (const ev of ['pointerup', 'pointercancel']) grip.addEventListener(ev, () => { d = null; }); }
+// Garasi & Karier (career-ui.js); the cloud save uses the multiplayer server's client, or a light one of its own
+async function sbClient(){ if (mp.sb) return mp.sb; if (!sbClient.c) { const {createClient} = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm'); sbClient.c = createClient(MP_URL, MP_KEY, {auth: {persistSession: false}}); } return sbClient.c; }
+const GARAGE = initCareerUI({CAR, VEH, cash: () => WAL.cash, pay: (n, why) => pay(n, why), current: () => PLR ? PLR.type : cfg.veh, toast, sb: sbClient,
+  icons: () => { try { window.lucide && window.lucide.createIcons(); } catch (e) {} },
+  use: t => { if (!PLR || !trip) { cfg.veh = t; saveCfg(); return null; } if (ride) return 'Sedang jadi penumpang'; if (job) jobStop(); if (PLR.rp || foot || tow) return 'Kembali ke jalan utama dulu';
+    if (nonTollVehicle(t) && isToll(uOfV(PLR))) return `${VEH[t].label} tidak boleh di jalan tol`; if (corrAt(uOfV(PLR)) === 'mbz' && !MBZ_OK.has(t)) return 'Kendaraan ini dilarang di Tol Layang MBZ';
+    if (!swapPlayerVeh(t)) return 'Tidak bisa sekarang'; toast(`Kendaraan: ${VEH[t].label}`); return null; },
+  flush: () => { cfg.wal = {...WAL}; cfg.car = CAR.S; saveCfg(); }, beforeRestore: () => { NOSAVE = true; }});
+$('garb').onclick = () => GARAGE.toggle();
 $('jobb').onclick = openJobs; $('job-close').onclick = () => { $('jobdlg').hidden = true; }; $('job-stop').onclick = () => { jobStop(); $('jobdlg').hidden = true; toast('Berhenti bekerja'); };
 $('peaceb').onclick = makePeace; $('svcb').onclick = openSvc; $('svc-close').onclick = () => { $('svc').hidden = true; }; $('towb').onclick = () => callTow();
 $('mirb').onclick = () => { cfg.mirror = cfg.mirror === false; saveCfg(); $('mirb').setAttribute('aria-pressed', cfg.mirror !== false ? 'true' : 'false'); toast(cfg.mirror !== false ? 'Spion menyala (kokpit: spion kiri, tengah, kanan)' : 'Spion dimatikan'); };
@@ -4956,6 +4983,7 @@ addEventListener('keydown', e => { if(window.TJ_BOOT?.active)return;if (FLY && F
   else if (k === 'c' && !e.repeat) $('camb').click();
   else if (k === 'v' && !e.repeat) $('mirb').click();
   else if (k === 'u' && !e.repeat) $('musb').click();
+  else if (k === 'i' && !e.repeat) GARAGE.toggle();
   else if (k === 'j' && !e.repeat) { if ($('jobdlg').hidden) openJobs(); else $('jobdlg').hidden = true; }
   else if (k === 'l' && !e.repeat && !$('svcb').hidden) openSvc();
   else if (k === 't' && !e.repeat && !$('towb').hidden) callTow();
@@ -5380,6 +5408,7 @@ PHONE = TUT ? null : initPhone({cfg, saveCfg, toast, rp: rp$, rpS, sfx: phoneSfx
   veh: {types: Object.entries(VEH).map(([k, v]) => [k, v.label]), label: k => (VEH[k] || VEH.car).label, gol: k => (VEH[k] || VEH.car).gol, mods: () => MODS(), paints: PAINTS, rims: RIMS, liveries: LIVERY,
     swap(t){ if (ride) return 'Sedang jadi penumpang'; if (job) jobStop(); if (!PLR || PLR.rp || foot || tow) return 'Kembali ke jalan utama dulu';
       if (nonTollVehicle(t) && isToll(uOfV(PLR))) return `${VEH[t].label} tidak boleh di jalan tol. Mulai dari jalan non-tol.`; if (corrAt(uOfV(PLR)) === 'mbz' && !MBZ_OK.has(t)) return 'Kendaraan ini dilarang di Tol Layang MBZ';
+      if (!CAR.owns(t)) return `${VEH[t].label} belum dimiliki: beli di Garasi (tombol Garasi / tombol I)`;
       if (!swapPlayerVeh(t)) return 'Tidak bisa sekarang'; toast(`Kendaraan: ${VEH[t].label}`); return null; },
     setMod(k, v){ cfg.mod = {...MODS(), [k]: v}; saveCfg(); if (PLR && !PLR.rp && !foot && !tow && !ride) swapPlayerVeh(PLR.type); },
     info: () => vehInfo(),
@@ -5459,7 +5488,7 @@ function trafficFacts(v){
 function recordLaw(v,code,msg,f){
   if(!LAW_BY_ID[code])return false;
   let times=v.player?PLAYER_LAW_TIMES:LAW_TIMES.get(v);if(!times){times={};LAW_TIMES.set(v,times);}if(clock-(times[code]??-Infinity)<20)return false;times[code]=clock;
-  if(v.player){stats.viol++;stats.log.push(`${LAW_BY_ID[code].title} · ${LAW_BY_ID[code].article}`);if(stats.log.length>100)stats.log.shift();toast(`Pelanggaran: ${msg||LAW_BY_ID[code].title}`, 'bad');
+  if(v.player){stats.viol++;CAR.ev.violation();stats.log.push(`${LAW_BY_ID[code].title} · ${LAW_BY_ID[code].article}`);if(stats.log.length>100)stats.log.shift();toast(`Pelanggaran: ${msg||LAW_BY_ID[code].title}`, 'bad');
     if(PURSUIT_ENGINE.offence(code,clock)){toast('Pelanggaran berulang! Polisi mengejar. Menepi dan berhenti.','bad');pursuitMsg=0;}
     else if(PURSUIT.phase==='idle')toast('Peringatan polisi: 3 pelanggaran dalam 2 menit memicu pengejaran.','warn');
   }else LAW_TOTAL.ai++;
@@ -5551,7 +5580,7 @@ function tick(dt,stream=true){
   if(stream)streamWorld();
 }
 function streamWorld(){ensureAhead();setupBlocks(false);updateWorld(true);updateSignals();animGhosts();}
-window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
+window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
 window.__tj.moveSvg = moveSvg; window.__tj.nextMv = nextMove;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering
