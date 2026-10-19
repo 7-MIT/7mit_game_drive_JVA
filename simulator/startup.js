@@ -2,6 +2,7 @@
 import {placeList,buildTrip,choicesAt,NODES,RULES,fmtKm} from './network.js';
 import {nonTollVehicle} from './vehicle-dynamics.js';
 import {TRIP_OPTIONS,ROUTE_OPTIONS,VEHICLE_OPTIONS,MOD_DEF,LIVERY,PRESETS} from './start-options.js';
+import {getLang,setLang,startI18n} from './i18n.js';
 export function mountStartup({document:doc=globalThis.document,window:win=globalThis.window,load=()=>import('./main.js'),account=()=>import('./account.js'),paint=()=>new Promise(resolve=>win.requestAnimationFrame(()=>win.requestAnimationFrame(resolve)))}={}){
  const root=doc.getElementById('start-screen');if(!root)return null;
  const $=id=>doc.getElementById(id),home=$('start-home'),loading=$('start-loading'),play=$('start-play'),progress=$('start-progress'),status=$('start-load-status'),reload=$('start-reload');
@@ -41,6 +42,12 @@ export function mountStartup({document:doc=globalThis.document,window:win=global
  const help=$('start-help-dialog');$('start-help-open').addEventListener('click',()=>help.showModal());
  reload.addEventListener('click',()=>win.location.reload());
  // account: the button opens the account window; after signing in it shows the player's name
+ // faster loading: the service worker keeps the libraries and game files for the next visit; while the player is still choosing a trip,
+ // the game's modules are fetched ahead (modulepreload fetches and parses without running them)
+ try{if('serviceWorker' in navigator&&/(^|\.)7mit\.org$/.test(win.location.hostname))navigator.serviceWorker.register('sw.js').catch(()=>{});}catch{}
+ try{win.setTimeout(()=>{if(begun)return;for(const f of ['main.js','phone.js','fly.js','osm.js','network.js','map-data.js','road-vehicle-models.js','architecture-models.js','career.js','career-ui.js','studio.js','controls.js','report.js','https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js']){const l=doc.createElement('link');l.rel='modulepreload';l.href=f;doc.head.append(l);}},1500);}catch{}
+ // language: Indonesian or English (i18n.js translates the page as it changes)
+ const lb=$('start-lang');if(lb){lb.textContent=getLang()==='en'?'ID':'EN';lb.title=getLang()==='en'?'Bahasa Indonesia':'English';lb.addEventListener('click',()=>{const l=getLang()==='en'?'id':'en';lb.textContent=l==='en'?'ID':'EN';setLang(l);});if(getLang()==='en')startI18n();}
  const acct=$('start-account');
  if(acct){const label=A=>{const u=A.currentUser();acct.textContent=u?A.displayName(u):'Masuk / Daftar';if(u&&$('start-name')&&!$('start-name').value)$('start-name').value=A.displayName(u);};
   account().then(A=>{A.setHooks({toast:t=>{status.textContent=t;},signedIn:()=>label(A)});A.init().then(u=>{label(A);if(u&&A.pending()==='mp-start'){$('start-trip').value='mp';$('start-trip').dispatchEvent(new Event('change'));}});

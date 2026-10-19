@@ -19,6 +19,8 @@ import {cineShot, photoShot, createRecorder, initPhotoUI, lerpAngle} from './stu
 import {manualDrive, shiftOK, createPads, startTilt} from './controls.js';
 import {createRadio} from './radio.js';
 import {createGlass} from './glass.js';
+import {initReport} from './report.js';
+import {getLang, setLang} from './i18n.js';
 import {initDEM} from './elevation.js';
 import {BICYCLE, isTwoWheeler, nonTollVehicle, bicycleAcceleration, staminaStep, springStep, ackermannAngle, roadResistance, FOOD_BICYCLE_JOB} from './vehicle-dynamics.js';
 import {buildBicycle, animateBicycle, buildBicycleView} from './bicycle.js';
@@ -60,7 +62,7 @@ const OSNAP = new Map(), OSM_KINDS = {t: ['t'], n: ['n', 'p'], a: ['s', 'p', 'n'
 let cfg; try { cfg = {...DEF, ...JSON.parse(localStorage.getItem('tj_cfg1') || '{}')}; } catch(e) { cfg = {...DEF}; }
 if(window.TJ_START_PLAN&&!TUT&&!FLYPAGE)cfg={...cfg,...window.TJ_START_PLAN};
 if (TUT) cfg = {...DEF, gfx: cfg.gfx, sound: cfg.sound, veh: 'car', mod: cfg.mod, den: 0.7, tod: 'day', gh: 9, cam: 'chase', auto: false, trip: 'route', from: 'Bekasi Barat', to: 'Cikarang Timur', mirror: cfg.mirror};
-let NOSAVE = false; const saveCfg = () => { if (TUT || NOSAVE) return; try { localStorage.setItem('tj_cfg1', JSON.stringify(cfg)); } catch(e) {} };
+let NOSAVE = false; cfg.lang = getLang(); const saveCfg = () => { if (TUT || NOSAVE) return; try { localStorage.setItem('tj_cfg1', JSON.stringify(cfg)); } catch(e) {} };
 const mod = (a, n) => ((a % n) + n) % n;
 const rnd = (a, b) => a + Math.random()*(b - a);
 const pick = a => a[Math.floor(Math.random()*a.length)];
@@ -4743,6 +4745,7 @@ function rowsSpec(){
     ['cfk', 'Lajur contraflow', [[1,'1 lajur'],[2,'2 lajur'],[3,'3 lajur'],[9,'Semua (one way)']]],
     ['ovl', 'Jalan overpass', [[1,'1 lajur'],[2,'2 lajur'],[3,'3 lajur'],[4,'4 lajur']]],
     ['scale', 'Skala jarak', [[1,'Nyata 1:1'],[5,'Ringkas 1:5'],[20,'Cepat 1:20']]],
+    ['lang', 'Bahasa', [['id','Bahasa Indonesia'],['en','English']]],
   ];
 }
 function btn(text, on){ const b = document.createElement('button'); b.className = 'opt'; b.textContent = text; b.setAttribute('aria-pressed', on ? 'true' : 'false'); return b; }
@@ -4781,6 +4784,7 @@ function renderUI(){
   const fl = document.createElement('div'); fl.className = 'lbl'; fl.textContent = 'Saran & Kesan';
   const fc = document.createElement('div'); fc.className = 'cell';
   for (const [t, url] of FEEDBACK.links) { const fb = btn(t, false); fb.onclick = () => window.open(url, url.startsWith('http') ? '_blank' : '_self', 'noopener'); fc.append(fb); }
+  { const rb = btn('Laporkan bug (F9)', false); rb.onclick = () => REPORT.open(); fc.append(rb); }
   const fh = document.createElement('div'); fh.className = 'hint'; fh.textContent = FEEDBACK.text; fc.append(fh);
   ctrl.append(fl, fc);
   ctrl.scrollTop = sc;
@@ -4829,6 +4833,7 @@ function apply(id, v, fromServer = false){
   else if (id === 'trans') { if (PLR) { PLR.mg = v === 'auto' ? null : Math.max(1, Math.min(5, PLR.gear || 1)); PLR.stalled = false; } gearUI(); toast(v === 'auto' ? 'Transmisi otomatis' : v === 'manual' ? 'Transmisi manual: , turun gigi · . naik gigi (kopling otomatis)' : 'Manual + kopling: tahan Spasi untuk kopling, , dan . untuk ganti gigi'); }
   else if (id === 'tilt') { tiltStop && tiltStop(); tiltStop = null; if (v) startTilt(input).then(f => { tiltStop = f; if (!f) { cfg.tilt = false; saveCfg(); renderUI(); toast('Sensor kemiringan tidak tersedia / tidak diizinkan', 'warn'); } else toast('Setir miring aktif: miringkan HP seperti memutar setir'); }); else toast('Setir miring mati'); }
   else if (id === 'radio') { audioStart(); if (RADIO) RADIO.set(!!v); toast(v ? 'Radio 7MIT FM 97,7 menyala' : 'Radio mati'); }
+  else if (id === 'lang') setLang(v);
   else if (id === 'mudik') { fillTraffic(); toast(v ? 'Mode mudik: arus padat pemudik di tol, truk sumbu 3 ke atas dilarang' : 'Mode mudik dimatikan'); }
   else if (id === 'gfx') { applyGfx(); toast(`Grafis: ${label()}`); }
   else if (id === 'steerAssist') toast(`Asisten setir: ${v ? 'aktif' : 'mati'}`);
@@ -5098,6 +5103,7 @@ addEventListener('keydown', e => { if(window.TJ_BOOT?.active)return;if (FLY && F
   else if (k === 'i' && !e.repeat) GARAGE.toggle();
   else if (k === 'q' && !e.repeat) photoToggle();
   else if (k === 'y' && !e.repeat) apply('radio', !cfg.radio);
+  else if (k === 'f9' && !e.repeat) { e.preventDefault(); REPORT.open(); }
   else if ((k === '.' || k === '>') && !e.repeat) shiftGear(1);
   else if ((k === ',' || k === '<') && !e.repeat) shiftGear(-1);
   else if (k === ' ') { input.clutch = true; e.preventDefault(); }
@@ -5765,6 +5771,12 @@ const PADS = createPads({input, on: {active: () => { manualNow(); toast('Gamepad
   up: () => shiftGear(1), down: () => shiftGear(-1), map: () => { if ($('atlas').hidden) openAtlas(); else closeAtlas(); }, left: () => setIndicator(PLR?.indicator === 1 ? 0 : 1),
   right: () => setIndicator(PLR?.indicator === -1 ? 0 : -1), hazard: () => setIndicator(PLR?.indicator === 2 ? 0 : 2), photo: () => photoToggle()}});
 const GLASS = createGlass();
+// bug reports from inside the game (report.js): screenshot + device, settings, position and the last errors
+const REPORT = initReport({sb: sbClient, canvas: () => renderer.domElement, render: () => renderWorld(), toast, feedback: FEEDBACK, version: '2.03',
+  info: () => { const u = PLR ? uOfV(PLR) : camU, ll = EV.length ? latLonAt(u) : null;
+    return {veh: PLR?.type, speed: PLR ? Math.round(Math.abs(PLR.vel)*3.6) : 0, lat: ll && +ll.lat.toFixed(5), lon: ll && +ll.lon.toFixed(5), road: EV.length ? (CORR[corrAt(u)] || {}).name : '', km: EV.length ? Math.round(rkAt(u)*10)/10 : 0,
+      trip: trip ? {from: cfg.from, to: cfg.to, mode: cfg.mode, kind: cfg.trip} : null, cam: camMode, gfx: cfg.gfx, quality: QUAL.level, fps: Math.round(QUAL.fps), weather: cfg.weather, hour: +gameH.toFixed(2),
+      auto: !!cfg.auto, trans: cfg.trans || 'auto', job: job ? job.k : null, mp: !!mp.on, osm: OSM && OSM.source || null}; }});
 if (cfg.tilt) cfg.tilt = false;                     // the sensor needs a tap to allow it again after a reload
 $('gearupb').onclick = () => shiftGear(1); $('geardnb').onclick = () => shiftGear(-1);
 { const cb = $('clutchb'); cb.addEventListener('pointerdown', e => { e.preventDefault(); input.clutch = true; }); for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) cb.addEventListener(ev, () => { input.clutch = false; }); }

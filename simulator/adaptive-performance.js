@@ -1,6 +1,7 @@
 // Frame-time hysteresis: temporary loading spikes do not change graphics quality.
 export function initialQuality({mobile=false,memory=8,cores=8}={}){
-  return memory<=2||cores<=2?3:mobile||memory<=4||cores<=4?2:0;
+  // very weak phones (2 GB or less, or two cores) start at the lightest level; a phone with 3 GB a step above
+  return memory<=2||cores<=2?4:mobile&&memory<=3?3:mobile||memory<=4||cores<=4?2:0;
 }
 export function qualityProfile(level){
   const n=Math.max(0,Math.min(5,level));

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {initialQuality,qualityProfile,createQualityGovernor,createSimulationClock} from '../adaptive-performance.js';
 function run(g,fps,seconds){for(let i=0;i<fps*seconds;i++)g.sample(1/fps);}
 test('device hints choose conservative starting quality without requiring browser-only APIs',()=>{
- assert.equal(initialQuality(),0);assert.equal(initialQuality({mobile:true}),2);assert.equal(initialQuality({memory:2}),3);
+ assert.equal(initialQuality(),0);assert.equal(initialQuality({mobile:true}),2);assert.equal(initialQuality({memory:2}),4);assert.equal(initialQuality({mobile:true,memory:3}),3);
  for(let i=0;i<=5;i++){const p=qualityProfile(i);assert.ok(p.scale>0&&p.scale<=1);if(i)assert.ok(p.scale<=qualityProfile(i-1).scale);}
 });
 test('sustained slow rendering degrades quality and long recovery restores it without oscillation',()=>{

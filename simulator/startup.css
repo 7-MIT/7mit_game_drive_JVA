@@ -10,3 +10,4 @@
 #start-screen[data-state=loading],#start-screen[data-state=error]{display:grid;place-items:center;background:radial-gradient(ellipse at 50% 35%,#203640 0,#10191f 65%)}
 
 .start-head-r{display:flex;align-items:center;gap:10px}.start-account{font:600 12px/1 system-ui;padding:10px 14px;border:1px solid var(--accent);border-radius:40px;background:transparent;color:#f8f8f3;cursor:pointer;max-width:42vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.start-account:hover{background:#23313a}@media(max-width:620px){.start-version{display:none}}
+.start-lang{min-width:40px;text-align:center}
