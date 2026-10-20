@@ -4972,18 +4972,35 @@ $('ferry-back').onclick = () => { $('ferry').hidden = true; FERRY_ON = false; co
   for (const e of EV) delete e.dest; trip.dest = null; trip.destIdx = -1; trip.free = true; trip.ferry = null; trip.legs = trip.allLegs; setTitle(); drawMap();
   toast(`Tidak menyeberang · keliling bebas dari ${NODES.get(f.leg.a).name}`); };
 // the crossing: the ship sails across the strait while the clock moves on by the crossing time (the drive waits)
+// the crossing in 3D (ferry-3d.js): a drone films the ship on the open strait; reveal from the bow, low along the hull, then up and away astern
+let FERRY3D = null;
+const FERRY_SHOTS = [
+  [0, .38, k => { const e = k*k*(3 - 2*k), a = -2.5 + 1.3*e, r = 260 - 150*e; return {p: [r*Math.sin(a), 95 - 62*e, r*Math.cos(a) - 30], l: [0, 9, -10 + 10*e], fov: 42}; }],
+  [.38, .6, k => ({p: [-26, 4.5, 45 - 60*k], l: [0, 9, -90 - 20*k], fov: 50})],
+  [.6, 1.01, k => { const e = k*k*(3 - 2*k); return {p: [25 + 40*e, 22 + 130*e, 110 + 330*e], l: [0, 10 - 6*e, -40 - 60*e], fov: 45}; }]];
+function ferry3dStart(dur){
+  import('./ferry-3d.js').then(m => { if (!FERRY_ON) return; const F = m.buildFerryScene({hour: gameH, mobile: MOBILE});
+    FERRY3D = {F, cam: new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.5, 20000), t0: performance.now(), dur}; $('ferry').classList.add('ferry-3d'); document.body.classList.add('ferry3d-on'); }).catch(() => {}); }
+function ferry3dFrame(dt){
+  const {F, cam, t0, dur} = FERRY3D, k = clamp((performance.now() - t0)/1000/dur, 0, 1), [a, b, fn] = FERRY_SHOTS.find(x => k >= x[0] && k < x[1]) || FERRY_SHOTS[2], sh = fn((k - a)/(b - a));
+  const asp = innerWidth/innerHeight; cam.aspect = asp; cam.fov = asp < 1.3 ? Math.min(80, 2*Math.atan(Math.tan(sh.fov*Math.PI/360)*1.3/asp)*180/Math.PI) : sh.fov; cam.updateProjectionMatrix();
+  cam.position.set(...sh.p); cam.lookAt(...sh.l); F.update(dt, cam); if (renderer.shadowMap.enabled) renderer.shadowMap.needsUpdate = true; renderer.render(F.scene, cam); }
+function ferry3dEnd(){ $('ferry').classList.remove('ferry-3d'); document.body.classList.remove('ferry3d-on'); if (!FERRY3D) return; const seen = new Set();
+  FERRY3D.F.scene.traverse(o => { if (o.geometry) o.geometry.dispose(); for (const m of [].concat(o.material || [])) { if (seen.has(m)) continue; seen.add(m); for (const v of Object.values(m)) if (v && v.isTexture) v.dispose(); if (m.uniforms) for (const u of Object.values(m.uniforms)) if (u.value && u.value.isTexture) u.value.dispose(); m.dispose(); } });
+  FERRY3D = null; }
 function ferryVoyage(c, A, B, s, then){
-  const dur = MOBILE ? 7 : 9, t0 = performance.now(), h0 = gameH, msgs = ['Kendaraan naik ke kapal lewat ramp…', 'Kapal lepas tali, meninggalkan dermaga',
+  const dur = MOBILE ? 16 : 22, t0 = performance.now(), h0 = gameH, msgs = ['Kendaraan naik ke kapal lewat ramp…', 'Kapal lepas tali, meninggalkan dermaga',
     `Berlayar di ${ferryName(c)}`, `Mendekati Pelabuhan ${B.name}`, 'Kapal bersandar, kendaraan turun'];
   FERRY_ON = true; input.gas = input.brake = input.left = input.right = false;
   $('ferry-title').textContent = `Berlayar ${A.name} → ${B.name}`; $('ferry-list').hidden = true; $('ferry-back').hidden = true; $('ferry-cross').hidden = false; $('ferry-skip').hidden = false;
   $('ferry-a').textContent = A.name; $('ferry-b').textContent = B.name;
   $('ferry-info').textContent = `${s.t} · golongan ${ferryGol()} · kendaraan diparkir di dek, penumpang di ruang penumpang. Waktu berlayar ±${s.h < 1 ? Math.round(s.h*60) + ' menit' : s.h.toFixed(1).replace('.', ',') + ' jam'}.`;
   $('ferry').hidden = false; try { window.lucide && window.lucide.createIcons(); } catch (e) {}
+  ferry3dStart(dur);
   let done = false;
   const setT = k => { gameH = (h0 + (s.h + 0.4)*k) % 24; todT = 0; lastSign = -1; tickClock(0); };
   const finish = () => { if (done) return; done = true; setT(1); WAL.sleep = Math.max(0, WAL.sleep - Math.min(40, s.h*20)); uiNeeds();
-    $('ferry').hidden = true; FERRY = null; FERRY_ON = false; then(); };
+    $('ferry').hidden = true; ferry3dEnd(); FERRY = null; FERRY_ON = false; then(); };
   const step = () => { if (done) return; const k = clamp((performance.now() - t0)/1000/dur, 0, 1);
     $('ferry-ship').style.left = `${14 + 72*k}%`; $('ferry-status').textContent = msgs[Math.min(msgs.length - 1, Math.floor(k*msgs.length))]; setT(k);
     if (k >= 1) finish(); else requestAnimationFrame(step); };
@@ -5704,7 +5721,7 @@ function tick(dt,stream=true){
   if(stream)streamWorld();
 }
 function streamWorld(){ensureAhead();setupBlocks(false);updateWorld(true);updateSignals();animGhosts();}
-window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.LMK_BUILD=LMK_BUILD; window.__tj.gg=ggRule; window.__tj.apply=apply; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
+window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol,get ready3d(){return !!FERRY3D;},frame3d(k){if(!FERRY3D)return null;FERRY3D.t0=performance.now()-k*FERRY3D.dur*1000;ferry3dFrame(1/30);return renderer.domElement.toDataURL('image/jpeg',.85);}};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.LMK_BUILD=LMK_BUILD; window.__tj.gg=ggRule; window.__tj.apply=apply; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
 window.__tj.moveSvg = moveSvg; window.__tj.nextMv = nextMove;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering
@@ -5794,7 +5811,7 @@ renderer.setAnimationLoop(now => {
   if(now-renderLast<1000/60-.5)return;renderLast=now;
   const rawDt = (now - last)/1000, dt = Math.min(0.067, rawDt); last = now; frames++; if (rawDt > 0 && rawDt < 1) govern(rawDt);
   if(renderer.shadowMap.enabled)renderer.shadowMap.needsUpdate=(shadowFrame=(shadowFrame+1)%PROFILE.shadowEvery)===0;
-  if (ARREST_DIALOG?.open||FERRY_ON) { renderWorld();return; }
+  if (ARREST_DIALOG?.open||FERRY_ON) { if (FERRY3D && !ARREST_DIALOG?.open) ferry3dFrame(dt); else renderWorld(); return; }
   if (!$('plan').hidden && trip && !stats.done) { renderWorld(); return; }
   PADS.poll();
   if (PHOTO.on || REPLAY) { studioFrame(dt); return; }

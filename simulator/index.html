@@ -350,6 +350,10 @@
   .ferry-ship{position:absolute;bottom:30%;left:14%;transform:translateX(-50%);color:#fff;background:#c8341f;border:2px solid #201e1d;padding:4px 7px;line-height:0;transition:left .25s linear}
   .ferry-ship svg{width:26px;height:26px}
   @keyframes ferryWave{to{background-position:48px 0}}
+  /* the 3D crossing: the ship fills the screen, the voyage info sits small at the bottom */
+  #ferry.ferry-3d{background:none;place-items:end center;pointer-events:none}#ferry.ferry-3d .dlg{pointer-events:auto;max-width:min(460px,calc(100vw - 32px))}
+  body.ferry3d-on #simulator-shell>*:not(#stage):not(#ferry){visibility:hidden}
+  #ferry.ferry-3d .ferry-sea{display:none}#ferry.ferry-3d .dlg-body{padding-top:6px;padding-bottom:10px}#ferry.ferry-3d #ferry-info{font-size:12px!important;margin:0 0 4px}
   @media (prefers-reduced-motion:reduce){.ferry-wave{animation:none}.ferry-ship{transition:none}}
   /* dialogs */
   .dlg-back{position:fixed;inset:0;background:color-mix(in srgb,#201e1d 45%,transparent);display:grid;place-items:center;z-index:10;padding:16px}
