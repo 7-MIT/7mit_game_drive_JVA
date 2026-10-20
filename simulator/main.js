@@ -1040,7 +1040,7 @@ function regionAt(u){
   const p = latLonAt(u), c = corrAt(u);
   if (HILLS.has(c) || (ROADFORM[c] && ROADFORM[c][1] >= 10)) return 'hills';    // mountain roads (Lintas Selatan, Pansela, Puncak …)
   if (p.lon > 106.45 && p.lon < 107.12 && p.lat > -6.72 && p.lat < -6.05) return 'urban';            // Jabodetabek
-  if ((p.lon > 107.05 && p.lon < 107.42 && p.lat > -6.42 && p.lat < -6.22) || (p.lon < 106.12 && p.lat > -6.1)) return 'industrial';   // Cikarang–Karawang, Cilegon
+  if ((p.lon > 107.05 && p.lon < 107.42 && p.lat > -6.42 && p.lat < -6.22) || (p.lon > 105.85 && p.lon < 106.12 && p.lat > -6.1 && p.lat < -5.88)) return 'industrial';   // Cikarang–Karawang, Cilegon (not Sumatera across the strait)
   for (const [la, lo, r] of CITIES) if (kmTo(p.lat, p.lon, la, lo) < r) return 'urban';
   return 'paddy';
 }
