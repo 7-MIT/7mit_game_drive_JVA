@@ -2484,7 +2484,7 @@ if (!TUT && !cfg.car && cfg.wal && SHOP[cfg.veh] && !CAR.owns(cfg.veh)) CAR.S.ow
 if (!TUT && SHOP[cfg.veh] && !CAR.owns(cfg.veh)) cfg.veh = 'car';
 cfg.car = CAR.S;
 const SHOP_PRICE = t => (SHOP[t] || {price: 0}).price;
-const vmaxOf = v => (VEH[v.type] || VEH.car).vmax*(v.player ? CAR.boost(v.type).vmax : 1);
+const vmaxOf = v => Math.min(200/3.6, (VEH[v.type] || VEH.car).vmax*(v.player ? CAR.boost(v.type).vmax : 1));
 const rp$ = n => 'Rp ' + Math.round(n).toLocaleString('id-ID');
 const rpS = n => { const a = Math.abs(n), sg = n < 0 ? '−' : ''; return sg + (a >= 1e6 ? (a/1e6).toFixed(a >= 1e7 ? 0 : 1).replace('.', ',') + 'jt' : Math.round(a/1000) + 'rb'); };
 let walT = 0, lowFuelSaid = false, sleepSaid = 0, msT = 0;
@@ -2683,7 +2683,7 @@ function vehInfo(){ const m = MODS(), t = PLR ? PLR.type : cfg.veh, cat = m.plat
   return {type: t, label: (VEH[t] || VEH.car).label, gol: (VEH[t] || VEH.car).gol, plate: t==='bicycle'?'SEPEDA':(m.plate || autoPlate(cat)).toUpperCase(), plateCat: cat, plateName: PLATE_NAME[cat], plateStyle: PLATE_STYLE[cat],
     valid: `${String(d.getMonth() + 1).padStart(2, '0')} · ${String((d.getFullYear() + 5) % 100).padStart(2, '0')}`, paint: fixed ? 'Warna dinas / armada' : (COLOR_NAME[m.paint] || 'Kustom ' + m.paint), paintHex: fixed ? '#f4f4f2' : m.paint,
     paint2: COLOR_NAME[m.paint2] || m.paint2, rim: COLOR_NAME[m.rim] || m.rim, livery: LIVERY[m.livery] || 'Polos', tint: m.tint ? 'Gelap' : 'Standar', spoiler: m.spoiler, low: m.low, stripe: m.stripe,
-    vmax: Math.round(((VEH[t] || VEH.car).vmax)*CAR.boost(t).vmax*3.6), tank: t==='bicycle'?0:TANK[t] || 42, kml:t==='bicycle'?0:KM_L[t] || 12, km: EV.length && PLR ? Math.round(rkAt(uOfV(PLR)) + (stats.km0 || 0)) : 0, dmg: Math.round(PLR && PLR.dmg || 0),
+    vmax: Math.round(Math.min(200, ((VEH[t] || VEH.car).vmax)*CAR.boost(t).vmax*3.6)), tank: t==='bicycle'?0:TANK[t] || 42, kml:t==='bicycle'?0:KM_L[t] || 12, km: EV.length && PLR ? Math.round(rkAt(uOfV(PLR)) + (stats.km0 || 0)) : 0, dmg: Math.round(PLR && PLR.dmg || 0),
     year: 2018 + (parseInt(cfg.mpId || '7', 36) % 7 || 3), cats: Object.entries(PLATE_NAME)}; }
 function applyMods(v, m){
   if (!v || !m) return; if (v.type === 'bicycle') {v.lowered=0;return;}
@@ -3325,11 +3325,13 @@ function place(){
 // ================================================================
 // PLAYER
 // ================================================================
-const VEH = {car:{label:'Sedan', vmax:52, acc:3.2, gol:'Gol I', rate:1000}, suv:{label:'SUV', vmax:48, acc:2.8, gol:'Gol I', rate:1000},
-  bus:{label:'Bus', vmax:33, acc:1.3, gol:'Gol I', rate:1000}, truck:{label:'Truk', vmax:28, acc:0.9, gol:'Gol III', rate:1650},
-  pickup:{label:'Pickup', vmax:42, acc:2.4, gol:'Gol I', rate:1000}, taxi:{label:'Taksi', vmax:50, acc:3.1, gol:'Gol I', rate:1000},
-  bicycle:{label:BICYCLE.label,vmax:BICYCLE.vmax,acc:1.5,gol:'non-tol',rate:0}, moto:{label:'Motor', vmax:33, acc:3.8, gol:'non-tol', rate:0}, angkot:{label:'Angkot', vmax:31, acc:2.3, gol:'Gol I', rate:1000}, ambulance:{label:'Ambulans', vmax:44, acc:2.6, gol:'Gol I', rate:1000},
-  damkar:{label:'Damkar', vmax:31, acc:1.3, gol:'Gol II', rate:1500}, police:{label:'Polisi', vmax:52, acc:3.4, gol:'Gol I', rate:1000}};
+// every motor vehicle can reach 200 km/h and never goes faster (VMAX); heavy ones get there slowly (acc)
+const VMAX = 200/3.6;
+const VEH = {car:{label:'Sedan', vmax:VMAX, acc:3.2, gol:'Gol I', rate:1000}, suv:{label:'SUV', vmax:VMAX, acc:2.9, gol:'Gol I', rate:1000},
+  bus:{label:'Bus', vmax:VMAX, acc:1.6, gol:'Gol I', rate:1000}, truck:{label:'Truk', vmax:VMAX, acc:1.45, gol:'Gol III', rate:1650},
+  pickup:{label:'Pickup', vmax:VMAX, acc:2.6, gol:'Gol I', rate:1000}, taxi:{label:'Taksi', vmax:VMAX, acc:3.1, gol:'Gol I', rate:1000},
+  bicycle:{label:BICYCLE.label,vmax:BICYCLE.vmax,acc:1.5,gol:'non-tol',rate:0}, moto:{label:'Motor', vmax:VMAX, acc:3.8, gol:'non-tol', rate:0}, angkot:{label:'Angkot', vmax:VMAX, acc:2.4, gol:'Gol I', rate:1000}, ambulance:{label:'Ambulans', vmax:VMAX, acc:2.8, gol:'Gol I', rate:1000},
+  damkar:{label:'Damkar', vmax:VMAX, acc:1.5, gol:'Gol II', rate:1500}, police:{label:'Polisi', vmax:VMAX, acc:3.4, gol:'Gol I', rate:1000}};
 const input = {gas:false, brake:false, left:false, right:false};
 const stats = {t0: 0, toll: 0, viol: 0, crashes: 0, lastPay: 0, missed: false, done: false, log: []};
 let offT = 0, shoulderT = 0, speedT = 0, heavyT = 0, violCd = 0, crashCd = 0, shake = 0;
@@ -3520,6 +3522,7 @@ function playerAcc(v, dt){
   if (v.offroad && Math.abs(v.vel) > 0.3) { a -= Math.sign(v.vel)*(1.3 + 0.0016*v.vel*v.vel); shake = Math.max(shake, Math.min(0.25, Math.abs(v.vel)*0.012)); }
   if (v.vel >= 0 && v.vel + a*dt < 0 && !(input.brake && input.brakeT > 0.6)) return -v.vel/dt;
   if (v.vel < 0 && v.vel + a*dt > 0 && !input.gas) return -v.vel/dt;
+  const cap = vmaxOf(v); if (v.vel + a*dt > cap) return (cap - v.vel)/dt;
   return a;
 }
 const muOf = v => (v.player ? CAR.boost(v.type).grip : 1)*(v.offroad ? 0.6 : 1)*(heavy(v) || v.type === 'damkar' ? 0.62 : 0.92)*((WEATHER[cfg.weather] || {}).rain ? 0.68 : 1)*(1 - Math.min(0.25, (v.dmg || 0)*0.0025));
@@ -3527,7 +3530,7 @@ function playerAcc0(v, dt){
   if (v.type === 'bicycle') { v.thr = (v.thr || 0) + clamp((input.gas ? 1 : 0) - (v.thr || 0), -3*dt, 2*dt); v.brk = input.brake ? Math.min(1,(v.brk||0)+4*dt) : 0; v.gear=0; input.brakeT=0;
     const a=bicycleAcceleration({speed:v.vel,pedal:v.thr,brake:v.brk,grade:slopeG(v)/9.81,stamina:v.stamina,wet:!!(WEATHER[cfg.weather]||{}).rain,offroad:v.offroad,damage:v.dmg});
     return v.vel+a*dt<0 ? -v.vel/dt : a; }
-  const sp0 = VEH[v.type] || VEH.car, bo = CAR.boost(v.type), dk = 1 - Math.min(0.6, (v.dmg || 0)*0.006), spec = {...sp0, vmax: sp0.vmax*bo.vmax*dk, acc: sp0.acc*bo.acc*dk}, hv = heavy(v) ? 0.6 : 1;
+  const sp0 = VEH[v.type] || VEH.car, bo = CAR.boost(v.type), dk = 1 - Math.min(0.6, (v.dmg || 0)*0.006), spec = {...sp0, vmax: Math.min(200/3.6, sp0.vmax*bo.vmax)*dk, acc: sp0.acc*bo.acc*dk}, hv = heavy(v) ? 0.6 : 1;
   if ((v.dmg || 0) >= 100) { if (!v.deadT) { v.deadT = clock; toast('Mesin mati: kendaraan rusak berat. Derek dipanggil…', 'bad'); }
     if (clock - v.deadT > 2.5 && !tow) callTow(true);
     return v.vel > 0.05 ? -4 : v.vel < -0.05 ? 4 : -v.vel/dt; }
@@ -3546,8 +3549,8 @@ function playerAcc0(v, dt){
   }
   input.brakeT = 0;
   if (input.gas || v.thr > 0.02) { if (v.vel < -0.2) return 6;
-    let a = spec.acc*1.75*(mk ? (v.stalled ? 0 : mk.k) : GEAR_K[g - 1])*v.thr*(1 - Math.pow(Math.max(0, v.vel)/spec.vmax, 2)); if (v.shiftT > 0) a *= 0.25;
-    return a - drag - slopeG(v); }
+    let a = spec.acc*1.75*(mk ? (v.stalled ? 0 : mk.k) : GEAR_K[g - 1])*v.thr*(1 - Math.pow(Math.min(1, Math.max(0, v.vel)/(spec.vmax*1.1)), 3)); if (v.shiftT > 0) a *= 0.25;
+    return a - drag*(1 - 0.9*v.thr) - slopeG(v); }
   const coast = v.vel > 0.05 ? -0.25 - 0.18*Math.min(1, v.vel/8) - drag : v.vel < -0.05 ? 0.8 : -v.vel/dt;   // rolling + engine braking
   return Math.abs(v.vel) > 0.3 ? coast - slopeG(v) : coast;
 }

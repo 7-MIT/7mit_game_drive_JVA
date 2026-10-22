@@ -11,7 +11,7 @@ export const SHOP = {
 };
 // three upgrade lines, three steps each; the multipliers are what one step adds
 export const PARTS = {
-  eng:   {name: 'Mesin', desc: 'Tenaga & kecepatan puncak', price: [5000000, 10000000, 20000000]},
+  eng:   {name: 'Mesin', desc: 'Tenaga & akselerasi (kecepatan puncak tetap 200 km/jam)', price: [5000000, 10000000, 20000000]},
   tire:  {name: 'Ban', desc: 'Cengkeraman di tikungan & jalan basah', price: [3000000, 6000000, 12000000]},
   brake: {name: 'Rem', desc: 'Jarak pengereman lebih pendek', price: [3000000, 6000000, 12000000]},
 };

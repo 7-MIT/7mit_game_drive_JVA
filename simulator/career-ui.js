@@ -36,7 +36,7 @@ export function initCareerUI(G){
     body.append(el('p', 'help', `Uang tunai ${rpJt(cash)}. Kendaraan pekerjaan (taksi, bus, angkot, truk) boleh dipakai sebagai kendaraan perusahaan saat bekerja walau belum dibeli.`));
     for (const [t, s] of Object.entries(G.VEH)) { const own = CAR.owns(t), shop = SHOP[t] || {price: 0}, up = CAR.upOf(t), c = el('div', 'gar-card' + (t === cur ? ' on' : ''));
       const pips = Object.entries(PARTS).map(([k, p]) => `${p.name} <span class="gar-pips">${'■'.repeat(up[k] || 0)}${'□'.repeat(PART_MAX - (up[k] || 0))}</span>`).join(' · ');
-      c.innerHTML = `<h3><span>${esc(s.label)} <small>${esc(s.gol)}</small></span><span>${own ? (t === cur ? 'Dipakai' : 'Milik Anda') : rpJt(shop.price)}</span></h3><p>${Math.round(s.vmax*3.6*CAR.boost(t).vmax)} km/j maks${t === 'bicycle' ? '' : ' · ' + pips}</p>`;
+      c.innerHTML = `<h3><span>${esc(s.label)} <small>${esc(s.gol)}</small></span><span>${own ? (t === cur ? 'Dipakai' : 'Milik Anda') : rpJt(shop.price)}</span></h3><p>${Math.round(Math.min(200, s.vmax*3.6*CAR.boost(t).vmax))} km/j maks${t === 'bicycle' ? '' : ' · ' + pips}</p>`;
       const row = el('div', 'gar-row');
       if (own) { const u = el('button', '', t === cur ? 'Sedang dipakai' : 'Pakai'); u.disabled = t === cur; u.onclick = () => { const e = G.use(t); if (e) G.toast(e, 'warn'); else draw(); }; row.append(u);
         if (t !== 'bicycle') for (const [k, p] of Object.entries(PARTS)) { const lv = up[k] || 0, b = el('button', '', lv >= PART_MAX ? `${p.name} maks` : `${p.name} +1 · ${rpJt(p.price[lv])}`); b.title = p.desc; b.disabled = lv >= PART_MAX;

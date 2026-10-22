@@ -3,11 +3,12 @@
 
 // ---- manual gearbox ----
 // each gear pulls from lo to top (m/s, for a car; heavy vehicles multiply by hv); below lo the engine lugs, below stall speed it dies
-export const GEAR_TOP = [9, 16, 23, 31, 42], GEAR_PULL = [1, 0.8, 0.64, 0.52, 0.43];
+// fifth gear runs on to the 200 km/h limit (the vehicle's own top speed cuts in there)
+export const GEAR_TOP = [10, 18, 27, 38, Infinity], GEAR_PULL = [1, 0.8, 0.64, 0.52, 0.43];
 export const gearLow = g => g <= 1 ? 0 : GEAR_TOP[g - 2]*0.5;
 // drive force factor, engine rpm and whether the engine stalls, for gear g (0 = neutral) at speed vel
 export function manualDrive({gear, vel, clutch = false, hv = 1, gas = 0, clutchMode = false}){
-  const v = Math.max(0, vel)/hv, rpmOf = g => g <= 0 ? 0 : 800 + v/GEAR_TOP[g - 1]*5600;
+  const v = Math.max(0, vel)/hv, rpmOf = g => g <= 0 ? 0 : 800 + v/(g >= 5 ? 56/hv : GEAR_TOP[g - 1])*5600;
   if (gear <= 0 || clutch) return {k: 0, rpm: 800 + gas*4200*(gear <= 0 || clutch ? 1 : 0), stall: false, limiter: false};
   const top = GEAR_TOP[gear - 1], lo = gearLow(gear), rpm = Math.max(800, rpmOf(gear));
   if (v >= top) return {k: 0, rpm: 6400, stall: false, limiter: true};
