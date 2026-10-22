@@ -22,7 +22,7 @@ import {createGlass} from './glass.js';
 import {initReport} from './report.js';
 import {getLang, setLang} from './i18n.js';
 import * as VOX from './voice.js';
-import {DISPATCH, EMERGENCIES, shown, UNIT_NAME, UNIT_END, CANCEL, dispatchLocation} from './voice-lines.js';
+import {DISPATCH, EMERGENCIES, shown, UNIT_NAME, UNIT_END, CANCEL, dispatchLocation, SERVICE_MENU, OTHER_MENU, TOW_FREE, FUEL_HELP, TIRE_HELP, REPORT_HELP, INFO_END, trafficInfo} from './voice-lines.js';
 import {initDEM} from './elevation.js';
 import {BICYCLE, isTwoWheeler, nonTollVehicle, bicycleAcceleration, staminaStep, springStep, ackermannAngle, roadResistance, FOOD_BICYCLE_JOB} from './vehicle-dynamics.js';
 import {buildBicycle, animateBicycle, buildBicycleView} from './bicycle.js';
@@ -450,6 +450,30 @@ function adMat(k){ if (adMats[k]) return adMats[k]; const a = ADS[k], icons = !!
 const bbPoleGeo = new THREE.CylinderGeometry(0.35, 0.45, 9, 10); bbPoleGeo.translate(0, 4.5, 0); bbPoleGeo.userData.keep = true;
 const bbFaceGeo = new THREE.PlaneGeometry(10, 4.5); bbFaceGeo.userData.keep = true;
 // a two-sided billboard on one pole at (x, z), its front turned to the traffic coming towards it (rot), lit from below at night
+// ---------- roadside SPBU (every 200 m on national, city and regency roads; alternating sides 100 m apart) ----------
+// local frame: x away from the road (0 = edge of the shoulder), z along the road; the whole station is one vertex-coloured
+// geometry (built once) plus its sign: two draw calls per station, so a town full of them stays light
+const spbuMat = new THREE.MeshStandardMaterial({vertexColors: true, roughness: 0.6});
+let SPBU_GEO = null, SPBU_SIGN = null;
+const SPBU_SITES = new Map();          // `${u}|${side}` -> {u, s}: stations that were actually built (services are offered next to them)
+function spbuGeo(){
+  if (SPBU_GEO) return SPBU_GEO; const parts = [], C = {floor: 0xbab7b0, white: 0xf3f3ef, red: 0xd3262c, dark: 0x2b3440, glass: 0x2f5f86, light: 0xfffbea};
+  const paint = (g, k) => { g.deleteAttribute('uv'); const c = new THREE.Color(C[k]), n = g.attributes.position.count, a = new Float32Array(n*3); for (let q = 0; q < n; q++) c.toArray(a, q*3); g.setAttribute('color', new THREE.BufferAttribute(a, 3)); parts.push(g.index ? g.toNonIndexed() : g); };
+  const box = (k, w, h, d, x, y, z) => { const b = new THREE.BoxGeometry(w, h, d); b.translate(x, y, z); paint(b, k); };
+  const fl = new THREE.PlaneGeometry(26, 34); fl.rotateX(-Math.PI/2); fl.translate(13, 0.006, 0); paint(fl, 'floor');
+  box('white', 10, 0.7, 18, 9, 5.45, 0); box('red', 10.08, 0.32, 18.08, 9, 5.25, 0);                          // canopy with its red fascia
+  box('light', 9, 0.04, 17, 9, 5.09, 0);                                                                       // lights under the canopy
+  for (const x of [6, 12]) for (const z of [-5.5, 5.5]) box('white', 0.38, 5, 0.38, x, 2.5, z);               // columns
+  for (const z of [-4, 4]) { box('floor', 1.3, 0.22, 4.6, 9, 0.11, z); for (const dz of [-1.2, 1.2]) { box('red', 0.62, 1.55, 0.85, 9, 0.99, z + dz); box('dark', 0.64, 0.45, 0.6, 9, 1.35, z + dz); } }
+  box('white', 6, 3.3, 12, 21, 1.65, 0); box('red', 6.2, 0.45, 12.2, 21, 3.4, 0); box('glass', 0.06, 1.7, 9.5, 17.97, 1.35, 0);   // minimarket
+  box('dark', 0.32, 7.2, 0.32, 1.4, 3.6, -14);                                                                 // sign pole
+  SPBU_GEO = mergeGeometries(parts); SPBU_GEO.userData.keep = true;
+  const sg = new THREE.PlaneGeometry(2.6, 3.2); sg.userData.keep = true;
+  SPBU_SIGN = {geo: sg, mat: new THREE.MeshStandardMaterial({map: textPanel(2.6, 3.2, '#c8102e', 'SPBU', '24 jam · BBM · Minimarket · Toilet', ['fuel']), side: THREE.DoubleSide, emissive: 0xffffff, emissiveIntensity: 0.15})};
+  SPBU_SIGN.mat.emissiveMap = SPBU_SIGN.mat.map; return SPBU_GEO; }
+function spbu(g, x, z, s){ const b = new THREE.Group(); b.position.set(x, 0, z); b.rotation.y = s > 0 ? 0 : Math.PI;
+  const m = new THREE.Mesh(spbuGeo(), spbuMat); m.castShadow = m.receiveShadow = true; const sg = new THREE.Mesh(SPBU_SIGN.geo, SPBU_SIGN.mat); sg.position.set(1.4, 6.4, -14); b.add(m, sg);
+  g.add(b); }
 function billboard(g, x, z, rot, k){ const b = new THREE.Group(); b.position.set(x, 0, z); b.rotation.y = rot;
   const pole = new THREE.Mesh(bbPoleGeo, lampMat), face = new THREE.Mesh(bbFaceGeo, adMat(mod(k, ADS.length))); pole.castShadow = true; face.position.set(0, 11.25, 0);
   const back = new THREE.Mesh(bbFaceGeo, adMat(mod(k + 5, ADS.length))); back.position.set(0, 11.25, -0.41); back.rotation.y = Math.PI;    // two-sided: an ad for each carriageway
@@ -895,7 +919,7 @@ function suramaduBridge(g, u0, u1, Z){
 }
 function buildChunkNat(i){
   const u0 = i*CH, u1 = u0 + CH, g = new THREE.Group(), R = rng(i*7919 + 29);
-  g.userData.u0 = u0; const Z = u => -(u - u0); const nearbyBuildings=[];
+  g.userData.u0 = u0; const Z = u => -(u - u0); const nearbyBuildings=[], spbuHere = [];
   const us = []; for (let u = u0; u <= u1 + 0.01; u += 10) us.push(u);
   const divided = nAt(u0 + CH/2) >= 1.5, town = townNear(u0 + CH/2, TOWN_R + 80);
   const xGap = u => KSITES.some(t => Math.abs(t.u - u) < XW/2 + 9);
@@ -935,6 +959,14 @@ function buildChunkNat(i){
         if (sty && R() < 0.45) { const [d2, w2] = ARCH_SIZE[sty]; nearbyBuildings.push({x: s*(eAt(u) + o + 1.5 + d2/2), z: Z(u), d: d2, w: w2, h: 3.2, type: sty}); }
         else nearbyBuildings.push({x,z:Z(u),d:6,w:7,h:3.2,type:'house',color:RUKO[Math.floor(R()*RUKO.length)].color}); }
     }
+    // SPBU every 200 m on this side (the other side is offset by 100 m)
+    for (let su = Math.ceil((u0 - (s > 0 ? 0 : 100))/200)*200 + (s > 0 ? 0 : 100); su < u1; su += 200) {
+      if (KSITES.some(t => Math.abs(t.u - su) < XW/2 + 24) || rampFoot(14, su, 36) || jGap(SJ, s, su - 18, su + 18) || elevAt(su) > 0.5 || OVS.some(ov => Math.abs(ov.u - su) < 40)) continue;
+      const e0 = eAt(su) + (town ? 5 : 2.6); spbu(g, s*e0, Z(su), s); spbuHere.push({u: su, s}); SPBU_SITES.set(su + '|' + s, {u: su, s});
+      addSolid(g, 'Menabrak tiang papan SPBU', su + 14*s - 0.3, su + 14*s + 0.3, s*(e0 + 1.4) - 0.3, s*(e0 + 1.4) + 0.3);
+      for (const x0 of [6, 12]) addSolid(g, 'Menabrak tiang kanopi SPBU', su - 5.8, su + 5.8, s*(e0 + x0) - 0.3, s*(e0 + x0) + 0.3);
+      addSolid(g, 'Menabrak minimarket SPBU', su - 6, su + 6, s*(e0 + 18), s*(e0 + 24));
+      for (let k = nearbyBuildings.length - 1; k >= 0; k--) { const o = nearbyBuildings[k]; if (Math.sign(o.x) === s && Math.abs(o.z - Z(su)) < 18 + (o.w || 6)/2 && Math.abs(o.x) - (o.d || 6)/2 < e0 + 27) nearbyBuildings.splice(k, 1); } }
     if (!town && s > 0) roadside(g, u0, u1, Z, R, false);
     // a billboard now and then outside towns, alternating sides
     if (!town && mod(i, 11) === 6 && s === (mod(Math.floor(i/11), 2) ? 1 : -1)) { const u = u0 + 50, o = 12;
@@ -960,7 +992,7 @@ function buildChunkNat(i){
     for (const o of [-0.18, 0.18]) g.add(strip(us, u => o - 0.06, u => o + 0.06, 0.012, yellowLine, Z));
   }
   const per = MOBILE ? 7 : 12, pts = [];
-  for (let k = 0; k < (sea ? 0 : per*2); k++) { const s = k % 2 ? 1 : -1, u = u0 + R()*CH, o = (town ? 24 : 40) + R()*260; if (rampFoot(o, u, 6)) continue;
+  for (let k = 0; k < (sea ? 0 : per*2); k++) { const s = k % 2 ? 1 : -1, u = u0 + R()*CH, o = (town ? 24 : 40) + R()*260; if (rampFoot(o, u, 6) || (o < 34 && spbuHere.some(t => t.s === s && Math.abs(t.u - u) < 20))) continue;
     pts.push({x: s*(eAt(u) + o), z: Z(u), k: 0.7 + R()*0.8, h: 0.85 + R()*0.4, r: R()*6.28}); }
   const trunks = new THREE.InstancedMesh(trunkGeo, trunkMat, Math.max(1, pts.length)), blobs = new THREE.InstancedMesh(blobGeo, blobMat, Math.max(1, pts.length));
   const q = new THREE.Quaternion(), sc = new THREE.Vector3(), pv = new THREE.Vector3(), upv = new THREE.Vector3(0,1,0);
@@ -2569,8 +2601,12 @@ function svcContext(){
   const u = foot ? foot.u : uOfV(PLR);
   if (foot) { const s = RSITES.find(s2 => s2.kind === 'r' && Math.abs(s2.u - u) < 140); if (s && Math.abs(foot.x) > eAt(u) + 18) return 'rest'; }
   if (!isToll(u) && townNear(u) && (foot || (!PLR.rp && Math.abs(PLR.vel) < 0.5))) return 'town';
+  if (!isToll(u) && (foot || (!PLR.rp && Math.abs(PLR.vel) < 0.5)) && spbuNear(u, 24)) return 'spbu';
   return null;
 }
+// the nearest built roadside SPBU within r metres (either side), or null
+function spbuNear(u, r){ const b = Math.round(u/100)*100; for (const k of [b, b - 100, b + 100]) for (const s2 of [1, -1]) { const t = SPBU_SITES.get(k + '|' + s2); if (t && Math.abs(t.u - u) < r) return t; } return null; }
+const SPBU_SVC = new Set(['bbm', 'angin', 'mini', 'kopi', 'toilet', 'musala', 'atm', 'topup']);
 const SVC = [
   {id: 'bbm', t: 'SPBU · isi BBM penuh', d: () => `${Math.max(0, tankOf() - WAL.fuel).toFixed(1)} L × Rp 10.000`, price: () => Math.ceil(Math.max(0, tankOf() - WAL.fuel))*10000, ok: () => PLR?.type !== 'bicycle' && WAL.fuel < tankOf() - 0.5,
     act: () => { WAL.fuel = tankOf(); PLR.noFuel = false; return 'Tangki penuh. Terima kasih, sudah diisi dari nol!'; }},
@@ -2590,9 +2626,9 @@ const SVC = [
 function repairPlayer(){ const v = PLR; v.dmg = 0; v.deadT = 0; v.dentZ = v.dentX = 0; v.g.scale.set(1, 1, 1); v.g.rotation.z = 0; v.pull = 0; }
 function openSvc(){
   const ctx = svcContext(); if (!ctx) return; const list = $('svc-list'); list.innerHTML = '';
-  $('svc-title').textContent = ctx === 'rest' ? 'Layanan rest area' : 'Layanan di kota';
+  $('svc-title').textContent = ctx === 'rest' ? 'Layanan rest area' : ctx === 'spbu' ? 'SPBU' : 'Layanan di kota';
   $('svc-stat').textContent = `Tunai ${rp$(WAL.cash)} · e-Toll ${rp$(WAL.etoll)} · BBM ${Math.round(WAL.fuel/tankOf()*100)}% · Kantuk ${Math.round(WAL.sleep)}% · Kerusakan ${Math.round(PLR.dmg || 0)}%`;
-  for (const sv of SVC) { if (sv.only && sv.only !== ctx) continue; const b = document.createElement('button'), pr = sv.price();
+  for (const sv of SVC) { if (sv.only && sv.only !== ctx) continue; if (ctx === 'spbu' && !SPBU_SVC.has(sv.id)) continue; const b = document.createElement('button'), pr = sv.price();
     b.innerHTML = `<b>${sv.t}</b><span>${sv.d()}</span><span>${pr ? rp$(pr) : 'Gratis'}</span>`; b.disabled = sv.ok ? !sv.ok() : false;
     b.onclick = () => { const pr2 = sv.price(); if (pr2 > WAL.cash) { toast('Uang tunai tidak cukup: tarik tunai di ATM', 'warn'); return; } WAL.cash -= pr2; const msg = sv.act(); if (msg) toast(msg); if (sv.id === 'bbm') CAR.ev.fuel(); else if (ctx === 'rest' && pr2 > 0) CAR.ev.rest(); uiNeeds(); openSvc(); };
     list.append(b); }
@@ -2654,7 +2690,7 @@ function stepTow(dt){
     P.lx += clamp(sh - P.lx, -0.7*dt, 0.7*dt); P.vel = 0;
     if (d.p - target < 0.05 && Math.abs(P.lx - sh) < 0.05) { d.vel = 0; T.phase = T.fuelOnly ? 'fuel' : 'load'; T.t = 0; T.p0 = P.p; P.vel = 0;
       toast(T.fuelOnly ? 'Petugas derek mengisi BBM darurat 10 L…' : 'Kendaraan dinaikkan ke truk derek…'); } }
-  else if (T.phase === 'fuel') { P.vel = 0; if (T.t > 4) { WAL.fuel = Math.max(WAL.fuel, 10); P.noFuel = false; WAL.cash -= 150000; toast(`BBM darurat 10 L diisi · biaya ${rp$(150000)}`); T.phase = 'leave'; T.t = 0; } }
+  else if (T.phase === 'fuel') { P.vel = 0; if (T.t > 4) { WAL.fuel = Math.max(WAL.fuel, 10); P.noFuel = false; WAL.cash -= 100000; toast(`BBM darurat 10 L diisi · BBM ${rp$(100000)} (10 L × Rp 10.000), jasa derek gratis`); T.phase = 'leave'; T.t = 0; } }
   else if (T.phase === 'load') { const k = sstep(0, 1, Math.min(1, T.t/4)); P.vel = 0; P.lift = 1.2*k; P.p = T.p0 + (d.p - 1.2 - T.p0)*k;
     if (T.t > 4.2) { T.phase = 'tow'; T.t = 0; T.dur = 26; d.lane = n - 1; toast('Diderek ke bengkel terdekat…'); } }
   else if (T.phase === 'tow') {
@@ -2666,9 +2702,9 @@ function stepTow(dt){
   else if (T.phase === 'drop') {
     // pull over onto the shoulder and stop, then the repaired car is put down behind the truck
     d.vel = Math.max(0, d.vel - 3*dt); d.p += d.vel*dt; d.lx += clamp(sh - d.lx, -0.5*dt, 0.5*dt); P.p = d.p - 1.2; P.lx = d.lx; P.vel = d.vel;
-    if (d.vel < 0.05 && Math.abs(d.lx - sh) < 0.05) { const cost = 250000 + Math.round((P.dmg || 0)*6000/1000)*1000; WAL.cash -= cost; repairPlayer(); P.lift = 0; P.vel = 0;
+    if (d.vel < 0.05 && Math.abs(d.lx - sh) < 0.05) { const cost = 100000 + Math.round((P.dmg || 0)*6000/1000)*1000;   // the tow is free: this is the workshop (service + parts) WAL.cash -= cost; repairPlayer(); P.lift = 0; P.vel = 0;
       P.lx = sh; P.lane = n - 1; P.p = d.p - d.len/2 - P.len/2 - 6;
-      gameH = mod(gameH + 0.75, 24); todT = 0; tickClock(0); blink(); toast(`Kendaraan sudah diperbaiki di bengkel · biaya derek & bengkel ${rp$(cost)}`); T.phase = 'leave'; T.t = 0; } }
+      gameH = mod(gameH + 0.75, 24); todT = 0; tickClock(0); blink(); toast(`Kendaraan sudah diperbaiki di bengkel · derek gratis, biaya bengkel ${rp$(cost)}`); T.phase = 'leave'; T.t = 0; } }
   else if (T.phase === 'leave') {
     // off the shoulder only into a gap, then away with the traffic
     if (d.lx > n - 1 + 0.05) { d.vel = Math.min(d.vel + 1.5*dt, 8); d.p += d.vel*dt; if (spanFree(d.sd, n - 1, d.p - d.len/2 - 15, d.p + d.len/2 + 10)) d.lx += clamp(n - 1 - d.lx, -0.4*dt, 0.4*dt); }
@@ -5533,9 +5569,18 @@ async function dispatchCall(n, ui){
   const D = DISPATCH[n]; if (!D) return ui.done(); const talk = async t => { if (!ui.alive()) return; ui.caption(shown(t)); await VOX.say(t, {channel: 'phone'}); };
   await talk(D.greet); if (!ui.alive()) return; let unit = D.unit;
   if (D.ask) { const k = await ui.choose(EMERGENCIES.map(([key, label]) => [key, label])); const e = EMERGENCIES.find(x => x[0] === k); unit = e[2]; await talk(e[3]); }
+  else if (D.services) { // 133 / 151: free towing, traffic information, other road services
+    let k = await ui.choose(SERVICE_MENU); if (!ui.alive()) return;
+    if (k === 'no') { await talk(CANCEL); return ui.done(); }
+    if (k === 'info') { const S = radioState(), u = PLR ? uOfV(PLR) : camU, r = EV.find(e => e.kind === 'r' && e.u > u + 200);
+      await talk(trafficInfo({...S, rest: r ? r.name : '', restKm: r ? Math.max(1, Math.round(Math.abs(kmAt(r.u) - kmAt(u)))) : 0})); await talk(INFO_END); return ui.done(); }
+    if (k === 'other') { k = await ui.choose(OTHER_MENU); if (!ui.alive()) return; if (k === 'no') { await talk(CANCEL); return ui.done(); }
+      if (k === 'report') { await talk(REPORT_HELP); unit = 'police'; }
+      else { await talk(k === 'fuel' ? FUEL_HELP : TIRE_HELP); if (k === 'fuel' && PLR && WAL.fuel < 5) PLR.noFuel = true; } }
+    else await talk(TOW_FREE); }
   else { const k = await ui.choose([['send', unit === 'tow' ? 'Kendaraan saya mogok / rusak' : 'Kirim bantuan ke lokasi saya'], ['no', 'Tidak jadi']]); if (k === 'no') { await talk(CANCEL); return ui.done(); } }
   if (!ui.alive()) return; const h = hereInfo(); await talk(dispatchLocation({...h, unit, min: unit === 'tow' ? 3 : 1}));
-  sendUnit(unit); await talk(UNIT_END[unit] || D.end || ''); ui.done(); }
+  sendUnit(unit); await talk(UNIT_END[unit] || D.end || ''); if (unit === 'tow' && !D.services) await talk(TOW_FREE); ui.done(); }
 // help on its way: a tow truck (the usual tow), or a police car, ambulance or fire engine coming up behind with its siren on
 const RESPONDERS = [];
 function sendUnit(unit){
@@ -5571,7 +5616,7 @@ function voiceTick(dt){ if ((VOICE.t -= dt) > 0 || !cfg.voice || !PLR || !trip |
   const ahead = (kinds, km) => { for (let j = Math.max(0, evAt(u) + 1); j < EV.length; j++) { const e = EV[j], dd = e.rk - rkAt(u); if (dd > km) break; if (kinds.includes(e.kind) && dd > 0.05) return {e, d: dd}; } return null; };
   const nm = n => n.replace(/^(GT|Rest Area|Gerbang Tol)\s+/i, '');
   const g = toll && ahead(['g', 't', 'ti'], 1.2); if (g && !VOICE.said.has('g' + g.e.u)) { VOICE.said.add('g' + g.e.u); speak(WAL.etoll < 20000 ? `Gerbang tol ${nm(g.e.name)} di depan. Saldo e-Toll Anda hampir habis, isi ulang dulu di aplikasi Dompet.` : `Gerbang tol ${g.e.name} sekitar ${sayKm(g.d)} lagi. Siapkan kartu e-Toll.`.replace(g.e.name, nm(g.e.name))); return; }
-  const fuel = (WAL.fuel ?? tankOf())/tankOf(); if (fuel < 0.15 && cooled('fuel', 240)) { const r = ahead(['r'], 60); speak(r ? `Bensin hampir habis. Rest area ${nm(r.e.name)} ${sayKm(r.d)} lagi, isi bensin di sana.` : 'Bensin hampir habis. Cari SPBU terdekat.'); return; }
+  const fuel = (WAL.fuel ?? tankOf())/tankOf(); if (fuel < 0.15 && cooled('fuel', 240)) { const r = ahead(['r'], 60); speak(r ? `Bensin hampir habis. Rest area ${nm(r.e.name)} ${sayKm(r.d)} lagi, isi bensin di sana.` : toll ? 'Bensin hampir habis. Keluar tol dan isi di SPBU terdekat.' : 'Bensin hampir habis. Ada SPBU setiap dua ratus meter, menepilah di SPBU berikutnya.'); return; }
   if (WAL.sleep >= 70 && cooled('sleep', 300)) { const r = ahead(['r'], 80); speak(`Anda sudah lama berkendara dan mulai mengantuk. ${r ? `Istirahatlah di rest area ${nm(r.e.name)}, ${sayKm(r.d)} lagi.` : 'Menepilah dan istirahat sebentar.'}`); return; }
   // a steep grade ahead (500 m over the next 150–650 m of road in the direction of travel)
   if (PLR && !PLR.rp && PROF) { const sd = PLR.sd || 1, gr = (gY(u + sd*650) - gY(u + sd*150))/500, key = 'st' + Math.round((u + sd*400)/700);
@@ -5620,7 +5665,7 @@ PHONE = TUT ? null : initPhone({cfg, saveCfg, toast, rp: rp$, rpS, sfx: phoneSfx
   topUp(n){ if (WAL.cash < n) return 'Uang tunai tidak cukup'; WAL.cash -= n; WAL.etoll += n; uiNeeds(); walLog(-n, 'Isi saldo e-Toll'); toast(`Saldo e-Toll +${rp$(n)}`); return null; },
   walletLog: () => WLOG,
   dispatch: (n, ui) => dispatchCall(n, ui), hangup: () => VOX.stopChannel('phone'),
-  callNumber(n){ if (n === '133' || n === '14080') { if (PLR && !tow && !PLR.rp) { callTow(); return 'Petugas: derek dikirim ke lokasi Anda'; } return 'Petugas: jalan tol aman, terima kasih'; }
+  callNumber(n){ if (n === '133' || n === '151') { if (PLR && !tow && !PLR.rp) { callTow(); return 'Petugas: derek dikirim ke lokasi Anda'; } return 'Petugas: jalan tol aman, terima kasih'; }
     if (n === '110') return 'Polisi: laporan diterima, petugas PJR berpatroli'; if (n === '118') return 'Ambulans: siaga, sebutkan lokasi KM'; return ''; },
   view: () => renderer.domElement,
   snap(){ renderWorld(); const src = renderer.domElement, c = document.createElement('canvas'), w = 720, h = Math.round(w*src.height/src.width); c.width = w; c.height = h; c.getContext('2d').drawImage(src, 0, 0, w, h); return c.toDataURL('image/jpeg', 0.82); },
@@ -5789,7 +5834,7 @@ function tick(dt,stream=true){
 function streamWorld(){ if (window.__perf) { const P = window.__perf, T = (k, f) => { const a = performance.now(); f(); const d = performance.now() - a; P[k] = P[k] || {sum: 0, max: 0, n: 0}; P[k].sum += d; P[k].n++; if (d > P[k].max) P[k].max = d; };
     T('ensureAhead', ensureAhead); T('blocks', () => setupBlocks(false)); T('world', () => updateWorld(true)); T('signals', () => { updateSignals(); animGhosts(); }); return; }
   ensureAhead();setupBlocks(false);updateWorld(true);updateSignals();animGhosts();}
-window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol,get ready3d(){return !!FERRY3D;},frame3d(k){if(!FERRY3D)return null;FERRY3D.t0=performance.now()-k*FERRY3D.dur*1000;ferry3dFrame(1/30);return renderer.domElement.toDataURL('image/jpeg',.85);}};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.LMK_BUILD=LMK_BUILD; window.__tj.gg=ggRule; window.__tj.apply=apply; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll; window.__tj.voice = {VOX, dispatch: dispatchCall, sendUnit, get responders(){ return RESPONDERS; }}; window.__tj.phone = () => PHONE;
+window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol,get ready3d(){return !!FERRY3D;},frame3d(k){if(!FERRY3D)return null;FERRY3D.t0=performance.now()-k*FERRY3D.dur*1000;ferry3dFrame(1/30);return renderer.domElement.toDataURL('image/jpeg',.85);}};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.LMK_BUILD=LMK_BUILD; window.__tj.gg=ggRule; window.__tj.apply=apply; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll; window.__tj.spbu = {sites: SPBU_SITES, near: spbuNear, ctx: () => svcContext(), live(){ const out = []; scene.traverse(o => { if (o.isMesh && o.material === SPBU_SIGN?.mat) { const g = o.parent.parent; out.push([g.userData.u0, Math.round(o.parent.position.x), Math.round(o.parent.position.z)]); } }); return out; }}; window.__tj.voice = {VOX, dispatch: dispatchCall, sendUnit, get responders(){ return RESPONDERS; }}; window.__tj.phone = () => PHONE;
 window.__tj.moveSvg = moveSvg; window.__tj.nextMv = nextMove;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering
