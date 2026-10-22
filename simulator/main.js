@@ -924,7 +924,8 @@ function buildChunkNat(i){
   g.userData.u0 = u0; const Z = u => -(u - u0); const nearbyBuildings=[], spbuHere = [];
   const us = []; for (let u = u0; u <= u1 + 0.01; u += 10) us.push(u);
   const divided = nAt(u0 + CH/2) >= 1.5, town = townNear(u0 + CH/2, TOWN_R + 80);
-  // road markings: yellow on national roads, white on provincial / city / regency roads (and the toll access roads)
+  // the centre line (between the two directions) is yellow on national roads, white on provincial / city / regency and access roads;
+  // edge lines and lane dashes are always white
   const cc = EV.length ? CORR[corrAt(u0 + CH/2)] : null, mk = cc && cc.cls === 'n' && !cc.prov ? yellowLine : white;
   const xGap = u => KSITES.some(t => Math.abs(t.u - u) < XW/2 + 9);
   const sea = SEA && u1 > SEA[0] - 200 && u0 < SEA[1] + 200;    // the Suramadu bridge and its approaches: no land use here
@@ -933,10 +934,10 @@ function buildChunkNat(i){
   for (const s of [-1, 1]) {
     g.add(strip(us, u => s*(MED - 0.05), u => s*(eAt(u) + 0.8), 0, asphalt, Z));
     g.add(strip(us, u => s*(eAt(u) + 0.8), u => s*(eAt(u) + (sea ? 2.6 : SW_IN(town))), 0.004, town ? asphalt : shoulderMat, Z));
-    g.add(strip(us, u => s*(eAt(u) - 0.12), u => s*(eAt(u) + 0.12), 0.012, mk, Z));
+    g.add(strip(us, u => s*(eAt(u) - 0.12), u => s*(eAt(u) + 0.12), 0.012, white, Z));
     if (divided) g.add(strip(us, u => s*(MED + 0.12), u => s*(MED + 0.3), 0.012, mk, Z));
     const dp = []; for (let l = 1; l < 7; l++) for (let u = Math.ceil(u0/9)*9; u < u1; u += 9) if (l < nAt(u + 1.5) - 0.3 && l < nAt(u) - 0.3) dp.push([s*(MED + l*LW), Z(u + 1.5)]);
-    g.add(instanced(dashGeo, mk, dp, 0.012));
+    g.add(instanced(dashGeo, white, dp, 0.012));
     const ku = u0 + 60;
     if (EV.length && !xGap(ku)) { const p = panelMesh(0.5, 0.7, kmPostTex(kmAt(ku).toFixed(1).replace('.', ','))); p.position.set(s*(eAt(ku) + 3.2), 1.1, Z(ku)); p.rotation.y = s < 0 ? 0 : Math.PI; g.add(p);
       addSolid(g, 'Menabrak patok KM', ku - 0.3, ku + 0.3, s*(eAt(ku) + 3.2) - 0.3, s*(eAt(ku) + 3.2) + 0.3); }
