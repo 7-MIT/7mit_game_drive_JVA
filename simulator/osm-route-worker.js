@@ -1,3 +1,3 @@
-// Runs osm-route.js off the main thread: {id, roads, a, b, kinds} in, {id, path} out (path null when no sensible route).
-import {routeOSM} from './osm-route.js';
-onmessage = e => { const {id, roads, a, b, kinds} = e.data; let path = null; try { path = routeOSM(roads, a, b, {kinds}); } catch (err) {} postMessage({id, path}); };
+// Runs osm-route.js off the main thread: {id, roads, P, kinds, use} in, {id, segs} out (one path per stretch, null where none).
+import {routeCorridor} from './osm-route.js';
+onmessage = e => { const {id, roads, P, kinds, use} = e.data; let segs = null; try { segs = routeCorridor(roads, P, {kinds}, use); } catch (err) {} postMessage({id, segs}); };

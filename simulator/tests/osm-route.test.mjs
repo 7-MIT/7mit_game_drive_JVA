@@ -21,3 +21,13 @@ test('no route through roads that do not connect, and none over toll roads', () 
   const R = [road('n', [[-6.40, 106.70], [-6.40, 106.74]]), road('n', [[-6.40, 106.76], [-6.40, 106.80]]), road('t', [[-6.40, 106.74], [-6.40, 106.76]])];
   assert.equal(routeOSM(R, {lat: -6.40, lon: 106.70}, {lat: -6.40, lon: 106.80}, {snapKm: 0.5}), null);
 });
+
+import {routeCorridor} from '../osm-route.js';
+test('a town off the fastest road is not a detour: it is placed where the road passes closest', () => {
+  // the main road runs straight north; the "town" point sits 5 km east, reachable only by a side road
+  const R = [road('n', [[-6.50, 106.75], [-6.40, 106.75], [-6.30, 106.75]]), road('c', [[-6.40, 106.75], [-6.40, 106.795]])];
+  const P = [{lat: -6.50, lon: 106.75}, {lat: -6.40, lon: 106.795}, {lat: -6.30, lon: 106.75}];
+  const segs = routeCorridor(R, P);
+  assert.ok(segs[0] && segs[1], 'both stretches routed');
+  assert.ok(segs[0].every(q => Math.abs(q.lon - 106.75) < 1e-3) && segs[1].every(q => Math.abs(q.lon - 106.75) < 1e-3), 'stays on the main road');
+});

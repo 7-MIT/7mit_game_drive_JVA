@@ -1,10 +1,11 @@
-// The route between two places along the real roads (OpenStreetMap): a shortest path over the loaded national, provincial,
+// The route between two places along the real roads (OpenStreetMap): the fastest path (A* on travel time, like a navigation
+// app: length over the usual speed of each road class) over the loaded national, provincial,
 // regency and city roads, so the navigation line on the map and the road in the game follow the road's real bends instead
 // of a straight line from town to town. The packed OSM roads are simplified, so their junctions are rebuilt: vertices within
 // ~11 m are one point, segments that cross get a shared vertex, and a road ending within 30 m of another road's segment
 // (a T-junction) is joined onto it. Runs in a worker (osm-route-worker.js); pure, so it also runs in tests.
 const COSL = Math.cos(7.2*Math.PI/180), CELL = 1e-4, GCELL = 0.003;
-const COST = {n: 1, p: 1.04, s: 1.15, c: 1.3, r: 1.8};             // prefer the bigger roads
+const SPEED = {n: 60, p: 50, s: 40, c: 30, r: 20}, VMAX = 80;     // km/h by road class; VMAX keeps the A* estimate below any real time
 const km = (la0, lo0, la1, lo1) => Math.hypot((lo1 - lo0)*COSL, la1 - la0)*111.32;
 
 function heap(){ const h = [];
@@ -22,7 +23,7 @@ export function routeOSM(roads, a, b, {kinds = ['n', 'p', 's', 'c'], pad = 0.06,
   const link = (u, v, w) => { if (u !== v) { adj[u].push(v, w); adj[v].push(u, w); } };
   const segs = [], ends = [];                                     // segs: [vA, vB, road, cost factor]; ends: [vertex, road]
   for (let ri = 0; ri < roads.length; ri++) { const r = roads[ri]; if (!ok.has(r.k)) continue; const bb = r.bb; if (bb[2] < la0 || bb[0] > la1 || bb[3] < lo0 || bb[1] > lo1) continue;
-    const f = COST[r.k] || 2, xy = r.xy; let prev = -1;
+    const f = 1/(SPEED[r.k] || 20), xy = r.xy; let prev = -1;
     for (let j = 0; j < xy.length; j += 2) { const v = vert(xy[j + 1], xy[j]); if (prev >= 0 && prev !== v) { link(prev, v, km(LA[prev], LO[prev], LA[v], LO[v])*f); segs.push([prev, v, ri, f]); } prev = v; }
     ends.push([vert(xy[1], xy[0]), ri], [prev, ri]); }
   if (LA.length < 2) return null;
@@ -46,18 +47,36 @@ export function routeOSM(roads, a, b, {kinds = ['n', 'p', 's', 'c'], pad = 0.06,
       const ax = X(s[0]), ay = Y(s[0]), bx = X(s[1]), by = Y(s[1]), px = X(e), py = Y(e), L2 = (bx - ax)**2 + (by - ay)**2 || 1e-18;
       const t = Math.max(0, Math.min(1, ((px - ax)*(bx - ax) + (py - ay)*(by - ay))/L2)), qx = ax + (bx - ax)*t, qy = ay + (by - ay)*t, d = Math.hypot(px - qx, py - qy)*111.32;
       if (d < bd) { bd = d; best = [s, qy, qx/COSL]; } }
-    if (best) { const [s, la, lo] = best, v = vert(la, lo); link(e, v, km(LA[e], LO[e], la, lo)*1.2); for (const x of [s[0], s[1]]) link(v, x, km(la, lo, LA[x], LO[x])*s[3]); } }
+    if (best) { const [s, la, lo] = best, v = vert(la, lo); link(e, v, km(LA[e], LO[e], la, lo)/20); for (const x of [s[0], s[1]]) link(v, x, km(la, lo, LA[x], LO[x])*s[3]); } }
   const n = LA.length;
   const near = q => { let best = -1, bd = snapKm; for (let v = 0; v < n; v++) { if (!adj[v].length) continue; const d = km(q.lat, q.lon, LA[v], LO[v]); if (d < bd) { bd = d; best = v; } } return best; };
   const s0 = near(a), t0 = near(b); if (s0 < 0 || t0 < 0) return null;
-  const g = new Float64Array(n).fill(Infinity), from = new Int32Array(n).fill(-1), H = heap(), hk = v => km(LA[v], LO[v], LA[t0], LO[t0]);
+  const g = new Float64Array(n).fill(Infinity), from = new Int32Array(n).fill(-1), H = heap(), hk = v => km(LA[v], LO[v], LA[t0], LO[t0])/VMAX;
   g[s0] = 0; H.push(hk(s0), s0);
   while (H.size) { const [, u] = H.pop(); if (u === t0) break; const e = adj[u];
     for (let k = 0; k < e.length; k += 2) { const v = e[k], c = g[u] + e[k + 1]; if (c < g[v]) { g[v] = c; from[v] = u; H.push(c + hk(v), v); } } }
   if (!Number.isFinite(g[t0])) return null;
   const out = []; for (let v = t0; v >= 0; v = from[v]) out.push({lat: LA[v], lon: LO[v]}); out.reverse();
-  out.unshift({lat: a.lat, lon: a.lon}); out.push({lat: b.lat, lon: b.lon});
   // a detour far longer than the road itself means the loaded roads do not really connect: keep the old line
   let L = 0; for (let k = 1; k < out.length; k++) L += km(out[k - 1].lat, out[k - 1].lon, out[k].lat, out[k].lon);
   return L > detour*km(a.lat, a.lon, b.lat, b.lon) + 2 ? null : out;
 }
+
+const plen = r => { let L = 0; for (let k = 1; k < r.length; k++) L += km(r[k - 1].lat, r[k - 1].lon, r[k].lat, r[k].lon); return L; };
+// a whole road (its places P in order) routed like a navigation app: places the fastest road does not really pass through
+// (going there costs over 20 % more than driving straight on) are skipped, and every place then sits where the route
+// passes closest to it. use[i] false: the stretch P[i] → P[i + 1] is not needed (left null). Returns segs[i] = [{lat, lon}] | null.
+export function routeCorridor(roads, P, opts = {}, use = null){
+  const n = P.length, segs = new Array(Math.max(0, n - 1)).fill(null), need = i => !use || use[i];
+  let i = 0;
+  while (i < n - 1) { if (!need(i)) { i++; continue; }
+    let j = i + 1, path = routeOSM(roads, P[i], P[j], opts);
+    while (j < n - 1 && need(j)) { const next = routeOSM(roads, P[j], P[j + 1], opts), direct = routeOSM(roads, P[i], P[j + 1], opts);
+      if (direct && (!path || !next || plen(path) + plen(next) > 1.2*plen(direct) + 0.8)) { path = direct; j++; } else break; }
+    if (path && j > i + 1) { let k0 = 0;
+      for (let m = i + 1; m <= j; m++) { let k1 = path.length - 1;
+        if (m < j) { let bd = Infinity; for (let k = k0; k < path.length; k++) { const d = km(P[m].lat, P[m].lon, path[k].lat, path[k].lon); if (d < bd) { bd = d; k1 = k; } } }
+        segs[m - 1] = path.slice(k0, Math.max(k1, k0 + 1) + 1); k0 = k1; } }
+    else segs[i] = path;
+    i = j; }
+  return segs; }

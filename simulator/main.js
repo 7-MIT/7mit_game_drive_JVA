@@ -4576,28 +4576,31 @@ function onOSM(q, cid, keyKm){ if (!OSM.ready || !q) return q; const c = CORR[ci
   const r = snapCorridor(OSM, q, c, kinds, c && c.cls === 't' ? 5 : 1.5), out = r ? {lat: r.lat, lon: r.lon} : q; if (key) { if (OSNAP.size > 20000) OSNAP.clear(); OSNAP.set(key, out); } return out; }
 // ---------- the trip's non-toll roads routed over the real roads (osm-route.js): the map line and the road in the game follow them ----------
 // RQ.done: road id -> {v: OSM data version, full: every stretch found}; a road with a missing stretch is tried again when more OSM data comes in
-const RQ = {done: new Map(), cur: null, busy: false, w: null, n: 0};
-function geoChanged(){ OSNAP.clear(); MAP_NODES.clear(); LAT = null; segT = 0; drawMap.cache = null; JCACHE.clear();
+const RQ = {done: new Map(), cur: null, busy: false, w: null, n: 0}, ROUTED = new Set();   // ROUTED: roads whose curve is now the real road
+function geoChanged(){ RCACHE = null; OSNAP.clear(); MAP_NODES.clear(); LAT = null; segT = 0; drawMap.cache = null; JCACHE.clear();
   try { for (const [i, g] of chunks) if (i*CH > camU + 350) { dropSolids([g]); dispose(g); chunks.delete(i); } } catch (e) {} try { drawMap(); reqAtlas(); } catch (e) {} }
-// one stretch in the worker (the main thread only picks the roads in its box); null when the worker cannot run
-function routeStretch(a, b, kinds){ return new Promise(res => {
+// one road in the worker (the main thread only picks the OSM roads in its box); null when the worker cannot run
+function routeRoad(P, kinds, use){ return new Promise(res => {
   if (!RQ.w) { try { RQ.w = new Worker(new URL('./osm-route-worker.js', import.meta.url), {type: 'module'}); } catch (e) { return res(null); } }
-  const pad = 0.06, la0 = Math.min(a.lat, b.lat) - pad, la1 = Math.max(a.lat, b.lat) + pad, lo0 = Math.min(a.lon, b.lon) - pad, lo1 = Math.max(a.lon, b.lon) + pad, K = new Set(kinds);
+  const sel = P.filter((_, k) => use[k] || use[k - 1]), pad = 0.06, la0 = Math.min(...sel.map(q => q.lat)) - pad, la1 = Math.max(...sel.map(q => q.lat)) + pad, lo0 = Math.min(...sel.map(q => q.lon)) - pad, lo1 = Math.max(...sel.map(q => q.lon)) + pad, K = new Set(kinds);
   const roads = OSM.roads.filter(r => K.has(r.k) && !(r.bb[2] < la0 || r.bb[0] > la1 || r.bb[3] < lo0 || r.bb[1] > lo1)).map(r => ({k: r.k, xy: r.xy, bb: r.bb}));
-  const id = ++RQ.n, to = setTimeout(() => { RQ.w.onmessage = null; res(null); }, 20000);
-  RQ.w.onmessage = e => { if (e.data.id !== id) return; clearTimeout(to); res(e.data.path); };
-  RQ.w.postMessage({id, roads, a: {lat: a.lat, lon: a.lon}, b: {lat: b.lat, lon: b.lon}, kinds}); }); }
+  const id = ++RQ.n, to = setTimeout(() => { RQ.w.onmessage = null; res(null); }, 60000);
+  RQ.w.onmessage = e => { if (e.data.id !== id) return; clearTimeout(to); res(e.data.segs); };
+  RQ.w.postMessage({id, roads, P: P.map(q => ({lat: q.lat, lon: q.lon})), kinds, use}); }); }
+// the trip's non-toll roads, the one the car is on first; only the stretches the trip uses
 async function routeTripRoads(){
   if (!OSM.ready || !EV.length || RQ.busy) return;
-  if (!RQ.cur) { const here = corrIdAt(PLR ? uOfV(PLR) : camU), ids = [...new Set([here, ...EV.map(e => e.cNext)])].filter(id => { const c = CORR[id], d = RQ.done.get(id);
-      return c && (c.cls === 'n' || c.cls === 'a') && !(d && (d.full || d.v === OSMV)); });
-    if (!ids.length) return; const id = ids[0], c = CORR[id];
-    RQ.cur = {id, P: corrPlaces(id), i: 0, segs: [], kinds: c.cls === 'a' ? ['n', 'p', 's', 'c', 'r'] : c.prov ? ['p', 'n', 's', 'c'] : ['n', 'p', 's', 'c'], v: OSMV}; }
-  const Q = RQ.cur; RQ.busy = true;
-  try { if (Q.i < Q.P.length - 1) { Q.segs.push(await routeStretch(Q.P[Q.i], Q.P[Q.i + 1], Q.kinds)); Q.i++; } } finally { RQ.busy = false; }
-  if (Q.i >= Q.P.length - 1) { RQ.cur = null; const full = Q.segs.every(Boolean); RQ.done.set(Q.id, {v: Q.v, full});
-    if (Q.segs.some(Boolean)) { setCorrRoute(Q.id, Q.segs); geoChanged(); } }
-  else routeTripRoads(); }
+  const here = corrIdAt(PLR ? uOfV(PLR) : camU), ids = [...new Set([here, ...EV.map(e => e.cNext)])].filter(id => { const c = CORR[id], d = RQ.done.get(id);
+    return c && (c.cls === 'n' || c.cls === 'a') && !(d && (d.full || d.v === OSMV)); });
+  if (!ids.length) return; const id = ids[0], c = CORR[id], P = corrPlaces(id), v = OSMV;
+  let k0 = Infinity, k1 = -Infinity; for (let i = 0; i < EV.length - 1; i++) if (EV[i].cNext === id) { k0 = Math.min(k0, EV[i].kmOut, EV[i + 1].km); k1 = Math.max(k1, EV[i].kmOut, EV[i + 1].km); }
+  const use = P.slice(0, -1).map((q, i) => P[i + 1].km > k0 - 0.01 && q.km < k1 + 0.01);
+  if (!use.some(Boolean) || P.length < 2) { RQ.done.set(id, {v, full: true}); return; }
+  RQ.busy = true; let segs = null;
+  try { segs = await routeRoad(P, c.cls === 'a' ? ['n', 'p', 's', 'c', 'r'] : c.prov ? ['p', 'n', 's', 'c'] : ['n', 'p', 's', 'c'], use); } finally { RQ.busy = false; }
+  RQ.done.set(id, {v, full: !!segs && segs.every((sg, i) => !use[i] || sg)});
+  if (segs && segs.some(Boolean)) { setCorrRoute(id, segs); ROUTED.add(id); geoChanged(); }
+  routeTripRoads(); }
 function corrIdAt(u){ const i = evAt(u); return i >= 0 && EV[i] ? EV[i].cNext : null; }
 function latLonMap(u){ return onOSM(latLonAt(u), corrIdAt(u), Math.round(kmAt(u)*20)/20); }
 // the route followed along one real road: every point looked for next to where the previous one moved to, so a crossing
@@ -4615,11 +4618,19 @@ function trackLL(ua, ub, step){ const out = [], u0 = EV[0].u, u1 = EV[EV.length 
 let RCACHE = null, OSMV = 0;
 function routeMap(u0, i1){ if (!OSM.ready || !EV.length) return routeLL(u0, i1);
   const ue = EV[Math.min(i1, EV.length - 1)].u, key = `${EV[0].u}|${EV.length}|${i1}|${OSMV}|${cfg.scale}`;
-  if (!RCACHE || RCACHE.route !== EV || RCACHE.key !== key || u0 < RCACHE.ua - 1 || u0 > ue) { const ua = Math.max(EV[0].u, u0 - 50), step = Math.max(100/cfg.scale, (ue - ua)/5000), tr = trackLL(ua, ue, step), pts = [];
-    for (let i = 0; i < tr.length; i++) { const a = tr[i - 1], b = tr[i];
-      if (a && a.r && a.r === b.r && a.j !== b.j && Math.abs(a.j - b.j) < 400) { const xy = a.r.xy, dj = b.j > a.j ? 1 : -1;
-        for (let k = dj > 0 ? a.j + 1 : a.j; dj > 0 ? k <= b.j : k > b.j; k += dj) pts.push({u: a.u, lat: xy[k*2 + 1], lon: xy[k*2]}); }
-      pts.push({u: b.u, lat: b.lat, lon: b.lon}); }
+  if (!RCACHE || RCACHE.route !== EV || RCACHE.key !== key || u0 < RCACHE.ua - 1 || u0 > ue) { const ua = Math.max(EV[0].u, u0 - 50), step = Math.max(100/cfg.scale, (ue - ua)/5000), pts = [];
+    // a stretch on a road routed over the real roads: its own vertices, exactly on the road
+    const exact = (i, a0, b0) => { const a = EV[i], b = EV[i + 1], g = corrGeo(a.cNext), kA = a.kmOut, kB = b.km; if (!g || kB === kA) return false;
+      const lo = Math.min(kA, kB), hi = Math.max(kA, kB), sel = g.filter(q => q.km >= lo && q.km <= hi); if (kB < kA) sel.reverse();
+      for (const q of sel) { const uq = a.u + (q.km - kA)/(kB - kA)*(b.u - a.u); if (uq >= a0 && uq <= b0) pts.push({u: uq, lat: q.lat, lon: q.lon}); } return true; };
+    // any other stretch: sampled and put onto the OSM road it runs on, with that road's vertices in between
+    const sampled = (a0, b0) => { const tr = trackLL(a0, b0, step);
+      for (let i = 0; i < tr.length; i++) { const a = tr[i - 1], b = tr[i];
+        if (a && a.r && a.r === b.r && a.j !== b.j && Math.abs(a.j - b.j) < 400) { const xy = a.r.xy, dj = b.j > a.j ? 1 : -1;
+          for (let k = dj > 0 ? a.j + 1 : a.j; dj > 0 ? k <= b.j : k > b.j; k += dj) pts.push({u: a.u, lat: xy[k*2 + 1], lon: xy[k*2]}); }
+        pts.push({u: b.u, lat: b.lat, lon: b.lon}); } };
+    for (let i = Math.max(0, evAt(ua)); i < EV.length - 1 && EV[i].u < ue; i++) { const a0 = Math.max(ua, EV[i].u), b0 = Math.min(ue, EV[i + 1].u); if (b0 <= a0) continue;
+      if (!(ROUTED.has(EV[i].cNext) && exact(i, a0, b0))) sampled(a0, b0); }
     pts.push({...latLonMap(ue), u: ue});
     RCACHE = {key, ua, pts, route: EV}; }
   const out = [{...latLonMap(u0), u: u0}]; for (const q of RCACHE.pts) if (q.u > u0) out.push(q); return out; }

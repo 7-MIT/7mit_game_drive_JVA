@@ -590,7 +590,7 @@ Di semua jalan nasional, kota dan kabupaten ada SPBU setiap 200 m di tiap sisi (
 ### Rute mengikuti jalan asli
 
 Garis navigasi di peta dan jalan di dunia 3D untuk jalan non-tol (nasional, provinsi, akses tol) mengikuti jalan aslinya di OpenStreetMap, bukan garis lurus antarkota.
-- `osm-route.js` mencari jalur terpendek (A*) di jalan nasional, provinsi, kabupaten, dan kota yang sudah dimuat. Simpang dirakit ulang karena data OSM disederhanakan: titik berjarak di bawah ~11 m digabung, segmen yang bersilangan diberi simpang, dan ujung jalan dalam 30 m dari jalan lain disambung sebagai simpang T.
+- `osm-route.js` mencari rute **tercepat** seperti aplikasi navigasi: A* dengan bobot waktu tempuh (panjang ÷ kecepatan khas tiap kelas jalan: nasional 60, provinsi 50, kabupaten 40, kota 30 km/jam) di jalan nasional, provinsi, kabupaten, dan kota yang sudah dimuat. Satu koridor dihitung sebagai satu rute: titik kota yang tidak dilalui jalan tercepat (lebih dari 20% lebih lama kalau dipaksa lewat situ) dilewati, lalu kota itu ditempatkan di titik rute yang paling dekat. Garis di peta digambar langsung dari titik-titik jalan hasil rute. Simpang dirakit ulang karena data OSM disederhanakan: titik berjarak di bawah ~11 m digabung, segmen yang bersilangan diberi simpang, dan ujung jalan dalam 30 m dari jalan lain disambung sebagai simpang T.
 - Pencarian berjalan di Web Worker (`osm-route-worker.js`), satu ruas antarkota per giliran. Ruas yang sedang dilalui dihitung lebih dulu.
 - Hasilnya dipasang lewat `setCorrRoute`. Ruas yang belum tersambung dicoba lagi saat data OSM wilayah baru selesai dimuat.
 
