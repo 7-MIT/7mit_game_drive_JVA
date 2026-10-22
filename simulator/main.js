@@ -674,6 +674,7 @@ const heavyMin = n => n >= 5 ? 2 : n >= 2 ? 1 : 0;
 // ================================================================
 // TRIP LAYOUT — route events placed along u
 // ================================================================
+let NUT = [];   // putaran balik on non-toll divided roads: [{u}]
 let trip = null, EV = [], SITES = [], RSITES = [], PLAZAS = [], KSITES = [], ZONES = [], OVS = [], OPENS = [], OBJ = [], CHG = [];
 const laneSegs = {'1': [], '-1': []};
 const nCorr = c => cfg.lanes === 'auto' ? CORR[c].lanes : +cfg.lanes;   // the lane setting applies to every road
@@ -729,6 +730,7 @@ function layoutTrip(t, keepN = -1){
   const lastU = EV[EV.length-1].u;
   // overpasses over toll roads every ~1.5 km, over national roads (outside towns) every ~3 km
   const clearOv = (u, r) => (isToll(u) || nAt(u) >= 2) && !mbzNoOv(u) && elevAt(u) < 0.5 && elevAt(u + 300) < 0.5 && elevAt(u - 300) < 0.5 && !SITES.some(s => Math.abs(s.u - u) < 780 + r) && !ZONES.some(z => Math.abs(z.u - u) < ZEXT[z.type] - 400 + r);
+  NUT = []; for (let u = 400; u < lastU - 200; u += 800) { let v = u; for (let k = 0; k < 6 && !nutOK(v); k++) v += 60; if (nutOK(v)) NUT.push({u: v}); }
   OVS = []; for (let u = -2600, j = 0; u < lastU + 6000; u += 1450, j++) { let v = u; for (let k = 0; k < 8 && !clearOv(v, 0); k++) v += 180; if (clearOv(v, 0) && (isToll(v) || j % 2 === 0)) OVS.push(oldV.find(o => Math.abs(o.u - v) < 0.5) || {u: v}); }
   OPENS = [];
   const reuse = o => oldO.find(q => q.cf === o.cf && Math.abs(q.u - o.u) < 0.5) || o;
@@ -753,6 +755,10 @@ const limitAt = u => Math.min(CORR[corrAt(u)].limit, CORR[corrAt(u)].cls==='t'?1
 const isToll = u => CORR[corrAt(u)].cls === 't';
 // traffic lights at town intersections: mainline green 26 s, amber 3 s, all-red 2 s, cross-street green 15 s, amber 3 s, all-red 2 s
 const SIG_CYCLE = 51, XW = 11, SL = XW/2 + 4.5;
+const NUT_HW = 9;                      // half length of a U-turn opening
+const nutOK = u => !isToll(u) && nAt(u) >= 1.5 && elevAt(u) < 0.5 && !KSITES.some(t => Math.abs(t.u - u) < 160) && !(SEA && u > SEA[0] - 300 && u < SEA[1] + 300);
+// where a car may cross the separator of a non-toll divided road: a U-turn opening or a signal crossing
+const nutOpen = u => NUT.some(o => Math.abs(o.u - u) < NUT_HW - 2) || KSITES.some(t => Math.abs(t.u - u) < XW/2 + 6);
 function sigMain(s){ const t = mod(clock + s.phase, SIG_CYCLE); return t < 26 ? 'G' : t < 29 ? 'Y' : 'R'; }
 function sigCross(s){ const t = mod(clock + s.phase, SIG_CYCLE); return t >= 31 && t < 46 ? 'G' : t >= 46 && t < 49 ? 'Y' : 'R'; }
 function lightAhead(sd, front){ for (const s of KSITES) { const d = sd*s.u - SL - front; if (d > -1 && d < 160) return {s, d}; } return null; }
@@ -997,7 +1003,8 @@ function buildChunkNat(i){
   if (divided) {
     // 4+ lanes: a short concrete separator (0.6 m) down the middle, open at the crossings
     g.add(strip(us, u => -MED, u => MED, 0.002, asphalt, Z));
-    for (const [a, b] of cut([u0, u1], KSITES.map(t => [t.u - XW/2 - 9, t.u + XW/2 + 9]))) g.add(solid(0.56, 0.22, b - a, barMat, 0, 0.11, Z((a + b)/2)), solid(0.24, 0.6, b - a, barMat, 0, 0.3, Z((a + b)/2)));
+    for (const o of NUT) if (o.u > u0 - NUT_HW && o.u < u1 + NUT_HW) for (const sd2 of [1, -1]) { const ue = o.u + sd2*(NUT_HW + 0.4); if (ue >= u0 && ue < u1) signPost(g, 0, Z(ue), sd2 > 0 ? 0 : Math.PI, [PL(['PUTAR', 'BALIK'], '#1f4fa8', '#fff', 1.0, 0.75)], 0.6, 1); }
+    for (const [a, b] of cut([u0, u1], KSITES.map(t => [t.u - XW/2 - 9, t.u + XW/2 + 9]).concat(NUT.map(o => [o.u - NUT_HW, o.u + NUT_HW])))) g.add(solid(0.56, 0.22, b - a, barMat, 0, 0.11, Z((a + b)/2)), solid(0.24, 0.6, b - a, barMat, 0, 0.3, Z((a + b)/2)));
   } else {
     g.add(strip(us, u => -MED, u => MED, 0.002, asphalt, Z));
     for (const o of [-0.2, 0.2]) g.add(strip(us, u => o - 0.08, u => o + 0.08, 0.012, mk, Z));
@@ -3707,6 +3714,7 @@ function lxBounds(v){
   // the median opening is only for a deliberate U-turn (or a contraflow on this side): driving straight you cannot drift across into oncoming traffic
   if (toll) { const z = cfAt(v.sd, v.p), cf = z && z.A === v.sd, atOpen = OPENS.some(o => Math.abs(o.u - u) < OPEN_HW - 4) && (cf || Math.abs(v.hd || 0) > 0.9 || v.lx < -0.5);
     if (!atOpen) { if (v.lx < -0.5) hi = Math.min(hi, -0.71); else lo = -0.29; } }
+  else if (nAt(u) >= 1.5 && !(nutOpen(u) && (Math.abs(v.hd || 0) > 0.9 || v.lx < -0.5))) { if (v.lx < -0.5) hi = Math.min(hi, -0.71); else lo = -0.29; }
   // on the MBZ deck: its parapet
   if (toll && mbzSide(u)) hi = Math.min(hi, (MED + 2*LW - (HW[v.type] || 0.92) - c)/LW);
   return [lo, hi];
@@ -5888,7 +5896,7 @@ function tick(dt,stream=true){
 function streamWorld(){ if (window.__perf) { const P = window.__perf, T = (k, f) => { const a = performance.now(); f(); const d = performance.now() - a; P[k] = P[k] || {sum: 0, max: 0, n: 0}; P[k].sum += d; P[k].n++; if (d > P[k].max) P[k].max = d; };
     T('ensureAhead', ensureAhead); T('blocks', () => setupBlocks(false)); T('world', () => updateWorld(true)); T('signals', () => { updateSignals(); animGhosts(); }); return; }
   ensureAhead();setupBlocks(false);updateWorld(true);updateSignals();animGhosts();}
-window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol,get ready3d(){return !!FERRY3D;},frame3d(k){if(!FERRY3D)return null;FERRY3D.t0=performance.now()-k*FERRY3D.dur*1000;ferry3dFrame(1/30);return renderer.domElement.toDataURL('image/jpeg',.85);}};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.LMK_BUILD=LMK_BUILD; window.__tj.gg=ggRule; window.__tj.apply=apply; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll; window.__tj.peds = PEDS; window.__tj.pedDbg = {step: stepPeds, blocks: pedBlocks, sigCross, KS: () => KSITES, eAt, set sig(f){ pedSig = f; }}; window.__tj.spbu = {sites: SPBU_SITES, near: spbuNear, ctx: () => svcContext(), live(){ const out = []; scene.traverse(o => { if (o.isMesh && o.material === SPBU_SIGN?.mat) { const g = o.parent.parent; out.push([g.userData.u0, Math.round(o.parent.position.x), Math.round(o.parent.position.z)]); } }); return out; }}; window.__tj.voice = {VOX, dispatch: dispatchCall, sendUnit, get responders(){ return RESPONDERS; }}; window.__tj.phone = () => PHONE;
+window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol,get ready3d(){return !!FERRY3D;},frame3d(k){if(!FERRY3D)return null;FERRY3D.t0=performance.now()-k*FERRY3D.dur*1000;ferry3dFrame(1/30);return renderer.domElement.toDataURL('image/jpeg',.85);}};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.LMK_BUILD=LMK_BUILD; window.__tj.gg=ggRule; window.__tj.apply=apply; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll; window.__tj.NUT = () => NUT; window.__tj.lxBounds = lxBounds; window.__tj.peds = PEDS; window.__tj.pedDbg = {step: stepPeds, blocks: pedBlocks, sigCross, KS: () => KSITES, eAt, set sig(f){ pedSig = f; }}; window.__tj.spbu = {sites: SPBU_SITES, near: spbuNear, ctx: () => svcContext(), live(){ const out = []; scene.traverse(o => { if (o.isMesh && o.material === SPBU_SIGN?.mat) { const g = o.parent.parent; out.push([g.userData.u0, Math.round(o.parent.position.x), Math.round(o.parent.position.z)]); } }); return out; }}; window.__tj.voice = {VOX, dispatch: dispatchCall, sendUnit, get responders(){ return RESPONDERS; }}; window.__tj.phone = () => PHONE;
 window.__tj.moveSvg = moveSvg; window.__tj.nextMv = nextMove;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering
@@ -6003,6 +6011,7 @@ if(window.TJ_BOOT){
   for(let i=0;i<40;i++)updateCam(1/60);
   updateBend();updateHud(0);drawMap();
   await window.TJ_BOOT.stage(94,'Menyelesaikan grafis');
-  if(!MOBILE){if(renderer.compileAsync)await renderer.compileAsync(scene,camera);else renderer.compile(scene,camera);}
+  // shaders are compiled during loading; synchronously, because compileAsync throws when a material is disposed while it compiles
+  if(!MOBILE){try{renderer.compile(scene,camera);}catch(e){}}
   precompiled=true;renderWorld();
 }
