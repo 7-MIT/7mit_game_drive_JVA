@@ -590,7 +590,27 @@ function addLamps(g, {w, zF, zR, yL, yT, tx}){
   const brk = mk([-1, 1].map(s2 => [0.3, 0.12, 0.03, s2*tx, yT, zR - 0.035]), brkOnMat);
   const side = s2 => mk([[0.12, 0.08, 0.04, s2*(w/2 - 0.1), yL, zF + 0.02], [0.14, 0.08, 0.04, s2*(w/2 - 0.1), yT + 0.1, zR - 0.035], [0.03, 0.05, 0.1, s2*(w/2 + 0.02), yL + 0.12, zF - 0.6]], indMat);
   return {brk, l: side(1), r: side(-1)}; }
+// ---------- vehicle pool: traffic leaving the scene is kept and reused with a new colour, so new traffic costs (almost) nothing ----------
+// Building a vehicle (parts, merge, distance model, paint) takes milliseconds; doing it while driving makes the frame stutter.
+const VPOOL = new Map(), POOL_MAX = MOBILE ? 8 : 14, POOL_FREE = new Set(['car', 'suv', 'van', 'pickup', 'truck', 'bus', 'moto', 'taxi', 'angkot']);
+function poolPut(v){
+  if (!v.__mk || v.player || v.pursuit || !POOL_FREE.has(v.type) || v.dmg > 0) return false;
+  const arr = VPOOL.get(v.type) || []; if (arr.length >= POOL_MAX) return false;
+  if (v.g.parent) v.g.parent.remove(v.g); const m = {}; for (const k of v.__mk) m[k] = v[k]; m.__mk = v.__mk; arr.push(m); VPOOL.set(v.type, arr); return true; }
+function poolTake(type){
+  const arr = VPOOL.get(type); if (!arr || !arr.length) return null; const m = arr.pop(), v = {...m}, g = v.g;
+  g.position.set(0, 0, 0); g.rotation.set(0, 0, 0); g.scale.set(1, 1, 1); g.visible = true;
+  for (const w of v.wh || []) w.rotation.x = 0; if (v.lampM) for (const l of Object.values(v.lampM)) l.visible = false;
+  if (v.paintMaterial && !['taxi', 'police', 'ambulance', 'damkar', 'derek'].includes(type)) v.paintMaterial.color.setHex(type === 'angkot' ? pick([0x2a6fd1, 0x2f9a4a, 0xd23a2a, 0xe8c22a, 0x3a9fd8, 0x8a2bb0]) : pick(PAINT));
+  return v; }
+// fill the pool while the loading screen is up
+// at most one vehicle is built from scratch per frame (the rest come from the pool, or wait a frame)
+let vBuild = 1; const canBuild = type => { if ((VPOOL.get(type) || []).length) return true; if (vBuild <= 0) return false; vBuild--; return true; };
+function poolWarm(counts){ for (const [t, n] of Object.entries(counts)) for (let i = 0; i < n; i++) { const v = makeVehicle(t); if (!poolPut(v)) killVehicle(v); } }
 function makeVehicle(type, color, noMerge = false){
+  if (color == null && !noMerge && type !== 'bicycle') { const pv = poolTake(type); if (pv) return pv; }
+  const made = makeVehicle0(type, color, noMerge); if (color == null && !noMerge && type !== 'bicycle') made.__mk = Object.keys(made); return made; }
+function makeVehicle0(type, color, noMerge = false){
   if (type === 'bicycle') { const paint = vEnv(new THREE.MeshPhysicalMaterial({color: color ?? 0x249b79, metalness:0.5, roughness:0.28, clearcoat:0.8, clearcoatRoughness:0.18})); paint.userData.own = true;
     const v = buildBicycle({paint, tyre:tyreMat, metal:chromeMat, dark:trimMat, head:headMat, tail:tailMat}); bendObj(v.g); v.g.rotation.order='YXZ'; for (const w of v.front) w.rotation.order='YXZ'; return v; }
   const own = c => { const m = M(c, {roughness:0.4, metalness:0.3}); m.userData.own = true; return m; };
@@ -619,7 +639,7 @@ function makeVehicle(type, color, noMerge = false){
 // remove a vehicle's own materials from the reflection list when it goes
 const _killV = m => VMATS.delete(m);
 const LEN = t => t === 'truck' ? 16 : t === 'bus' ? 12.5 : t === 'damkar' ? 9 : t === 'derek' ? 8.6 : 6;
-function killVehicle(v){ if(v.g.parent)v.g.parent.remove(v.g);const materials=new Set(),geometries=new Set();v.g.traverse(o=>{if(!o.isMesh)return;materials.add(o.material);geometries.add(o.geometry);});for(const m of materials)if(!SHARED.has(m)&&m.userData.own){_killV(m);if(m.map&&!m.userData.plate)m.map.dispose();m.dispose();}for(const g of geometries)if(g&&!g.userData.keep)g.dispose();v.dead=true; }
+function killVehicle(v){ if (poolPut(v)) { v.dead = true; return; } if(v.g.parent)v.g.parent.remove(v.g);const materials=new Set(),geometries=new Set();v.g.traverse(o=>{if(!o.isMesh)return;materials.add(o.material);geometries.add(o.geometry);});for(const m of materials)if(!SHARED.has(m)&&m.userData.own){_killV(m);if(m.map&&!m.userData.plate)m.map.dispose();m.dispose();}for(const g of geometries)if(g&&!g.userData.keep)g.dispose();v.dead=true; }
 
 const rm = (arr, v) => { const i = arr.indexOf(v); if (i >= 0) arr.splice(i, 1); };
 const heavy = v => v.type==='truck' || v.type==='bus';
@@ -945,8 +965,7 @@ function buildChunkNat(i){
   pts.forEach((p, j) => { pv.set(p.x, 0, p.z); sc.set(p.k, p.k*p.h, p.k); q.setFromAxisAngle(upv, p.r); tm.compose(pv, q, sc); trunks.setMatrixAt(j, tm); blobs.setMatrixAt(j, tm); });
   trunks.count = blobs.count = pts.length;
   for (const m of [trunks, blobs]) { m.castShadow = true; g.add(m); }
-  buildArchitecture(g,nearbyBuildings);
-  bendObj(g); scene.add(g); return g;
+  bendObj(g); scene.add(g); archLater(g, nearbyBuildings); return g;
 }
 
 function buildChunk(i){
@@ -1098,7 +1117,7 @@ function roadside(g, u0, u1, Z, R, toll){
     }
   }
   for (const [s, o, w, h] of fields) g.add(flat(w, CH/2, PADDY[Math.floor(R()*3)], s*(eAt(u0 + CH/2) + o), 0.003, -(30 + h*60)));
-  buildArchitecture(g,buildings);
+  archLater(g, buildings);
 }
 
 // materials that belong to the land: they drop below an elevated toll road
@@ -1722,8 +1741,8 @@ function restArea(g, e){ const ex = o => e + o, th = Math.atan2(6, 7), z = u => 
   const bl = new THREE.PlaneGeometry(0.12, 8); bl.rotateX(-Math.PI/2); bl.rotateY(th);
   g.add(instanced(bl, white, [...BAYS.map(b => [ex(40), z(b-2)]), [ex(40), z(BAYS[BAYS.length-1]+2)]], 0.01));
   streetLamps(g, [118, 148, 178, 208, 238].map(u => [ex(56.6), 0, z(u), Math.PI]).concat([[ex(21.5), 0, z(150), 0], [ex(21.5), 0, z(210), 0]]));
-  STATIC.forEach((st, i) => { if (!st) return; const v = makeVehicle(pick(['car','car','suv','van'])); v.g.position.set(ex(40), 0, z(BAYS[i])); v.g.rotation.y = th; g.add(v.g); });
-  for (const u of [150, 172, 194]) { const v = makeVehicle('truck'); v.g.position.set(ex(52.5), 0, z(u)); g.add(v.g); }
+  STATIC.forEach((st, i) => { if (!st) return; later(() => { if (!g.parent) return; const v = makeVehicle(pick(['car','car','suv','van'])); v.g.position.set(ex(40), 0, z(BAYS[i])); v.g.rotation.y = th; g.add(v.g); }); });
+  for (const u of [150, 172, 194]) later(() => { if (!g.parent) return; const v = makeVehicle('truck'); v.g.position.set(ex(52.5), 0, z(u)); g.add(v.g); });
   buildArchitecture(g,[{x:ex(66),z:z(168),d:12,w:34,h:4.2,type:'shop',color:0xe9e2d4,awning:0x9a3b2a}]);
   g.add(solid(7, 4, 7, M(0xf2efe6), ex(66), 2, z(140))); const dome = new THREE.Mesh(new THREE.SphereGeometry(2.4, 16, 8, 0, Math.PI*2, 0, Math.PI/2), M(0x2f7a55)); dome.position.set(ex(66), 4, z(140)); g.add(dome);
   g.add(solid(10, 0.8, 16, M(0xf4f4f4), ex(66), 5.6, z(222)), solid(10.2, 0.45, 16.2, M(0xd0202a), ex(66), 5.05, z(222)));
@@ -2115,17 +2134,25 @@ function buildObj(o){
 function freeObj(gs){ dropSolids(gs); for (const g of gs) { g.traverse(m => { if (m.material) arrowMats.delete(m.material); }); dispose(g); } }
 // budget: while driving, build at most a couple of chunks and one interchange per frame, nearest first, so the
 // frame rate stays smooth; everything far ahead is built a little later, long before it comes into view
+// ---------- work spread over frames: heavy pieces (merging the buildings of a chunk, parked cars) are done a few at a time ----------
+// Chunks are built well ahead of what the camera sees, so a building that appears a few frames later is never noticed.
+const LATER = [];
+function later(fn){ LATER.push(fn); }
+function runLater(ms){ const t0 = performance.now(); while (LATER.length && performance.now() - t0 < ms) { const f = LATER.shift(); try { f(); } catch (e) {} } }
+function archLater(g, list){ for (let i = 0; i < list.length; i += 20) { const part = list.slice(i, i + 20);
+  later(() => { if (!g.parent || !part.length) return; const h = new THREE.Group(); buildArchitecture(h, part); bendObj(h); g.add(h); }); } }
 function updateWorld(budget = false){
-  const began=performance.now();
+  const began=performance.now(); if (!budget) runLater(1e9);
   const lo = Math.floor((camU - BACK - 140)/CH), hi = Math.floor((camU + FWD + 340 + VIEWX)/CH), c0 = Math.floor(camU/CH);
   for (const [i, g] of chunks) if (i < lo || i > hi) { dropSolids([g]); dispose(g); chunks.delete(i); }
   let nC = budget ? (MOBILE || QUAL.level >= 2 ? 1 : 2) : Infinity;
   for (let d = 0; d <= Math.max(c0 - lo, hi - c0) && nC > 0; d++) for (const i of d ? [c0 + d, c0 - d] : [c0]) {
-    if (i < lo || i > hi || chunks.has(i) || nC <= 0 || (budget&&performance.now()-began>5)) continue; chunks.set(i, buildChunk(i)); applySign([chunks.get(i)]); nC--; }
+    if (i < lo || i > hi || chunks.has(i) || nC <= 0 || (budget&&performance.now()-began>5)) continue; { const t0 = performance.now(); chunks.set(i, buildChunk(i)); applySign([chunks.get(i)]); if (window.__perf) { const d = performance.now() - t0, P = window.__perf; P.chunk = P.chunk || {sum: 0, max: 0, n: 0}; P.chunk.sum += d; P.chunk.n++; if (d > P.chunk.max) { P.chunk.max = d; P.chunkWorst = {i, reg: regionAt(i*CH), town: !!townNear(i*CH + CH/2, 540)}; } } } nC--; }
   const a = camU - BACK - 200, b = camU + FWD + 500 + VIEWX;
   for (const [o, gs] of built) if (o.u + o.r < a || o.u - o.r > b) { freeObj(gs); built.delete(o); if (o.type === 'site') o.s.bays = {'1': null, '-1': null}; }
   let nO = budget ? 1 : Infinity;
-  for (const o of OBJ) { if (o.u - o.r > b || nO <= 0 || (budget&&performance.now()-began>7)) break; if (o.u + o.r < a || built.has(o)) continue; built.set(o, buildObj(o)); nO--; }
+  if (budget) runLater(MOBILE || QUAL.level >= 2 ? 3 : 4);
+  for (const o of OBJ) { if (o.u - o.r > b || nO <= 0 || (budget&&performance.now()-began>7)) break; if (o.u + o.r < a || built.has(o)) continue; { const t0 = performance.now(); built.set(o, buildObj(o)); if (window.__perf) { const d = performance.now() - t0, P = window.__perf; P.obj = P.obj || {sum: 0, max: 0, n: 0}; P.obj.sum += d; P.obj.n++; if (d > P.obj.max) { P.obj.max = d; P.objWorst = o.type + ':' + (o.s ? o.s.kind + ' ' + o.s.name : ''); } } } nO--; }
 }
 function rebuildObjects(types){ for (const [o, gs] of [...built]) if (!types || types.includes(o.type)) { freeObj(gs); built.delete(o); } updateWorld(); }
 function clearWorld(){ SOLIDS = []; for (const [, g] of chunks) dispose(g); chunks.clear(); for (const [, gs] of built) freeObj(gs); built.clear(); }
@@ -2265,7 +2292,7 @@ function maintainTraffic(dt){
         const sw = near && near.type === 'moto' && swarmAt(sd*p) && Math.random() < 0.7, want = sw ? rnd(3, 8) : 10 + rnd(18, 60)*TRAFFIC_GAP/denAt(sd, p);
         if (gap < want) continue;
         const type = sw ? 'moto' : pickType(lane, n, p, sd), len = LEN(type);
-        if (!spawnOK(sd, lane, p, len)) continue;
+        if (!spawnOK(sd, lane, p, len) || !canBuild(type)) continue;
         const vel = near ? Math.min(near.vel + (edge === 'up' ? 1 : -1), 27) : undefined;
         addVehicle(sd, lane, p, type, vel); } } }
 }
@@ -3149,6 +3176,8 @@ function sim(dt){
       if (l >= 0 || (z && z.A === v.sd && -l <= z.k)) reg(key(v.sd, l), v);
       else { const j = -l - 1; reg(key(-v.sd, j), {p: -v.sd*uOfV(v), vel: 0, len: v.len, lane: j, lx: j, phantom: true}); } } }
   for (const v of vehicles){
+    // far from the camera (beyond 180 m) a driver decides every third frame; the car still moves every frame on its last decision
+    if (!v.player && !v.em && Number.isFinite(v.acc) && !(v.crashT > clock) && Math.abs(v.sd*v.p - camU) > 180) { v.simK = ((v.simK || 0) + 1) % 3; if (v.simK) continue; }
     const front = v.p + v.len/2, n = nAvail(v.sd, v.p), manual = v.player && !cfg.auto;
     // interchange decisions
     const sa = siteAhead(v.sd, v.p);
@@ -3279,6 +3308,7 @@ function simLocals(dt){
       const k = (MOBILE ? 0.7 : 1)*cfg.den*(diverted ? 2.5 : 1);
       if (near < 12 + rnd(10, 70)/k) continue;
       const t = Math.random(); let type = lane === 1 ? (t<.45?'moto':t<.6?'van':t<.72?'truck':t<.78?'bus':'car') : (t<.6?'car':t<.85?'suv':'van');
+      if (!canBuild(type)) continue;
       const v = makeVehicle(type); Object.assign(v, {kind:'pr', side, dir, lane, u: up + dir*rnd(0, 6), vel: (lane === 0 ? rnd(14, 16.5) : rnd(10, 12))*(diverted ? 0.6 : 1)});
       scene.add(v.g); locals.push(v); } }
   for (const [o, gs] of built) for (const g of gs) {
@@ -5638,11 +5668,16 @@ function recordLaw(v,code,msg,f){
   }else LAW_TOTAL.ai++;
   return true;
 }
+let lawAcc=0;
 function tickTrafficLaw(dt){
   if(PLR?.indicator&&clock>PLR.indicatorUntil&&PLR.indicator!==2)setIndicator(0);
+  // the player is checked every frame; the other road users and the ETLE cameras ten times a second (same rules, a fraction of the work)
+  const pl=PLR&&!foot&&!tow&&vehicles.includes(PLR)?PLR:null;
+  lawAcc+=dt;if(lawAcc<0.1){if(pl){const f=trafficFacts(pl);for(const code of LAW_AUDIT.sample(pl,f,dt))recordLaw(pl,code,null,f);}return;}
+  const ldt=lawAcc;lawAcc=0;
   const all=vehicles.concat(rampers).filter(v=>!(v.player&&(foot||tow))),facts=all.map(trafficFacts);ETLE.scan(facts,clock);const tracks=new Map(ETLE.tracks.map(t=>[t.id,t]));
-  for(let i=0;i<all.length;i++){const v=all[i],f=facts[i];for(const code of LAW_AUDIT.sample(v,f,dt))recordLaw(v,code,null,f);
-    const tracked=tracks.get(f.id);if(tracked){for(const code of CAM_AUDIT.sample(v,{...f,route:tracked.camera},dt)){const r=ETLE.capture(code,{...f,signal:code==='red'?'R':f.signal},clock);if(r){LAW_IMAGES.push(r);if(LAW_IMAGES.length>8)LAW_IMAGES.shift();if(v.player){toast(`ETLE: ${LAW_BY_ID[code].title}. Bukti masuk komputer ETLE.`,'bad');PHONE?.notify('kendaraan','ETLE merekam pelanggaran',LAW_BY_ID[code].title);}}}}
+  for(let i=0;i<all.length;i++){const v=all[i],f=facts[i];for(const code of LAW_AUDIT.sample(v,f,v.player?dt:ldt))recordLaw(v,code,null,f);
+    const tracked=tracks.get(f.id);if(tracked){for(const code of CAM_AUDIT.sample(v,{...f,route:tracked.camera},ldt)){const r=ETLE.capture(code,{...f,signal:code==='red'?'R':f.signal},clock);if(r){if(v.player){LAW_IMAGES.push(r);if(LAW_IMAGES.length>3)LAW_IMAGES.shift();}if(v.player){toast(`ETLE: ${LAW_BY_ID[code].title}. Bukti masuk komputer ETLE.`,'bad');PHONE?.notify('kendaraan','ETLE merekam pelanggaran',LAW_BY_ID[code].title);}}}}
   }
 }
 function buildEtleCamera(c){
@@ -5665,7 +5700,8 @@ function renderEtleFeed(cv,c){
     return true;
   }finally{renderer.setRenderTarget(old);renderer.shadowMap.autoUpdate=auto;for(const[v,on]of visible)v.g.visible=on;for(const[g,on]of cockpit)g.visible=on;}
 }
-function captureEtleImages(){if(!LAW_IMAGES.length)return;const r=LAW_IMAGES.shift(),c=ETLE.cameras.find(c=>c.id===r.camera),cv=document.createElement('canvas');cv.width=480;cv.height=270;if(renderEtleFeed(cv,c))ETLE.attachImage(r.id,cv.toDataURL('image/jpeg',.6));}
+let etleShotT=0;
+function captureEtleImages(){if(!LAW_IMAGES.length||clock-etleShotT<1.5)return;etleShotT=clock;const r=LAW_IMAGES.shift(),c=ETLE.cameras.find(c=>c.id===r.camera),cv=document.createElement('canvas');cv.width=480;cv.height=270;if(renderEtleFeed(cv,c))ETLE.attachImage(r.id,cv.toDataURL('image/jpeg',.6));}
 function reviewEtle(id,decision){const r=ETLE.review(id,decision);if(r&&decision==='confirmed'&&r.player){const fine=LAW_BY_ID[r.code].fine;WAL.cash-=fine;LAW_TOTAL.fines+=fine;cfg.wal={...WAL};saveCfgSoon();uiNeeds();walLog(-fine,'Denda game ETLE: '+LAW_BY_ID[r.code].title);toast(`Tilang permainan ${rp$(fine)}`,'bad');}return r;}
 TRAFFIC_PANEL=initTrafficPanel({etle:ETLE,nearCameras:()=>ETLE.cameras.map(c=>({...c,road:CORR[c.corridor].name,distance:Math.abs(c.u-camU)})).filter(c=>c.distance<600).sort((a,b)=>a.distance-b.distance).slice(0,20),feed:renderEtleFeed,signal:setIndicator,review:reviewEtle,status:()=>({violations:stats.viol,fines:LAW_TOTAL.fines}),opening(){input.gas=input.left=input.right=false;input.brake=true;},closed(){input.brake=false;}});
 $('lawb').onclick=()=>TRAFFIC_PANEL.show();$('siglb').onclick=()=>setIndicator(PLR?.indicator===1?0:1);$('sigrb').onclick=()=>setIndicator(PLR?.indicator===-1?0:-1);$('hazb').onclick=()=>setIndicator(PLR?.indicator===2?0:2);
@@ -5716,14 +5752,20 @@ window.__tj = {get PLR(){ return PLR; }, get EV(){ return EV; }, get trip(){ ret
 
 let last = performance.now(), mapT = 0, frames = 0;
 function tick(dt,stream=true){
+  vBuild = 1;
   if(ARREST_DIALOG?.open||FERRY_ON)return;
   clock += dt; if (TUT) tutTick(dt); phoneTick(dt); osmTick(dt); demTick(dt); voiceTick(dt);
   if (PLR && PLR.wantU) { PLR.wantU = false; uTurn(PLR); }
-  stepFoot(dt); tickNeeds(dt); stepTow(dt); stepAngry(dt); mpTick(dt); sim(dt); mbzTraffic(); rampStep(dt); jobTick(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt); tickTrafficLaw(dt); tickPursuit(dt); TRAFFIC_PANEL?.tick(dt); tickClock(dt);
+  if (window.__perf) { const P = window.__perf, T = (k, f) => { const a = performance.now(); f(); const d = performance.now() - a; P[k] = P[k] || {sum: 0, max: 0, n: 0}; P[k].sum += d; P[k].n++; if (d > P[k].max) P[k].max = d; };
+    T('needs', () => { stepFoot(dt); tickNeeds(dt); stepTow(dt); stepAngry(dt); mpTick(dt); }); T('sim', () => sim(dt)); T('ramps', () => { mbzTraffic(); rampStep(dt); jobTick(dt); }); T('spawn', () => maintainTraffic(dt)); T('locals', () => simLocals(dt));
+    T('rules', () => playerRules(dt)); T('law', () => tickTrafficLaw(dt)); T('rest', () => { tickPursuit(dt); TRAFFIC_PANEL?.tick(dt); tickClock(dt); }); }
+  else { stepFoot(dt); tickNeeds(dt); stepTow(dt); stepAngry(dt); mpTick(dt); sim(dt); mbzTraffic(); rampStep(dt); jobTick(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt); tickTrafficLaw(dt); tickPursuit(dt); TRAFFIC_PANEL?.tick(dt); tickClock(dt); }
   if (PLR) camU = foot ? foot.u : uOfV(PLR);
   if(stream)streamWorld();
 }
-function streamWorld(){ensureAhead();setupBlocks(false);updateWorld(true);updateSignals();animGhosts();}
+function streamWorld(){ if (window.__perf) { const P = window.__perf, T = (k, f) => { const a = performance.now(); f(); const d = performance.now() - a; P[k] = P[k] || {sum: 0, max: 0, n: 0}; P[k].sum += d; P[k].n++; if (d > P[k].max) P[k].max = d; };
+    T('ensureAhead', ensureAhead); T('blocks', () => setupBlocks(false)); T('world', () => updateWorld(true)); T('signals', () => { updateSignals(); animGhosts(); }); return; }
+  ensureAhead();setupBlocks(false);updateWorld(true);updateSignals();animGhosts();}
 window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol,get ready3d(){return !!FERRY3D;},frame3d(k){if(!FERRY3D)return null;FERRY3D.t0=performance.now()-k*FERRY3D.dur*1000;ferry3dFrame(1/30);return renderer.domElement.toDataURL('image/jpeg',.85);}};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.LMK_BUILD=LMK_BUILD; window.__tj.gg=ggRule; window.__tj.apply=apply; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
 window.__tj.moveSvg = moveSvg; window.__tj.nextMv = nextMove;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
@@ -5831,6 +5873,8 @@ addEventListener('resize', () => { camera.aspect = innerWidth/innerHeight; camer
 // Show the first complete scene before removing the loading cover. These are
 // real preparation milestones, not a timer that pretends to measure downloads.
 if(window.TJ_BOOT){
+  await window.TJ_BOOT.stage(84,'Menyiapkan kendaraan');
+  try { poolWarm(MOBILE ? {car: 6, suv: 3, van: 2, truck: 3, moto: 5, pickup: 1, bus: 1, taxi: 1, angkot: 1, police: 1, ambulance: 1, damkar: 1} : {car: 12, suv: 6, van: 4, truck: 5, moto: 8, pickup: 2, bus: 2, taxi: 2, angkot: 2, police: 1, ambulance: 1, damkar: 1}); } catch (e) {}
   await window.TJ_BOOT.stage(87,'Menyiapkan kamera dan pencahayaan');
   updateSegs();placeGroups();place();placeFoot();placeTow();placeJob();mpPlace();
   for(let i=0;i<40;i++)updateCam(1/60);

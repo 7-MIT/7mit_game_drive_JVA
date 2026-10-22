@@ -21,7 +21,8 @@ export function createQualityGovernor(level=0){
     const low=state.level>=3?27:43;
     state.slow=state.fps<low?state.slow+1:0;state.fast=state.fps>57?state.fast+1:0;
     if(state.cooldown>0)return false;
-    if(state.slow>=3&&state.level<5){state.level++;state.slow=state.fast=0;state.cooldown=4;return true;}
+    // well under 25 fps the picture gets lighter after two seconds instead of three
+    if(state.slow>=(state.fps<25?2:3)&&state.level<5){state.level++;state.slow=state.fast=0;state.cooldown=state.fps<25?3:4;return true;}
     if(state.fast>=12&&state.level>0){state.level--;state.slow=state.fast=0;state.cooldown=8;return true;}
     return false;
   }};
