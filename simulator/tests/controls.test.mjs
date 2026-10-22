@@ -25,5 +25,5 @@ test('tilt steering follows the screen orientation, with a dead zone', () => {
 });
 test('radio segments rotate: station, time & weather, traffic, ad, tip', () => {
   const S = {hour: 7.5, weather: 'cerah', rain: false, place: 'Cikampek', road: 'Tol Jakarta–Cikampek', jam: 9};
-  assert.match(segment(0, S), /7MIT FM/); assert.match(segment(1, S), /07\.30/); assert.match(segment(2, S), /padat/); assert.ok(ADS.includes(segment(3, S)));
+  assert.match(segment(0, S), /tujuh mit F M/); assert.match(segment(1, S), /07\.30/); assert.match(segment(2, S), /padat/); assert.ok(ADS.includes(segment(3, S)));
 });

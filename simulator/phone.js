@@ -1,5 +1,6 @@
 import {createPhoneHome, HOME_CSS} from './phone-home.js';
 import {createPhoneStore, STORE_CSS} from './phone-store.js';
+import {DISPATCH} from './voice-lines.js';
 // ================================================================
 // HANDPHONE: the player's phone, a full GUI with animated screens and apps.
 // Lock screen → home screen (app grid + dock) → apps that open from their icon and close back into it.
@@ -145,6 +146,8 @@ const CSS = `
 #phone .call{position:absolute;inset:0;z-index:20;background:linear-gradient(170deg,#1d2b3a,#0c1117);color:#fff;display:flex;flex-direction:column;align-items:center;padding-top:90px;animation:phFade .3s both}
 #phone .call .av{width:88px;height:88px;border-radius:50%;display:grid;place-items:center;background:var(--g,#3a9fd8);margin-bottom:14px;animation:phRing 1.4s ease-in-out infinite}
 #phone .call .av svg{width:42px;height:42px;stroke:#fff} #phone .call h3{margin:0;font-size:24px} #phone .call p{margin:6px 0 0;opacity:.75;font-size:13px}
+#phone .call .cap{max-width:240px;text-align:center;font-size:13px!important;line-height:1.4;opacity:.95!important;margin-top:14px!important;min-height:3em}
+#phone .call .opts{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:250px;margin:10px 0 140px}#phone .call .opts button{border:0;border-radius:16px;padding:8px 12px;background:rgba(255,255,255,.18);color:#fff;font:600 12px/1 inherit;cursor:pointer}
 #phone .call .end{position:absolute;bottom:60px;width:66px;height:66px;border-radius:50%;border:0;background:#ff3b30;display:grid;place-items:center;cursor:pointer}
 #phone .call .end svg{width:30px;height:30px;stroke:#fff}
 @keyframes phRing{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,.35)}70%{box-shadow:0 0 0 22px rgba(255,255,255,0)}}
@@ -497,7 +500,7 @@ export function initPhone(A){
   function ringTone(on){ clearInterval(net.ringT); if (on) { A.sfx('ring'); net.ringT = setInterval(() => A.sfx('ring'), 1600); } }
   async function micStream(){ try { return await navigator.mediaDevices.getUserMedia({audio: {echoCancellation: true, noiseSuppression: true}}); } catch (e) { A.toast('Mikrofon tidak diizinkan: lawan bicara tidak mendengar suaramu', 'warn'); return null; } }
   function dial(n){ n = canon(n); if (!n) return;
-    if (['133', '110', '118', '14080'].includes(n)) return call(n);
+    if (DISPATCH[n]) return call(n);
     if (n === P.no) return A.toast('Itu nomormu sendiri', 'warn');
     if (net.call) return A.toast('Masih ada panggilan', 'warn');
     if (!open) toggle(true); lock.classList.add('gone');
@@ -539,12 +542,12 @@ export function initPhone(A){
   let tlTab = 'pad';
   APPS_IMPL.telepon = pg => { scr.style.setProperty('--acc', '#18a33a'); let num = '';
     pg.innerHTML = head('Telepon') + `<div class="myno">Nomormu <b>${fmtNo(P.no)}</b> · ${net.ready ? '<span class="on-dot"></span>online' : 'offline'}</div>`;
-    if (!net.ready) { mpOnly(pg); html(pg, `<div class="card" style="margin-top:10px"><h4>Layanan (tetap bisa dihubungi)</h4>${[['133', 'Info Tol', 'derek'], ['110', 'Polisi', 'polisi'], ['118', 'Ambulans', 'amb']].map(([n, l, g]) => `<div class="row" data-n="${n}"><span class="ri" style="--g:${G[g]}">${ic(g === 'polisi' ? 'Shield' : g === 'amb' ? 'Ambulance' : 'Phone')}</span><span class="rt"><b>${l}</b><small>${n}</small></span>${ic('PhoneCall')}</div>`).join('')}</div>`).onclick = e => { const r = e.target.closest('.row'); if (r) call(r.dataset.n); }; return; }
+    if (!net.ready) { mpOnly(pg); html(pg, `<div class="card" style="margin-top:10px"><h4>Layanan (tetap bisa dihubungi)</h4>${[['112', 'Darurat 112', 'amb'], ['110', 'Polisi', 'polisi'], ['118', 'Ambulans', 'amb'], ['119', 'Ambulans (kesehatan)', 'amb'], ['113', 'Pemadam kebakaran', 'derek'], ['115', 'Basarnas (SAR)', 'polisi'], ['14080', 'Call center tol', 'derek'], ['133', 'Info Tol', 'derek']].map(([n, l, g]) => `<div class="row" data-n="${n}"><span class="ri" style="--g:${G[g]}">${ic(g === 'polisi' ? 'Shield' : g === 'amb' ? 'Ambulance' : 'Phone')}</span><span class="rt"><b>${l}</b><small>${n}</small></span>${ic('PhoneCall')}</div>`).join('')}</div>`).onclick = e => { const r = e.target.closest('.row'); if (r) call(r.dataset.n); }; return; }
     pg.append(seg([['pad', 'Papan tombol'], ['recent', 'Terbaru'], ['kontak', 'Kontak']], tlTab, k => { tlTab = k; redraw(); }));
     if (tlTab === 'pad') {
       html(pg, `<div><div class="num"></div><div class="pad">${['1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '0', '⌫'].map(d => `<button data-d="${d}">${d}</button>`).join('')}</div>
         <button class="btn dial" style="background:#18a33a;width:66px;height:66px;border-radius:50%;margin:6px auto 14px">${ic('Phone')}</button></div>`);
-      html(pg, `<div class="card"><h4>Nomor penting</h4>${[['133', 'Info Tol', 'derek'], ['110', 'Polisi', 'polisi'], ['118', 'Ambulans', 'amb'], ['14080', 'Call center tol', 'derek']].map(([n, l, g]) => `<div class="row" data-n="${n}"><span class="ri" style="--g:${G[g]}">${ic(g === 'polisi' ? 'Shield' : g === 'amb' ? 'Ambulance' : 'Phone')}</span><span class="rt"><b>${l}</b><small>${n}</small></span>${ic('PhoneCall')}</div>`).join('')}</div>`);
+      html(pg, `<div class="card"><h4>Nomor penting</h4>${[['112', 'Darurat 112', 'amb'], ['110', 'Polisi', 'polisi'], ['118', 'Ambulans', 'amb'], ['119', 'Ambulans (kesehatan)', 'amb'], ['113', 'Pemadam kebakaran', 'derek'], ['115', 'Basarnas (SAR)', 'polisi'], ['14080', 'Call center tol', 'derek'], ['133', 'Info Tol', 'derek']].map(([n, l, g]) => `<div class="row" data-n="${n}"><span class="ri" style="--g:${G[g]}">${ic(g === 'polisi' ? 'Shield' : g === 'amb' ? 'Ambulance' : 'Phone')}</span><span class="rt"><b>${l}</b><small>${n}</small></span>${ic('PhoneCall')}</div>`).join('')}</div>`);
       const show = () => pg.querySelector('.num').textContent = /^\d{5,}$/.test(num) && num.startsWith('0') ? fmtNo(num.padEnd(12, ' ').trim()) : num;
       pg.querySelector('.pad').onclick = e => { const d = e.target.dataset.d; if (!d) return; num = d === '⌫' ? num.slice(0, -1) : (num + d).slice(0, 15); show(); A.sfx('key'); };
       pg.querySelector('.dial').onclick = () => num && dial(num);
@@ -554,11 +557,18 @@ export function initPhone(A){
     } else contactList(pg, n => dial(n)); };
   function contactList(pg, onPick, sms){ const list = net.online.concat(Object.keys(P.names).filter(n => !reachable(n)).map(n => ({no: n, name: P.names[n], off: true})));
     html(pg, `<div class="card"><h4>${net.online.length} pemain online</h4>${list.length ? list.map(o => `<div class="row" data-n="${o.no}"><span class="ri" style="--g:${G.kontak}">${ic('User')}</span><span class="rt"><b>${o.off ? '' : '<span class="on-dot"></span>'}${esc(o.name)}</b><small>${fmtNo(o.no)}</small></span>${sms ? ic('MessageCircle') : ic('Phone')}</div>`).join('') : '<p>Belum ada pemain lain yang online. Bagikan nomormu ke teman!</p>'}</div>`).onclick = e => { const r = e.target.closest('.row'); if (r) onPick(r.dataset.n); }; }
-  function call(n){ const who = {'133': ['Info Tol 133', G.derek, 'Phone'], '14080': ['Call center tol', G.derek, 'Phone'], '110': ['Polisi 110', G.polisi, 'Shield'], '118': ['Ambulans 118', G.amb, 'Ambulance']}[n] || [n, G.telepon, 'User'];
-    const c = document.createElement('div'); c.className = 'call'; c.style.setProperty('--g', who[1]); c.innerHTML = `<div class="av">${ic(who[2])}</div><h3>${esc(who[0])}</h3><p class="s">Memanggil…</p><button class="end" aria-label="Tutup telepon">${ic('PhoneOff')}</button>`;
-    scr.append(c); A.sfx('ring'); let t = 0; const iv = setInterval(() => { t++; const s2 = c.querySelector('.s');
-      if (t === 2) { s2.textContent = '00:01'; const r = A.callNumber(n); if (r) setTimeout(() => s2.textContent = r, 600); } else if (t > 2 && t < 5) s2.textContent = `00:0${t - 1}`; else if (t >= 6) end(); }, 1000);
-    const end = () => { clearInterval(iv); c.style.transition = 'opacity .25s'; c.style.opacity = '0'; setTimeout(() => c.remove(), 260); }; c.querySelector('.end').onclick = end; }
+  // a call to an emergency or service number: the dispatcher answers (spoken, with captions), the caller answers with buttons,
+  // and help is sent to where the car is (A.dispatch speaks the lines and sends the units)
+  function call(n){ const D = DISPATCH[n] || {name: n}, g = n === '110' || n === '115' ? G.polisi : ['113', '14080', '133'].includes(n) ? G.derek : G.amb;
+    const c = document.createElement('div'); c.className = 'call'; c.style.setProperty('--g', g);
+    c.innerHTML = `<div class="av">${ic(n === '110' ? 'Shield' : n === '113' ? 'Flame' : /11[289]/.test(n) ? 'Ambulance' : n === '115' ? 'LifeBuoy' : 'Headset')}</div><h3>${esc(D.name)}</h3><p class="s">Memanggil…</p><p class="cap" aria-live="polite"></p><div class="opts"></div><button class="end" aria-label="Tutup telepon">${ic('PhoneOff')}</button>`;
+    scr.append(c); A.sfx('ring'); const s2 = c.querySelector('.s'), cap = c.querySelector('.cap'), opts = c.querySelector('.opts'); let over = false, t0 = 0, tick = null;
+    const end = () => { if (over) return; over = true; clearInterval(tick); A.hangup && A.hangup(); c.style.transition = 'opacity .25s'; c.style.opacity = '0'; setTimeout(() => c.remove(), 260); };
+    c.querySelector('.end').onclick = end;
+    setTimeout(() => { if (over) return; t0 = Date.now(); tick = setInterval(() => { const k = Math.floor((Date.now() - t0)/1000); s2.textContent = `${String(Math.floor(k/60)).padStart(2, '0')}:${String(k%60).padStart(2, '0')} · ${esc(D.who || '')}`; }, 500);
+      A.dispatch(n, {caption: t => { if (!over) cap.textContent = t; }, alive: () => !over,
+        choose: list => new Promise(res => { opts.innerHTML = list.map(([k, l]) => `<button data-k="${k}">${esc(l)}</button>`).join(''); opts.onclick = e => { const b = e.target.closest('button'); if (!b) return; opts.innerHTML = ''; A.sfx('tap'); res(b.dataset.k); }; }),
+        done: () => setTimeout(end, 1200)}); }, 2200); }
 
   // Pesan: SMS conversations with other players, and the phone's notifications
   let psTab = 'sms';

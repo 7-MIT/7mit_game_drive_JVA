@@ -21,6 +21,8 @@ import {createRadio} from './radio.js';
 import {createGlass} from './glass.js';
 import {initReport} from './report.js';
 import {getLang, setLang} from './i18n.js';
+import * as VOX from './voice.js';
+import {DISPATCH, EMERGENCIES, shown, UNIT_NAME, UNIT_END, CANCEL, dispatchLocation} from './voice-lines.js';
 import {initDEM} from './elevation.js';
 import {BICYCLE, isTwoWheeler, nonTollVehicle, bicycleAcceleration, staminaStep, springStep, ackermannAngle, roadResistance, FOOD_BICYCLE_JOB} from './vehicle-dynamics.js';
 import {buildBicycle, animateBicycle, buildBicycleView} from './bicycle.js';
@@ -2529,7 +2531,7 @@ function tickNeeds(dt){
   if (WAL.sleep < 60) sleepSaid = 0;
   // microsleep at 100 %: the hands drift off the wheel for a moment
   if (WAL.sleep >= 100 && !cfg.auto && !foot && (msT -= dt) < 0) { msT = rnd(15, 30); PLR.steer = (PLR.steer || 0) + (Math.random() - 0.5)*0.12; toast('Microsleep! Anda tertidur sesaat', 'bad'); shake = 0.3; }
-  if ((walT -= dt) < 0) { walT = 0.5; cfg.wal = {...WAL}; saveCfgSoon(); uiNeeds();
+  if ((walT -= dt) < 0) { walT = 0.5; cfg.wal = {...WAL}; saveCfgSoon(); uiNeeds(); tickResponders();
     try { const ll = latLonAt(uOfV(PLR)), r = regionOf(ll.lat, ll.lon); if (r !== islandNow) { islandNow = r; const k = document.querySelector('#hud .kick') || document.querySelector('.kick'); if (k) k.innerHTML = `<b>Jalan</b> Pulau ${REGIONS[r].name} · Lajur kiri`; } } catch (e) {}
     if (carReturn && !job && !ride && swapPlayerVeh(carReturn)) { toast(`Kendaraan perusahaan dikembalikan · kembali ke ${VEH[carReturn].label}`); carReturn = null; } }
 }
@@ -4767,6 +4769,7 @@ function rowsSpec(){
     ['autoSteer', 'Setir otomatis', [[false,'Mati'],[true,'Aktif (gas & rem tetap manual)']]],
     ['sound', 'Suara', [[true,'Nyala'],[false,'Mati']]],
     ['voice', 'Suara navigasi', [[true,'Nyala (pemandu suara)'],[false,'Mati']]],
+    ['voiceEngine', 'Mesin suara', [['auto','Piper (natural, unduh ±60 MB sekali)'],['browser','Suara bawaan perangkat (paling ringan)']]],
     ['clean', 'Tampilan HUD', [[false,'Normal'],[true,'Ringkas (lebih kecil, tekan G)']]],
     ['tod', 'Atur jam', [['morning','Pagi 07:00'],['day','Siang 12:00'],['dusk','Sore 17:48'],['night','Malam 21:00']]],
     ['steerAssist', 'Asisten setir', [[false,'Mati (setir penuh, harus balas setir)'],[true,'Aktif (mobil lurus lagi saat setir dilepas)']]],
@@ -4867,6 +4870,7 @@ function apply(id, v, fromServer = false){
   else if (id === 'tilt') { tiltStop && tiltStop(); tiltStop = null; if (v) startTilt(input).then(f => { tiltStop = f; if (!f) { cfg.tilt = false; saveCfg(); renderUI(); toast('Sensor kemiringan tidak tersedia / tidak diizinkan', 'warn'); } else toast('Setir miring aktif: miringkan HP seperti memutar setir'); }); else toast('Setir miring mati'); }
   else if (id === 'radio') { audioStart(); if (RADIO) RADIO.set(!!v); toast(v ? 'Radio 7MIT FM 97,7 menyala' : 'Radio mati'); }
   else if (id === 'lang') setLang(v);
+  else if (id === 'voiceEngine') { VOX.configure({engine: v}); if (v !== 'browser') VOX.prepare(); toast(v === 'browser' ? 'Suara: bawaan perangkat' : 'Suara: Piper (model diunduh di latar belakang)'); }
   else if (id === 'mudik') { fillTraffic(); toast(v ? 'Mode mudik: arus padat pemudik di tol, truk sumbu 3 ke atas dilarang' : 'Mode mudik dimatikan'); }
   else if (id === 'gfx') { applyGfx(); toast(`Grafis: ${label()}`); }
   else if (id === 'steerAssist') toast(`Asisten setir: ${v ? 'aktif' : 'mati'}`);
@@ -5522,10 +5526,28 @@ function moveSvg(m){ if (!m) return ''; const c = 'currentColor', A = (x, y, a) 
   return svg(line(`M24 46V${cy + 4}Q24 ${cy} ${mx} ${my}L${hx} ${hy}`) + A(hx, hy, a - Math.PI/2)); }
 // ---------- navigation voice: spoken guidance like the phone map apps, and reminders that fit the moment ----------
 const VOICE = {last: '', stage: new Map(), t: 0, cool: {}, dest: null, weather: null, said: new Set()};
-function speak(text, urgent){ if (!cfg.voice || TUT || (FLY && FLY.on) || !('speechSynthesis' in window)) return; try { const ss = speechSynthesis;
-    if (urgent) ss.cancel(); else if (ss.speaking && ss.pending) return;
-    const u = new SpeechSynthesisUtterance(text), vs = ss.getVoices(), v = vs.find(v => /^id(-|_|$)/i.test(v.lang) && /google|natural|neural|online/i.test(v.name)) || vs.find(v => /^id(-|_|$)/i.test(v.lang)) || vs.find(v => /^ms(-|_|$)/i.test(v.lang));
-    u.lang = v ? v.lang : 'id-ID'; if (v) u.voice = v; u.rate = 1.02; u.pitch = 1; u.volume = 1; ss.speak(u); VOICE.last = text; } catch (e) {} }
+// the navigation voice speaks through voice.js (Piper: ready clips, or synthesis on the device; the browser voice as a fallback)
+// ---------- emergency dispatchers (phone): the operator answers, asks what happened, reads back where you are and sends help ----------
+function hereInfo(){ const u = PLR ? uOfV(PLR) : camU; return {road: EV.length ? (CORR[corrAt(u)] || {}).name || '' : '', km: EV.length ? Math.round(kmAt(u)) : 0}; }
+async function dispatchCall(n, ui){
+  const D = DISPATCH[n]; if (!D) return ui.done(); const talk = async t => { if (!ui.alive()) return; ui.caption(shown(t)); await VOX.say(t, {channel: 'phone'}); };
+  await talk(D.greet); if (!ui.alive()) return; let unit = D.unit;
+  if (D.ask) { const k = await ui.choose(EMERGENCIES.map(([key, label]) => [key, label])); const e = EMERGENCIES.find(x => x[0] === k); unit = e[2]; await talk(e[3]); }
+  else { const k = await ui.choose([['send', unit === 'tow' ? 'Kendaraan saya mogok / rusak' : 'Kirim bantuan ke lokasi saya'], ['no', 'Tidak jadi']]); if (k === 'no') { await talk(CANCEL); return ui.done(); } }
+  if (!ui.alive()) return; const h = hereInfo(); await talk(dispatchLocation({...h, unit, min: unit === 'tow' ? 3 : 1}));
+  sendUnit(unit); await talk(UNIT_END[unit] || D.end || ''); ui.done(); }
+// help on its way: a tow truck (the usual tow), or a police car, ambulance or fire engine coming up behind with its siren on
+const RESPONDERS = [];
+function sendUnit(unit){
+  if (unit === 'tow') { if (PLR && !tow && !PLR.rp) callTow(); return; }
+  if (!PLR || PLR.rp || !EV.length || foot) return; const sd = PLR.sd, p = PLR.p - 380, n = nAvail(sd, p);
+  const v = addVehicle(sd, Math.max(0, n - 1), p, unit, 26); v.em = true; v.v0 = 33; RESPONDERS.push({v, unit, said: false, until: clock + 120});
+  toast(`${UNIT_NAME[unit]} menuju lokasi Anda dengan sirene`, 'warn'); }
+function tickResponders(){ for (let i = RESPONDERS.length - 1; i >= 0; i--) { const r = RESPONDERS[i];
+  if (!vehicles.includes(r.v) || clock > r.until) { RESPONDERS.splice(i, 1); continue; }
+  if (!r.said && PLR && r.v.sd === PLR.sd && r.v.p > PLR.p - 25) { r.said = true; toast(`${UNIT_NAME[r.unit]} tiba di lokasi Anda`); r.v.until = clock + 30; } } }
+function speak(text, urgent){ if (!cfg.voice || TUT || (FLY && FLY.on)) return; VOX.say(text, {channel: 'nav', urgent}); VOICE.last = text; }
+VOX.configure({engine: cfg.voiceEngine || 'auto', strong: !MOBILE || (navigator.deviceMemory || 4) >= 4});
 try { if ('speechSynthesis' in window) speechSynthesis.getVoices(); } catch (e) {}
 const sayKm = km => km >= 1 ? `${km < 10 ? (Math.round(km*2)/2).toString().replace('.5', ' setengah') : Math.round(km)} kilometer` : `${Math.max(50, Math.round(km*1000/50)*50)} meter`;
 const cooled = (k, s) => { if (clock - (VOICE.cool[k] ?? -1e9) < s) return false; VOICE.cool[k] = clock; return true; };
@@ -5597,6 +5619,7 @@ PHONE = TUT ? null : initPhone({cfg, saveCfg, toast, rp: rp$, rpS, sfx: phoneSfx
   openMusic: () => $('musb').click(), openSettings: () => $('toggle').click(),
   topUp(n){ if (WAL.cash < n) return 'Uang tunai tidak cukup'; WAL.cash -= n; WAL.etoll += n; uiNeeds(); walLog(-n, 'Isi saldo e-Toll'); toast(`Saldo e-Toll +${rp$(n)}`); return null; },
   walletLog: () => WLOG,
+  dispatch: (n, ui) => dispatchCall(n, ui), hangup: () => VOX.stopChannel('phone'),
   callNumber(n){ if (n === '133' || n === '14080') { if (PLR && !tow && !PLR.rp) { callTow(); return 'Petugas: derek dikirim ke lokasi Anda'; } return 'Petugas: jalan tol aman, terima kasih'; }
     if (n === '110') return 'Polisi: laporan diterima, petugas PJR berpatroli'; if (n === '118') return 'Ambulans: siaga, sebutkan lokasi KM'; return ''; },
   view: () => renderer.domElement,
@@ -5766,7 +5789,7 @@ function tick(dt,stream=true){
 function streamWorld(){ if (window.__perf) { const P = window.__perf, T = (k, f) => { const a = performance.now(); f(); const d = performance.now() - a; P[k] = P[k] || {sum: 0, max: 0, n: 0}; P[k].sum += d; P[k].n++; if (d > P[k].max) P[k].max = d; };
     T('ensureAhead', ensureAhead); T('blocks', () => setupBlocks(false)); T('world', () => updateWorld(true)); T('signals', () => { updateSignals(); animGhosts(); }); return; }
   ensureAhead();setupBlocks(false);updateWorld(true);updateSignals();animGhosts();}
-window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol,get ready3d(){return !!FERRY3D;},frame3d(k){if(!FERRY3D)return null;FERRY3D.t0=performance.now()-k*FERRY3D.dur*1000;ferry3dFrame(1/30);return renderer.domElement.toDataURL('image/jpeg',.85);}};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.LMK_BUILD=LMK_BUILD; window.__tj.gg=ggRule; window.__tj.apply=apply; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll;
+window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol,get ready3d(){return !!FERRY3D;},frame3d(k){if(!FERRY3D)return null;FERRY3D.t0=performance.now()-k*FERRY3D.dur*1000;ferry3dFrame(1/30);return renderer.domElement.toDataURL('image/jpeg',.85);}};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.LMK_BUILD=LMK_BUILD; window.__tj.gg=ggRule; window.__tj.apply=apply; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll; window.__tj.voice = {VOX, dispatch: dispatchCall, sendUnit, get responders(){ return RESPONDERS; }}; window.__tj.phone = () => PHONE;
 window.__tj.moveSvg = moveSvg; window.__tj.nextMv = nextMove;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering
@@ -5876,6 +5899,7 @@ if(window.TJ_BOOT){
   await window.TJ_BOOT.stage(84,'Menyiapkan kendaraan');
   try { poolWarm(MOBILE ? {car: 6, suv: 3, van: 2, truck: 3, moto: 5, pickup: 1, bus: 1, taxi: 1, angkot: 1, police: 1, ambulance: 1, damkar: 1} : {car: 12, suv: 6, van: 4, truck: 5, moto: 8, pickup: 2, bus: 2, taxi: 2, angkot: 2, police: 1, ambulance: 1, damkar: 1}); } catch (e) {}
   await window.TJ_BOOT.stage(87,'Menyiapkan kamera dan pencahayaan');
+  if (cfg.voice || cfg.radio) setTimeout(() => VOX.prepare(), 8000);
   updateSegs();placeGroups();place();placeFoot();placeTow();placeJob();mpPlace();
   for(let i=0;i<40;i++)updateCam(1/60);
   updateBend();updateHud(0);drawMap();

@@ -549,3 +549,27 @@ Workflow juga bisa dijalankan manual dari tab **Actions → Data jalan OSM → R
 ### Kapal feri 3D
 
 Saat menyeberang (Merak–Bakauheni, Ketapang–Gilimanuk), layar menampilkan kapal Ro-Ro 3D *KMP Nusantara Jaya* di selat (`ferry-3d.js`, dimuat saat penyeberangan pertama): laut berombak dengan pantulan langit dan kilau matahari, buih di belakang buritan dan di haluan, pulau dan kapal lain di kejauhan, burung camar, bendera Merah Putih berkibar, radar berputar. Langit, laut dan cahaya mengikuti jam game (siang, senja/pagi, malam dengan bulan, bintang dan jendela kapal menyala). Kamera drone otomatis: dari haluan berputar turun ke lambung, menyusuri lambung dekat permukaan air, lalu naik menjauh di belakang buritan. HUD disembunyikan; info pelayaran dan tombol *Percepat* tetap di bawah. Pelayaran 22 detik (16 detik di HP).
+
+### Kecepatan maksimal 200 km/jam
+
+Semua kendaraan bermotor (mobil, SUV, bus, truk, motor, kendaraan darurat) punya kecepatan puncak 200 km/jam. Batas ini bisa dicapai dan tidak bisa dilewati, termasuk di turunan dan setelah upgrade mesin; upgrade hanya menambah akselerasi. Gigi 5 transmisi manual berlari sampai batas itu.
+
+### Performa (semua perangkat)
+
+- **Kolam kendaraan:** model kendaraan dipakai ulang, tidak dibuat ulang. Saat layar loading ("Menyiapkan kendaraan") tiap jenis sudah dibuat lebih dulu, jadi tidak ada patah-patah saat kendaraan baru muncul.
+- **Dunia dicicil per frame:** bangunan, mobil parkir rest area, dan penggabungan geometri dibangun sedikit demi sedikit di frame berikutnya (antrean `LATER`). Pembangunan satu potongan jalan kini 11–18 ms, sebelumnya sampai 80 ms.
+- **Simulasi hemat:** kendaraan AI yang jauh (lebih dari 180 m) mengambil keputusan tiap 3 frame. Pemeriksaan aturan lalu lintas AI dilakukan 10 kali per detik. Foto ETLE hanya diambil untuk pelanggaran pemain, paling sering sekali per 1,5 detik.
+- **Kualitas otomatis:** kualitas grafis turun lebih cepat di perangkat lambat (fps di bawah 25 selama 2 detik). HP dengan RAM kecil langsung mulai di kualitas rendah.
+
+### Suara: Piper (bahasa Indonesia) dan dispatcher darurat
+
+Semua suara game (navigasi, penyiar radio 7MIT FM, petugas telepon darurat) memakai TTS lokal **Piper** dengan suara Indonesia `id_ID-news_tts-medium`, tanpa API dan tanpa biaya (`voice.js`).
+
+1. **Klip siap putar.** Kalimat tetap (sapaan petugas, iklan dan tips radio, salam stasiun) dirender sekali oleh GitHub Action `voice-data.yml` (`tools/voice-build.py`) ke branch `voice-data` sebagai MP3. Daftar kalimatnya ada di `voice-lines.js`; Action jalan otomatis saat file itu berubah.
+2. **Piper di perangkat.** Kalimat yang berubah-ubah (lokasi dan km, info lalu lintas, jam) disintesis di Web Worker (`piper-worker.js`: espeak-ng WebAssembly untuk fonem, onnxruntime-web untuk model). Model sekitar 60 MB diunduh sekali dari branch `voice-data`, lalu disimpan di cache browser. Ini hanya di perangkat yang kuat: desktop, atau HP dengan RAM 4 GB ke atas.
+3. **Cadangan.** Selama model belum siap, di HP lemah, atau bila *Pengaturan → Mesin suara → Suara bawaan perangkat* dipilih, suara bawaan browser yang dipakai. Navigasi tidak pernah menunggu lebih dari 1,5 detik.
+
+**Dispatcher.** Nomor 112, 110, 118, 119, 113, 115, 14080 dan 133 di aplikasi Telepon dijawab petugas bersuara: Rina (112), Brigadir Andi (110), Sari (118/119), Dimas (113), Yoga (115), Dewi (14080), Hadi (133).
+- Suara di telepon diberi filter seperti saluran telepon, dan teks ucapan tampil di layar.
+- Petugas 112 menanyakan keadaan daruratnya (kecelakaan, mogok, kebakaran, polisi, sakit) lalu meneruskan ke unit yang tepat.
+- Petugas membacakan ruas tol dan km lokasi Anda, lalu mengirim bantuan: mobil derek, atau patroli polisi, ambulans, atau pemadam kebakaran yang datang dari belakang dengan sirene.

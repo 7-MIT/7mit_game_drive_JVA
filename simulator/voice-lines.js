@@ -46,8 +46,13 @@ export const UNIT_NAME = {police: 'Patroli polisi', ambulance: 'Ambulans', damka
 // the location read-back (synthesised on the device): road, km, minutes
 export const dispatchLocation = ({road, km, unit, min}) => `Baik. Lokasi Anda terdeteksi di ${road || 'ruas jalan ini'}${km ? `, kilometer ${km}` : ''}. ${UNIT_NAME[unit] || 'Petugas'} menuju ke sana, perkiraan tiba ${min} menit.`;
 
+// the caption on the phone screen: numbers written as numbers again
+const SPOKEN = [['satu satu dua', '112'], ['satu satu nol', '110'], ['satu satu delapan', '118'], ['satu satu sembilan', '119'], ['satu satu tiga', '113'], ['satu satu lima', '115'], ['satu tiga tiga', '133']];
+export const shown = t => SPOKEN.reduce((s, [a, b]) => s.replace(a, b), t);
+export const CANCEL = 'Baik, panggilan kami tutup. Tetap hati-hati di jalan.';
+export const UNIT_END = {police: DISPATCH['110'].end, ambulance: DISPATCH['118'].end, damkar: DISPATCH['113'].end, tow: DISPATCH['14080'].end};
 // all fixed lines (for the clip builder)
-export function fixedLines(){ const s = new Set([STATION_ID, ...ADS, ...TIPS]);
+export function fixedLines(){ const s = new Set([STATION_ID, ...ADS, ...TIPS, CANCEL]);
   for (const d of Object.values(DISPATCH)) { s.add(d.greet); if (d.end) s.add(d.end); }
   for (const [, , , pass] of EMERGENCIES) s.add(pass);
   return [...s]; }
