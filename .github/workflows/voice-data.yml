@@ -1,0 +1,50 @@
+# Builds the game's voice (Piper TTS, Indonesian voice id_ID-news_tts-medium): the clips of every fixed line (dispatchers,
+# radio) and the model the game uses on the device for the rest. Published to the branch voice-data (simulator/voice.js, VOICE_BASE).
+name: Suara (Piper TTS)
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['simulator/voice-lines.js', 'tools/voice-build.py', 'tools/voice-lines.mjs', '.github/workflows/voice-data.yml']
+permissions:
+  contents: write
+concurrency:
+  group: voice-data
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Pasang Piper dan ffmpeg
+        run: |
+          pip install piper-tts==1.8.0
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - name: Unduh suara bahasa Indonesia
+        run: |
+          mkdir -p voice
+          base=https://huggingface.co/rhasspy/piper-voices/resolve/main/id/id_ID/news_tts/medium
+          curl -sSfL -o voice/id_ID-news_tts-medium.onnx "$base/id_ID-news_tts-medium.onnx"
+          curl -sSfL -o voice/id_ID-news_tts-medium.onnx.json "$base/id_ID-news_tts-medium.onnx.json"
+      # keep the clips already made: only new or changed lines are rendered
+      - name: Ambil hasil sebelumnya
+        run: |
+          mkdir -p out
+          git fetch --depth=1 origin voice-data && git --work-tree=out checkout origin/voice-data -- . || echo "belum ada"
+          git reset -q
+      - name: Buat klip suara
+        run: node tools/voice-lines.mjs | python3 tools/voice-build.py out voice/id_ID-news_tts-medium.onnx
+      - name: Terbitkan ke branch voice-data
+        run: |
+          cd out
+          git init -q -b voice-data
+          git add -A
+          git -c user.name="driving.7mit bot" -c user.email="halo@7mit.org" commit -q -m "Suara $(date -u +%Y-%m-%d)"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" voice-data
