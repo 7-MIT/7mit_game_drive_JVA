@@ -672,6 +672,20 @@ export function corrGeo(id){
   if (ctl.length > 1) out.push(ctl[ctl.length - 1]);
   GEO.set(id, out); return out;
 }
+// the road's places in order with their KM (for routing it over the real roads)
+export function corrPlaces(id){ const c = CORR[id]; if (!c) return []; return c.nodes.map(n => { const P = NODES.get(n.key); return P && P.lat != null ? {lat: P.lat, lon: P.lon, km: n.km} : null; }).filter(Boolean); }
+// replace the curve of a road with the real roads between its places: segs[i] is the path [{lat, lon}] from place i to
+// place i + 1 (or null: that stretch keeps its drawn curve); KM along each path is spread by distance
+const GEO0 = new Map();
+export function setCorrRoute(id, segs){
+  const g0 = GEO0.get(id) || corrGeo(id); if (!g0) return; GEO0.set(id, g0); const P = corrPlaces(id), out = [];
+  for (let i = 0; i < P.length - 1; i++) { const a = P[i], b = P[i + 1], sg = segs[i];
+    if (sg && sg.length > 1) { let tot = 0; const d = [0]; for (let k = 1; k < sg.length; k++) { tot += hav2(sg[k - 1], sg[k]); d.push(tot); }
+      sg.forEach((q, k) => { if (k === sg.length - 1 && i < P.length - 2) return; out.push({lat: q.lat, lon: q.lon, km: a.km + (b.km - a.km)*d[k]/(tot || 1)}); }); }
+    else for (const q of g0) if (q.km >= Math.min(a.km, b.km) && q.km < Math.max(a.km, b.km) + (i === P.length - 2 ? 1e-6 : 0)) out.push(q); }
+  // KM must rise along the list for corrLL's search (roads listed with falling KM are mirrored back afterwards)
+  const up = out.length < 2 || out[out.length - 1].km >= out[0].km; const o2 = up ? out : out.slice().reverse();
+  if (o2.length > 1) GEO.set(id, o2); }
 // position on a road's curve at a KM
 export function corrLL(id, km){ const g = corrGeo(id); if (!g || !g.length) return null;
   if (km <= g[0].km) return g[0]; if (km >= g[g.length - 1].km) return g[g.length - 1];

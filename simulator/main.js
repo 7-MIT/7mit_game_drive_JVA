@@ -39,7 +39,7 @@ import {makeEtleCameras, createEtle} from './etle.js';
 import {initTrafficPanel} from './traffic-panel.js';
 import {createPursuit} from './pursuit.js';
 import {snapCorridor, createMapNodes, collectMapTraffic, TRAFFIC_COLORS, navigationStrokes} from './map-data.js';
-import {COAST, COAST_RINGS, REGIONS, regionOf, altAt, ALT_KM, CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, walkFree, choicesAt, edgesFrom, turnDeg, fmtKm, nodeLabel, JAVA, MADURA, corrGeo, corrLL, RULES} from './network.js';
+import {setCorrRoute, corrPlaces, COAST, COAST_RINGS, REGIONS, regionOf, altAt, ALT_KM, CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, walkFree, choicesAt, edgesFrom, turnDeg, fmtKm, nodeLabel, JAVA, MADURA, corrGeo, corrLL, RULES} from './network.js';
 
 const MOBILE = matchMedia('(pointer:coarse)').matches || innerWidth < 700;
 const LW = 3.6, MED = 1.2, CH = 120, OPEN_HW = 35, OVH = 7.5, PRC = 328, BACK = MOBILE ? 260 : 460, FWD = MOBILE ? 520 : 720;
@@ -755,10 +755,10 @@ const limitAt = u => Math.min(CORR[corrAt(u)].limit, CORR[corrAt(u)].cls==='t'?1
 const isToll = u => CORR[corrAt(u)].cls === 't';
 // traffic lights at town intersections: mainline green 26 s, amber 3 s, all-red 2 s, cross-street green 15 s, amber 3 s, all-red 2 s
 const SIG_CYCLE = 51, XW = 11, SL = XW/2 + 4.5;
-const NUT_HW = 9;                      // half length of a U-turn opening
+const NUT_HW = 14;                     // half length of a U-turn opening
 const nutOK = u => !isToll(u) && nAt(u) >= 1.5 && elevAt(u) < 0.5 && !KSITES.some(t => Math.abs(t.u - u) < 160) && !(SEA && u > SEA[0] - 300 && u < SEA[1] + 300);
 // where a car may cross the separator of a non-toll divided road: a U-turn opening or a signal crossing
-const nutOpen = u => NUT.some(o => Math.abs(o.u - u) < NUT_HW - 2) || KSITES.some(t => Math.abs(t.u - u) < XW/2 + 6);
+const nutOpen = u => NUT.some(o => Math.abs(o.u - u) < NUT_HW + 1) || KSITES.some(t => Math.abs(t.u - u) < XW/2 + 8);
 function sigMain(s){ const t = mod(clock + s.phase, SIG_CYCLE); return t < 26 ? 'G' : t < 29 ? 'Y' : 'R'; }
 function sigCross(s){ const t = mod(clock + s.phase, SIG_CYCLE); return t >= 31 && t < 46 ? 'G' : t >= 46 && t < 49 ? 'Y' : 'R'; }
 function lightAhead(sd, front){ for (const s of KSITES) { const d = sd*s.u - SL - front; if (d > -1 && d < 160) return {s, d}; } return null; }
@@ -2623,7 +2623,7 @@ function tickNeeds(dt){
   if (WAL.sleep < 60) sleepSaid = 0;
   // microsleep at 100 %: the hands drift off the wheel for a moment
   if (WAL.sleep >= 100 && !cfg.auto && !foot && (msT -= dt) < 0) { msT = rnd(15, 30); PLR.steer = (PLR.steer || 0) + (Math.random() - 0.5)*0.12; toast('Microsleep! Anda tertidur sesaat', 'bad'); shake = 0.3; }
-  if ((walT -= dt) < 0) { walT = 0.5; cfg.wal = {...WAL}; saveCfgSoon(); uiNeeds(); tickResponders();
+  if ((walT -= dt) < 0) { walT = 0.5; cfg.wal = {...WAL}; saveCfgSoon(); uiNeeds(); tickResponders(); routeTripRoads();
     try { const ll = latLonAt(uOfV(PLR)), r = regionOf(ll.lat, ll.lon); if (r !== islandNow) { islandNow = r; const k = document.querySelector('#hud .kick') || document.querySelector('.kick'); if (k) k.innerHTML = `<b>Jalan</b> Pulau ${REGIONS[r].name} · Lajur kiri`; } } catch (e) {}
     if (carReturn && !job && !ride && swapPlayerVeh(carReturn)) { toast(`Kendaraan perusahaan dikembalikan · kembali ke ${VEH[carReturn].label}`); carReturn = null; } }
 }
@@ -3714,7 +3714,8 @@ function lxBounds(v){
   // the median opening is only for a deliberate U-turn (or a contraflow on this side): driving straight you cannot drift across into oncoming traffic
   if (toll) { const z = cfAt(v.sd, v.p), cf = z && z.A === v.sd, atOpen = OPENS.some(o => Math.abs(o.u - u) < OPEN_HW - 4) && (cf || Math.abs(v.hd || 0) > 0.9 || v.lx < -0.5);
     if (!atOpen) { if (v.lx < -0.5) hi = Math.min(hi, -0.71); else lo = -0.29; } }
-  else if (nAt(u) >= 1.5 && !(nutOpen(u) && (Math.abs(v.hd || 0) > 0.9 || v.lx < -0.5))) { if (v.lx < -0.5) hi = Math.min(hi, -0.71); else lo = -0.29; }
+  else if (nAt(u) >= 1.5 && !nutOpen(u)) { if (v.lx < -0.5) hi = Math.min(hi, -0.71); else lo = -0.29; }
+  if (!toll && (nAt(u) < 1.5 || nutOpen(u)) && Math.abs(v.hd || 0) > 0.6) lo = Math.min(lo, -nn - 0.75);
   // on the MBZ deck: its parapet
   if (toll && mbzSide(u)) hi = Math.min(hi, (MED + 2*LW - (HW[v.type] || 0.92) - c)/LW);
   return [lo, hi];
@@ -3806,11 +3807,12 @@ function steerPlayer(v, dt){
   const [lo, hi] = lxBounds(v), side = Math.abs(v.vel*Math.sin(v.hd)), fast = Math.abs(v.vel) > 6 && side > 1.2;
   const wallHit = msg => { const a = Math.abs(Math.sin(v.hd)); hitFx(side*1.4, msg, 'side'); v.vel *= 1 - Math.min(0.85, a*1.8); v.hd *= 0.15; v.steer *= 0.3; };
   if (lx > hi) { lx = hi; if (v.hd*Math.sign(v.vel) > 0) wallHit(isToll(uOfV(v)) ? 'Menyerempet pagar pengaman' : townNear(uOfV(v)) ? 'Menabrak bangunan di tepi jalan' : 'Masuk parit di tepi jalan'); }
-  if (lx < lo) { lx = lo; if (v.hd*Math.sign(v.vel) < 0) wallHit(isToll(uOfV(v)) ? 'Menyerempet median beton' : 'Keluar badan jalan'); }
+  if (lx < lo) { lx = lo; if (v.hd*Math.sign(v.vel) < 0) wallHit(isToll(uOfV(v)) ? 'Menyerempet median beton' : lo > -0.5 ? 'Menyerempet separator beton' : 'Keluar badan jalan'); }
   v.lx = lx; v.lane = Math.round(lx);
   { const n0 = nAvail(v.sd, v.p), was = v.offroad; v.offroad = !v.rp && lx > n0 - 1 + (2.9 + LW/2)/LW;
     if (v.offroad && !was && clock - (v.offT || -9) > 4) { v.offT = clock; toast('Keluar dari jalan: rumput, laju berkurang', 'warn'); } }
-  if (Math.abs(v.hd) > 2.3 && lx < -0.7 && Math.abs(v.vel) > 0.3 && clock - (v.uT || 0) > 2) { v.uT = clock; v.wantU = true; }   // done at the start of the next tick
+  // a U-turn counts once the car faces back across the road (on non-toll roads already at ~100°, so it fits between the kerbs)
+  if (Math.abs(v.hd) > (isToll(uOfV(v)) ? 2.3 : 1.7) && lx < -0.7 && Math.abs(v.vel) > 0.3 && clock - (v.uT || 0) > 2) { v.uT = clock; v.wantU = true; }   // done at the start of the next tick
   if (Math.abs(v.hd) > 1) return;      // turning around: no ramps or turns
   // leaving the road on the left: exit ramp, rest area, detour or turn at an intersection
   const n = nAvail(v.sd, v.p), front = v.p + v.len/2;
@@ -4572,6 +4574,30 @@ function zoomAt(x, y, f){ if (AT.follow) { x = AT.W/2; y = AT.H/2; } const p = a
 function onOSM(q, cid, keyKm){ if (!OSM.ready || !q) return q; const c = CORR[cid], kinds = !c ? ['t', 'n', 'p'] : c.cls === 't' ? OSM_KINDS.t : c.cls === 'a' ? OSM_KINDS.a : c.prov ? ['p', 'n', 's'] : OSM_KINDS.n;
   const key = keyKm != null ? cid + ':' + keyKm.toFixed(2) : null; if (key && OSNAP.has(key)) return OSNAP.get(key);
   const r = snapCorridor(OSM, q, c, kinds, c && c.cls === 't' ? 5 : 1.5), out = r ? {lat: r.lat, lon: r.lon} : q; if (key) { if (OSNAP.size > 20000) OSNAP.clear(); OSNAP.set(key, out); } return out; }
+// ---------- the trip's non-toll roads routed over the real roads (osm-route.js): the map line and the road in the game follow them ----------
+// RQ.done: road id -> {v: OSM data version, full: every stretch found}; a road with a missing stretch is tried again when more OSM data comes in
+const RQ = {done: new Map(), cur: null, busy: false, w: null, n: 0};
+function geoChanged(){ OSNAP.clear(); MAP_NODES.clear(); LAT = null; segT = 0; drawMap.cache = null; JCACHE.clear();
+  try { for (const [i, g] of chunks) if (i*CH > camU + 350) { dropSolids([g]); dispose(g); chunks.delete(i); } } catch (e) {} try { drawMap(); reqAtlas(); } catch (e) {} }
+// one stretch in the worker (the main thread only picks the roads in its box); null when the worker cannot run
+function routeStretch(a, b, kinds){ return new Promise(res => {
+  if (!RQ.w) { try { RQ.w = new Worker(new URL('./osm-route-worker.js', import.meta.url), {type: 'module'}); } catch (e) { return res(null); } }
+  const pad = 0.06, la0 = Math.min(a.lat, b.lat) - pad, la1 = Math.max(a.lat, b.lat) + pad, lo0 = Math.min(a.lon, b.lon) - pad, lo1 = Math.max(a.lon, b.lon) + pad, K = new Set(kinds);
+  const roads = OSM.roads.filter(r => K.has(r.k) && !(r.bb[2] < la0 || r.bb[0] > la1 || r.bb[3] < lo0 || r.bb[1] > lo1)).map(r => ({k: r.k, xy: r.xy, bb: r.bb}));
+  const id = ++RQ.n, to = setTimeout(() => { RQ.w.onmessage = null; res(null); }, 20000);
+  RQ.w.onmessage = e => { if (e.data.id !== id) return; clearTimeout(to); res(e.data.path); };
+  RQ.w.postMessage({id, roads, a: {lat: a.lat, lon: a.lon}, b: {lat: b.lat, lon: b.lon}, kinds}); }); }
+async function routeTripRoads(){
+  if (!OSM.ready || !EV.length || RQ.busy) return;
+  if (!RQ.cur) { const here = corrIdAt(PLR ? uOfV(PLR) : camU), ids = [...new Set([here, ...EV.map(e => e.cNext)])].filter(id => { const c = CORR[id], d = RQ.done.get(id);
+      return c && (c.cls === 'n' || c.cls === 'a') && !(d && (d.full || d.v === OSMV)); });
+    if (!ids.length) return; const id = ids[0], c = CORR[id];
+    RQ.cur = {id, P: corrPlaces(id), i: 0, segs: [], kinds: c.cls === 'a' ? ['n', 'p', 's', 'c', 'r'] : c.prov ? ['p', 'n', 's', 'c'] : ['n', 'p', 's', 'c'], v: OSMV}; }
+  const Q = RQ.cur; RQ.busy = true;
+  try { if (Q.i < Q.P.length - 1) { Q.segs.push(await routeStretch(Q.P[Q.i], Q.P[Q.i + 1], Q.kinds)); Q.i++; } } finally { RQ.busy = false; }
+  if (Q.i >= Q.P.length - 1) { RQ.cur = null; const full = Q.segs.every(Boolean); RQ.done.set(Q.id, {v: Q.v, full});
+    if (Q.segs.some(Boolean)) { setCorrRoute(Q.id, Q.segs); geoChanged(); } }
+  else routeTripRoads(); }
 function corrIdAt(u){ const i = evAt(u); return i >= 0 && EV[i] ? EV[i].cNext : null; }
 function latLonMap(u){ return onOSM(latLonAt(u), corrIdAt(u), Math.round(kmAt(u)*20)/20); }
 // the route followed along one real road: every point looked for next to where the previous one moved to, so a crossing
@@ -5896,7 +5922,7 @@ function tick(dt,stream=true){
 function streamWorld(){ if (window.__perf) { const P = window.__perf, T = (k, f) => { const a = performance.now(); f(); const d = performance.now() - a; P[k] = P[k] || {sum: 0, max: 0, n: 0}; P[k].sum += d; P[k].n++; if (d > P[k].max) P[k].max = d; };
     T('ensureAhead', ensureAhead); T('blocks', () => setupBlocks(false)); T('world', () => updateWorld(true)); T('signals', () => { updateSignals(); animGhosts(); }); return; }
   ensureAhead();setupBlocks(false);updateWorld(true);updateSignals();animGhosts();}
-window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol,get ready3d(){return !!FERRY3D;},frame3d(k){if(!FERRY3D)return null;FERRY3D.t0=performance.now()-k*FERRY3D.dur*1000;ferry3dFrame(1/30);return renderer.domElement.toDataURL('image/jpeg',.85);}};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.LMK_BUILD=LMK_BUILD; window.__tj.gg=ggRule; window.__tj.apply=apply; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll; window.__tj.NUT = () => NUT; window.__tj.lxBounds = lxBounds; window.__tj.peds = PEDS; window.__tj.pedDbg = {step: stepPeds, blocks: pedBlocks, sigCross, KS: () => KSITES, eAt, set sig(f){ pedSig = f; }}; window.__tj.spbu = {sites: SPBU_SITES, near: spbuNear, ctx: () => svcContext(), live(){ const out = []; scene.traverse(o => { if (o.isMesh && o.material === SPBU_SIGN?.mat) { const g = o.parent.parent; out.push([g.userData.u0, Math.round(o.parent.position.x), Math.round(o.parent.position.z)]); } }); return out; }}; window.__tj.voice = {VOX, dispatch: dispatchCall, sendUnit, get responders(){ return RESPONDERS; }}; window.__tj.phone = () => PHONE;
+window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol,get ready3d(){return !!FERRY3D;},frame3d(k){if(!FERRY3D)return null;FERRY3D.t0=performance.now()-k*FERRY3D.dur*1000;ferry3dFrame(1/30);return renderer.domElement.toDataURL('image/jpeg',.85);}};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.LMK_BUILD=LMK_BUILD; window.__tj.gg=ggRule; window.__tj.apply=apply; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll; window.__tj.route = {RQ, step: routeTripRoads, OSM, openAtlas}; window.__tj.NUT = () => NUT; window.__tj.lxBounds = lxBounds; window.__tj.steerPlayer = steerPlayer; window.__tj.uTurn = uTurn; window.__tj.peds = PEDS; window.__tj.pedDbg = {step: stepPeds, blocks: pedBlocks, sigCross, KS: () => KSITES, eAt, set sig(f){ pedSig = f; }}; window.__tj.spbu = {sites: SPBU_SITES, near: spbuNear, ctx: () => svcContext(), live(){ const out = []; scene.traverse(o => { if (o.isMesh && o.material === SPBU_SIGN?.mat) { const g = o.parent.parent; out.push([g.userData.u0, Math.round(o.parent.position.x), Math.round(o.parent.position.z)]); } }); return out; }}; window.__tj.voice = {VOX, dispatch: dispatchCall, sendUnit, get responders(){ return RESPONDERS; }}; window.__tj.phone = () => PHONE;
 window.__tj.moveSvg = moveSvg; window.__tj.nextMv = nextMove;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering

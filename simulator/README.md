@@ -586,3 +586,12 @@ Di semua jalan nasional, kota dan kabupaten ada SPBU setiap 200 m di tiap sisi (
 - **Separator beton:** jalan non-tol 4 lajur atau lebih punya separator beton pendek (0,6 m) yang terbuka di persimpangan dan di **putaran balik**. Putaran balik ada kira-kira tiap 800 m, dengan rambu biru "PUTAR BALIK" di kedua ujungnya. Separator menahan mobil, jadi putar balik hanya bisa di bukaan atau persimpangan. Di jalan tanpa separator, putar balik bisa di mana saja. Median tol memakai separator beton profil *New Jersey* setinggi 1,25 m.
 - **Trotoar:** semua jalan non-tol punya trotoar 15 cm lebih tinggi dengan kerb. Di kota trotoarnya 3 m, di luar kota 2 m. Trotoar terbuka di persimpangan, gang, dan pintu masuk SPBU.
 - **Pejalan kaki NPC** berjalan di trotoar (maksimal 18, atau 8 di HP/kualitas rendah, model dipakai ulang). Di lampu merah mereka menunggu di tepi zebra cross lalu menyeberang saat fase penyeberang hijau. Di jalan tanpa separator mereka kadang menyeberang di tengah ruas, tapi hanya kalau tidak ada kendaraan dalam ±7 detik. Mobil AI berhenti untuk pejalan kaki yang menyeberang. Menabrak pejalan kaki dihitung sebagai tabrakan.
+
+### Rute mengikuti jalan asli
+
+Garis navigasi di peta dan jalan di dunia 3D untuk jalan non-tol (nasional, provinsi, akses tol) mengikuti jalan aslinya di OpenStreetMap, bukan garis lurus antarkota.
+- `osm-route.js` mencari jalur terpendek (A*) di jalan nasional, provinsi, kabupaten, dan kota yang sudah dimuat. Simpang dirakit ulang karena data OSM disederhanakan: titik berjarak di bawah ~11 m digabung, segmen yang bersilangan diberi simpang, dan ujung jalan dalam 30 m dari jalan lain disambung sebagai simpang T.
+- Pencarian berjalan di Web Worker (`osm-route-worker.js`), satu ruas antarkota per giliran. Ruas yang sedang dilalui dihitung lebih dulu.
+- Hasilnya dipasang lewat `setCorrRoute`. Ruas yang belum tersambung dicoba lagi saat data OSM wilayah baru selesai dimuat.
+
+**Putar balik:** di bukaan putaran balik (28 m) dan persimpangan, mobil bebas menyeberang dan boleh melebar ke bahu jalan seberang. Di jalan non-tol, putar balik sudah terhitung saat mobil menghadap kira-kira 100° ke seberang (belok kanan), jadi muat di antara kerb jalan 2 lajur.
