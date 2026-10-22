@@ -265,7 +265,7 @@ const asphalt = M(0x3b3d40, {roughness:0.95});
 roadSurface(asphalt, renderer.capabilities.getMaxAnisotropy());
 const concrete = M(0xa9a59c);
 const white = new THREE.MeshBasicMaterial({color:0xe9e7df});
-const yellowLine = new THREE.MeshBasicMaterial({color:0xe8c21a});
+const yellowLine = new THREE.MeshBasicMaterial({color:0xf0b21e});
 const railMat = M(0x9aa1a6, {metalness:0.6, roughness:0.4, side:THREE.DoubleSide});
 const lampMat = M(0x8c9196, {metalness:0.5, roughness:0.5});
 const lampHeadMat = new THREE.MeshStandardMaterial({color:0x222222, emissive:0xffc98a, emissiveIntensity:0});
@@ -850,7 +850,7 @@ function dropSolids(gs){ const set = new Set(gs); SOLIDS = SOLIDS.filter(o => !s
 const trunkGeo = new THREE.CylinderGeometry(0.17,0.29,2.8,12); trunkGeo.translate(0,1.4,0); trunkGeo.userData.keep = true;
 const crownGeo=foliageGeometry('conifer'),blobGeo=foliageGeometry('broadleaf');
 const trunkMat = M(0x5a4330), crownMat = M(0x3f5f34,{vertexColors:true}), blobMat = M(0x587a3a,{vertexColors:true});
-const dashGeo = new THREE.PlaneGeometry(0.15, 3); dashGeo.rotateX(-Math.PI/2); dashGeo.userData.keep = true;
+const dashGeo = new THREE.PlaneGeometry(0.2, 3); dashGeo.rotateX(-Math.PI/2); dashGeo.userData.keep = true;
 const prDashGeo = new THREE.PlaneGeometry(0.12, 3); prDashGeo.rotateX(-Math.PI/2); prDashGeo.userData.keep = true;
 const poleGeo = new THREE.CylinderGeometry(0.12,0.16,11,8); poleGeo.translate(0,5.5,0); poleGeo.userData.keep = true;
 const armGeo = new THREE.BoxGeometry(6, 0.14, 0.14); armGeo.translate(0,10.9,0); armGeo.userData.keep = true;
@@ -877,7 +877,9 @@ function kmPostTex(txt){ return canvasTex(0.5, 0.7, (x, w, h) => { x.fillStyle =
   x.fillStyle = '#111'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = `800 200px ${SIGN_FONT}`; x.fillText('KM', w/2, h*0.3); fit(x, txt, w - 80, 300, 800); x.fillText(txt, w/2, h*0.66); }); }
 
 // ---------- national road (jalan nasional) chunk ----------
+const swMat = M(0xb9b0a3), SW_H = 0.15, SW_IN = town => town ? 2.0 : 2.6, SW_OUT = town => town ? 5.0 : 4.6;   // sidewalk: paving, height, inner and outer edge past the lane edge
 const uPoleMat = M(0x9a948a), uBarMat = M(0x6b6660), curbMat = M(0xc9c4b8), shrubMat = M(0x4f7a3a), shoulderMat = M(0x8f8a76), roofMat = M(0x8a4b35), roofMat2 = M(0x6b3b2a);
+const curbMatD = curbMat.clone(); curbMatD.side = THREE.DoubleSide;
 const RUKO = [0xe8d9b5, 0xd9c3a0, 0xf0e6d2, 0xc9d6c3, 0xe3c8c0, 0xd2d8e0, 0xf2efe8, 0xe6b98a].map(c => M(c));
 const AWN = [0x2a6fb5, 0xc8342b, 0xe0a020, 0x2f8a4a, 0x7a3fa0].map(c => M(c, {roughness:0.6}));
 // sawah: rows of rice and the raised bunds (pematang) between plots, young green, ripe yellow, and flooded at planting time
@@ -922,16 +924,19 @@ function buildChunkNat(i){
   g.userData.u0 = u0; const Z = u => -(u - u0); const nearbyBuildings=[], spbuHere = [];
   const us = []; for (let u = u0; u <= u1 + 0.01; u += 10) us.push(u);
   const divided = nAt(u0 + CH/2) >= 1.5, town = townNear(u0 + CH/2, TOWN_R + 80);
+  // road markings: yellow on national roads, white on provincial / city / regency roads (and the toll access roads)
+  const cc = EV.length ? CORR[corrAt(u0 + CH/2)] : null, mk = cc && cc.cls === 'n' && !cc.prov ? yellowLine : white;
   const xGap = u => KSITES.some(t => Math.abs(t.u - u) < XW/2 + 9);
   const sea = SEA && u1 > SEA[0] - 200 && u0 < SEA[1] + 200;    // the Suramadu bridge and its approaches: no land use here
   if (sea) suramaduBridge(g, u0, u1, Z);
   const SJ = sea ? [] : osmJunctions(u0, u1); sideStreets(g, u0, u1, Z, SJ);     // the real side streets (OpenStreetMap)
   for (const s of [-1, 1]) {
     g.add(strip(us, u => s*(MED - 0.05), u => s*(eAt(u) + 0.8), 0, asphalt, Z));
-    g.add(strip(us, u => s*(eAt(u) + 0.8), u => s*(eAt(u) + (town ? 5 : 2.6)), 0.004, town ? curbMat : shoulderMat, Z));
-    g.add(strip(us, u => s*(eAt(u) - 0.08), u => s*(eAt(u) + 0.08), 0.012, white, Z));
+    g.add(strip(us, u => s*(eAt(u) + 0.8), u => s*(eAt(u) + (sea ? 2.6 : SW_IN(town))), 0.004, town ? asphalt : shoulderMat, Z));
+    g.add(strip(us, u => s*(eAt(u) - 0.12), u => s*(eAt(u) + 0.12), 0.012, mk, Z));
+    if (divided) g.add(strip(us, u => s*(MED + 0.12), u => s*(MED + 0.3), 0.012, mk, Z));
     const dp = []; for (let l = 1; l < 7; l++) for (let u = Math.ceil(u0/9)*9; u < u1; u += 9) if (l < nAt(u + 1.5) - 0.3 && l < nAt(u) - 0.3) dp.push([s*(MED + l*LW), Z(u + 1.5)]);
-    g.add(instanced(dashGeo, white, dp, 0.012));
+    g.add(instanced(dashGeo, mk, dp, 0.012));
     const ku = u0 + 60;
     if (EV.length && !xGap(ku)) { const p = panelMesh(0.5, 0.7, kmPostTex(kmAt(ku).toFixed(1).replace('.', ','))); p.position.set(s*(eAt(ku) + 3.2), 1.1, Z(ku)); p.rotation.y = s < 0 ? 0 : Math.PI; g.add(p);
       addSolid(g, 'Menabrak patok KM', ku - 0.3, ku + 0.3, s*(eAt(ku) + 3.2) - 0.3, s*(eAt(ku) + 3.2) + 0.3); }
@@ -967,6 +972,11 @@ function buildChunkNat(i){
       for (const x0 of [6, 12]) addSolid(g, 'Menabrak tiang kanopi SPBU', su - 5.8, su + 5.8, s*(e0 + x0) - 0.3, s*(e0 + x0) + 0.3);
       addSolid(g, 'Menabrak minimarket SPBU', su - 6, su + 6, s*(e0 + 18), s*(e0 + 24));
       for (let k = nearbyBuildings.length - 1; k >= 0; k--) { const o = nearbyBuildings[k]; if (Math.sign(o.x) === s && Math.abs(o.z - Z(su)) < 18 + (o.w || 6)/2 && Math.abs(o.x) - (o.d || 6)/2 < e0 + 27) nearbyBuildings.splice(k, 1); } }
+    // the sidewalk (trotoar): 15 cm up with a curb, open at crossings, side streets and SPBU driveways
+    if (!sea) { const a0 = SW_IN(town), a1 = SW_OUT(town), gaps = KSITES.filter(t => Math.abs(t.u - (u0 + u1)/2) < CH + XW).map(t => [t.u - XW/2 - 2, t.u + XW/2 + 2])
+        .concat(SJ.filter(j => j.s === s).map(j => [j.u - SIDE_W[j.k]/2 - 2, j.u + SIDE_W[j.k]/2 + 2]), spbuHere.filter(t => t.s === s).map(t => [t.u - 15, t.u + 15]));
+      for (const [a, b] of cut([u0, u1], gaps)) { const ws = []; for (let u = a; u < b; u += 10) ws.push(u); ws.push(b); if (ws.length < 2) continue;
+        g.add(strip(ws, u => s*(eAt(u) + a0), u => s*(eAt(u) + a1), SW_H, swMat, Z), wall(ws, u => s*(eAt(u) + a0), 0, SW_H, curbMatD, Z), wall(ws, u => s*(eAt(u) + a1), 0, SW_H, curbMatD, Z)); } }
     if (!town && s > 0) roadside(g, u0, u1, Z, R, false);
     // a billboard now and then outside towns, alternating sides
     if (!town && mod(i, 11) === 6 && s === (mod(Math.floor(i/11), 2) ? 1 : -1)) { const u = u0 + 50, o = 12;
@@ -984,12 +994,12 @@ function buildChunkNat(i){
   }
   if (!sea) addSutet(g, u0, u1, Z);
   if (divided) {
-    g.add(solid(2*MED - 0.4, 0.25, CH, curbMat, 0, 0.125, -CH/2));
-    const sp = []; for (let u = Math.ceil(u0/6)*6; u < u1; u += 6) if (!xGap(u)) sp.push([0, Z(u)]);
-    g.add(instanced(shrubGeo, shrubMat, sp, 0.2));
+    // 4+ lanes: a short concrete separator (0.6 m) down the middle, open at the crossings
+    g.add(strip(us, u => -MED, u => MED, 0.002, asphalt, Z));
+    for (const [a, b] of cut([u0, u1], KSITES.map(t => [t.u - XW/2 - 9, t.u + XW/2 + 9]))) g.add(solid(0.56, 0.22, b - a, barMat, 0, 0.11, Z((a + b)/2)), solid(0.24, 0.6, b - a, barMat, 0, 0.3, Z((a + b)/2)));
   } else {
     g.add(strip(us, u => -MED, u => MED, 0.002, asphalt, Z));
-    for (const o of [-0.18, 0.18]) g.add(strip(us, u => o - 0.06, u => o + 0.06, 0.012, yellowLine, Z));
+    for (const o of [-0.2, 0.2]) g.add(strip(us, u => o - 0.08, u => o + 0.08, 0.012, mk, Z));
   }
   const per = MOBILE ? 7 : 12, pts = [];
   for (let k = 0; k < (sea ? 0 : per*2); k++) { const s = k % 2 ? 1 : -1, u = u0 + R()*CH, o = (town ? 24 : 40) + R()*260; if (rampFoot(o, u, 6) || (o < 34 && spbuHere.some(t => t.s === s && Math.abs(t.u - u) < 20))) continue;
@@ -1014,12 +1024,12 @@ function buildChunk(i){
   const shW = u => mbzSide(u) ? 0.3 : 3, inVis = u => vis.some(([a, b]) => u >= a && u < b);
   for (const s of [-1, 1]) {
     for (const [a, b] of vis) { const ru = runsOf(a, b);
-      g.add(strip(ru, u => s*(MED - 0.05), u => s*(eAt(u) + shW(u)), 0, asphalt, Z), strip(ru, u => s*(MED + 0.13), u => s*(MED + 0.27), 0.012, white, Z));
+      g.add(strip(ru, u => s*(MED - 0.05), u => s*(eAt(u) + shW(u)), 0, asphalt, Z), strip(ru, u => s*(MED + 0.12), u => s*(MED + 0.3), 0.012, yellowLine, Z));
       for (const [c, d] of cut([a, b], mbzSideRanges())) g.add(strip(runsOf(c, d), u => s*(eAt(u) + 3), u => s*(eAt(u) + 7), 0.004, vergeMat, Z));
       // on the MBZ deck: a concrete parapet instead of shoulder and guard rail
       for (const [c, d] of mbzSideRanges()) { const pa = Math.max(a, c), pb = Math.min(b, d); if (pb - pa > 0.5) g.add(solid(0.3, 1.1, pb - pa, barMat, s*(MED + 2*LW + 0.15), 0.55, Z((pa + pb)/2))); } }
     for (const [a, b] of lineRuns) { const ru = runsOf(a, b);
-      g.add(strip(ru, u => s*(eAt(u) - 0.1), u => s*(eAt(u) + 0.1), 0.012, white, Z));
+      g.add(strip(ru, u => s*(eAt(u) - 0.12), u => s*(eAt(u) + 0.12), 0.012, white, Z));
       for (const [ra, rb] of railRuns(cut([a, b], mbzSideRanges()))) { const rr = runsOf(ra, rb);
         g.add(wall(rr, u => s*(eAt(u) + 2.8), 0.55, 0.85, railMat, Z));
         const pp = []; for (let u = Math.ceil(ra/4)*4; u < rb; u += 4) pp.push([s*(eAt(u) + 2.85), Z(u)]);
@@ -1043,7 +1053,7 @@ function buildChunk(i){
   for (const [a, b] of vis) g.add(strip(runsOf(a, b), u => -MED, u => MED, 0.003, medianMat, Z));
   // median barrier with U-turn openings
   const opens = OPENS.filter(o => o.u > u0 - 40 && o.u < u1 + 40).map(o => [o.u - OPEN_HW, o.u + OPEN_HW]);
-  for (const [a, b] of cut([u0, u1], opens.concat(mbzHidRanges()))) g.add(solid(0.6, 0.9, b - a, barMat, 0, 0.45, Z((a + b)/2)));
+  for (const [a, b] of cut([u0, u1], opens.concat(mbzHidRanges()))) g.add(solid(0.64, 0.42, b - a, barMat, 0, 0.21, Z((a + b)/2)), solid(0.28, 1.25, b - a, barMat, 0, 0.625, Z((a + b)/2)));
   // median lamps
   const covered = u => !inVis(u) || mbzUnder(u) || OVS.some(o => Math.abs(o.u - u) < 16) || SITES.some(t => (t.kind === 'j' && Math.abs(t.u - u) < 20) || (PLZK.has(t.kind) && Math.abs(t.u - u) < 14));
   const lz = []; for (let u = Math.ceil(u0/45)*45; u < u1; u += 45) if (!opens.some(([a, b]) => u > a - 3 && u < b + 3) && !covered(u)) lz.push(u);
@@ -2526,6 +2536,48 @@ function stepFoot(dt){
   for (const v of vehicles) { if (v.player) continue; const du = v.sd*v.p - f.u, dx = v.x - f.x;
     if (Math.abs(du) < v.len/2 + 0.3 && Math.abs(dx) < (HW[v.type] || 1) + 0.25 && v.vel > 1.5) { f.down = 2.6; f.vel = 0; stats.crashes++; crash('Tertabrak kendaraan!'); crashSound(v.vel*0.6); shake = 0.8; v.vel *= 0.4; v.crashT = clock + 6; break; } }
 }
+// ---------- pedestrians (NPC): walk the sidewalks of non-toll roads; cross at the signals when the crossing turns green, and on
+// undivided roads now and then mid-block when the gap in the traffic is big enough. Models are pooled; only near ones are animated.
+const PEDS = [], PED_POOL = []; let pedT = 0, pedSig = null;
+const pedMax = () => MOBILE || (QUAL && QUAL.level >= 3) ? 8 : 18;
+const pedLane = (pd, u) => pd.off + eAt(u);                    // |x| of a pedestrian walking on the sidewalk
+function pedFree(){ const m = PED_POOL.pop() || makePerson(); m.g.visible = true; m.g.rotation.set(0, 0, 0); if (!m.g.parent) scene.add(m.g); return m; }
+function pedGone(i){ const pd = PEDS[i]; PEDS.splice(i, 1); pd.m.g.visible = false; PED_POOL.push(pd.m); }
+function stepPeds(dt){
+  if (!PLR || !EV.length) { while (PEDS.length) pedGone(PEDS.length - 1); return; }
+  // spawn ahead and behind, out of the near view, on non-toll roads (not on bridges)
+  if ((pedT -= dt) < 0) { pedT = PEDS.length < pedMax()/2 ? 0.08 : 0.35; if (PEDS.length < pedMax()) { const ks = KSITES.filter(t => Math.abs(t.u - camU) < 300 && Math.abs(t.u - camU) > 40 && PEDS.filter(x => Math.abs(x.u - t.u) < 6).length < 3);
+      // some wait at the kerb of a signal crossing nearby, the rest walk along the road
+      const u = ks.length && Math.random() < 0.45 ? ks[Math.floor(Math.random()*ks.length)].u + rnd(-3, 3) : camU + (Math.random() < 0.7 ? rnd(60, 260) : -rnd(60, 160));
+      if (!isToll(u) && elevAt(u) < 0.5 && !(SEA && u > SEA[0] - 200 && u < SEA[1] + 200)) { const town = !!townNear(u + CH/2 - mod(u, CH), TOWN_R + 80), s2 = Math.random() < 0.5 ? 1 : -1;
+        PEDS.push({u, s: s2, dir: Math.random() < 0.5 ? 1 : -1, vel: rnd(1.0, 1.55), off: (SW_IN(town) + SW_OUT(town))/2 + rnd(-0.5, 0.5), st: 'walk', cd: KSITES.some(t => Math.abs(t.u - u) < 4) ? -1 : rnd(5, 30), ph: Math.random()*6, x: 0, xt: 0, down: 0, m: pedFree()}); } } }
+  const P = PLR, pu = uOfV(P);
+  for (let i = PEDS.length - 1; i >= 0; i--) { const pd = PEDS[i];
+    if (Math.abs(pd.u - camU) > 330) { pedGone(i); continue; }
+    if (pd.down > 0) { pd.down -= dt; if (pd.down <= 0) pedGone(i); continue; }
+    pd.cd -= dt;
+    if (pd.st === 'walk') { pd.u += pd.dir*pd.vel*dt; pd.x = pd.s*pedLane(pd, pd.u);
+      // at a signal: wait at the kerb for the crossing to turn green, then cross
+      const k = KSITES.find(t => Math.abs(t.u - pd.u) < 3.5);
+      if (k && pd.cd < 0) { if ((pedSig || sigCross)(k) === 'G') { pd.st = 'cross'; pd.xt = -pd.x; pd.u = k.u + pd.dir*rnd(1.5, 3.5); } else pd.u -= pd.dir*pd.vel*dt; }
+      // mid-block on an undivided road, when nothing is coming within about 7 seconds
+      else if (pd.cd < 0 && nAt(pd.u) < 1.5 && Math.random() < dt*0.04 && !vehicles.some(v => Math.abs(uOfV(v) - pd.u) < Math.max(25, Math.abs(v.vel)*7))) { pd.st = 'cross'; pd.xt = -pd.x; } }
+    else { const d = pd.xt - pd.x, st2 = Math.sign(d)*Math.min(Math.abs(d), pd.vel*1.15*dt); pd.x += st2;
+      if (Math.abs(pd.xt - pd.x) < 0.05) { pd.s = -pd.s; pd.st = 'walk'; pd.cd = rnd(40, 90); pd.dir = Math.random() < 0.5 ? 1 : -1; } }
+    // hit by the player or by an AI vehicle
+    const onRoad = Math.abs(pd.x) < eAt(pd.u) + 1;
+    if (onRoad) for (const v of vehicles) { if (Math.abs(v.vel) < 1.2) continue; const du = uOfV(v) - pd.u; if (Math.abs(du) > 6) continue;
+      if (Math.abs(du) < v.len/2 + 0.3 && Math.abs(v.x - pd.x) < (HW[v.type] || 1) + 0.3) { pd.down = 8; pd.st = 'down'; pd.m.g.rotation.x = -Math.PI/2;
+        if (v.player) { crash('Menabrak pejalan kaki!'); crashSound(v.vel*0.5); v.vel *= 0.6; } else v.crashT = clock + 6; break; } }
+    // pose: the sidewalk is 15 cm up; face where they walk; legs and arms swing when close enough to see
+    const g = pd.m.g; g.position.set(pd.x, onRoad ? 0 : SW_H, camU - pd.u); g.rotation.y = pd.st === 'cross' ? (pd.xt > pd.x ? Math.PI/2 : -Math.PI/2) : (pd.dir > 0 ? Math.PI : 0);
+    if (Math.abs(pd.u - pu) < 120) { pd.ph += pd.vel*dt*3.4; const sw = Math.sin(pd.ph)*0.45; pd.m.legs[0].rotation.x = sw; pd.m.legs[1].rotation.x = -sw; pd.m.arms[0].rotation.x = -sw*0.8; pd.m.arms[1].rotation.x = sw*0.8; } }
+}
+// AI drivers stop for a pedestrian crossing in front of them (in their lane, or about to step into it)
+function pedBlocks(v, front){ let best = Infinity; const side = -v.sd;
+  for (const pd of PEDS) { if (pd.st !== 'cross' && pd.st !== 'down') continue; if (Math.abs(pd.x) > eAt(pd.u) + 1) continue;
+    const lx = (pd.x*side - (MED + LW/2))/LW; if (Math.abs(lx - v.lx) > 1.1) continue; const d = v.sd*pd.u - front; if (d > -1 && d < 60 && d < best) best = d; }
+  return best; }
 // AI drivers brake for a pedestrian in their lane
 function footBlocks(v, front){
   const f = foot; if (!f) return Infinity; const side = -v.sd, lxF = (f.x*side - (MED + LW/2))/LW;
@@ -3255,6 +3307,7 @@ function sim(dt){
       const la = lightAhead(v.sd, front);
       if(la){const stop=mustStop(sigMain(la.s),la.d,v.vel,sirenOn(v)),blocked=junctionBlocked(v,la.s);if(stop||blocked)v.acc=Math.min(v.acc,idm(v,STOP,la.d+2.2,v0));}
     }
+    if (PEDS.length && !manual) { const pd = pedBlocks(v, front); if (pd < Infinity) v.acc = Math.min(v.acc, idm(v, STOP, pd - 3, v0)); }
     if (foot && !manual) { const fd = footBlocks(v, front); if (fd < Infinity) { v.acc = Math.min(v.acc, idm(v, STOP, fd - 2.5, v0)); if (fd < 25 && v.vel < 1 && Math.random() < dt*0.25) horn(v.type, Math.abs(uOfV(v) - foot.u), panOf(v)); } }
     const bd = blockAhead(v.sd, v.lane, front);
     if (!manual && bd < Infinity && !(v.esc && Math.abs(v.lx - v.lane) > 0.45)) v.acc = Math.min(v.acc, idm(v, STOP, bd - 1.5, v0));
@@ -5825,16 +5878,16 @@ function tick(dt,stream=true){
   clock += dt; if (TUT) tutTick(dt); phoneTick(dt); osmTick(dt); demTick(dt); voiceTick(dt);
   if (PLR && PLR.wantU) { PLR.wantU = false; uTurn(PLR); }
   if (window.__perf) { const P = window.__perf, T = (k, f) => { const a = performance.now(); f(); const d = performance.now() - a; P[k] = P[k] || {sum: 0, max: 0, n: 0}; P[k].sum += d; P[k].n++; if (d > P[k].max) P[k].max = d; };
-    T('needs', () => { stepFoot(dt); tickNeeds(dt); stepTow(dt); stepAngry(dt); mpTick(dt); }); T('sim', () => sim(dt)); T('ramps', () => { mbzTraffic(); rampStep(dt); jobTick(dt); }); T('spawn', () => maintainTraffic(dt)); T('locals', () => simLocals(dt));
+    T('needs', () => { stepFoot(dt); stepPeds(dt); tickNeeds(dt); stepTow(dt); stepAngry(dt); mpTick(dt); }); T('sim', () => sim(dt)); T('ramps', () => { mbzTraffic(); rampStep(dt); jobTick(dt); }); T('spawn', () => maintainTraffic(dt)); T('locals', () => simLocals(dt));
     T('rules', () => playerRules(dt)); T('law', () => tickTrafficLaw(dt)); T('rest', () => { tickPursuit(dt); TRAFFIC_PANEL?.tick(dt); tickClock(dt); }); }
-  else { stepFoot(dt); tickNeeds(dt); stepTow(dt); stepAngry(dt); mpTick(dt); sim(dt); mbzTraffic(); rampStep(dt); jobTick(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt); tickTrafficLaw(dt); tickPursuit(dt); TRAFFIC_PANEL?.tick(dt); tickClock(dt); }
+  else { stepFoot(dt); stepPeds(dt); tickNeeds(dt); stepTow(dt); stepAngry(dt); mpTick(dt); sim(dt); mbzTraffic(); rampStep(dt); jobTick(dt); maintainTraffic(dt); simLocals(dt); playerRules(dt); tickTrafficLaw(dt); tickPursuit(dt); TRAFFIC_PANEL?.tick(dt); tickClock(dt); }
   if (PLR) camU = foot ? foot.u : uOfV(PLR);
   if(stream)streamWorld();
 }
 function streamWorld(){ if (window.__perf) { const P = window.__perf, T = (k, f) => { const a = performance.now(); f(); const d = performance.now() - a; P[k] = P[k] || {sum: 0, max: 0, n: 0}; P[k].sum += d; P[k].n++; if (d > P[k].max) P[k].max = d; };
     T('ensureAhead', ensureAhead); T('blocks', () => setupBlocks(false)); T('world', () => updateWorld(true)); T('signals', () => { updateSignals(); animGhosts(); }); return; }
   ensureAhead();setupBlocks(false);updateWorld(true);updateSignals();animGhosts();}
-window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol,get ready3d(){return !!FERRY3D;},frame3d(k){if(!FERRY3D)return null;FERRY3D.t0=performance.now()-k*FERRY3D.dur*1000;ferry3dFrame(1/30);return renderer.domElement.toDataURL('image/jpeg',.85);}};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.LMK_BUILD=LMK_BUILD; window.__tj.gg=ggRule; window.__tj.apply=apply; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll; window.__tj.spbu = {sites: SPBU_SITES, near: spbuNear, ctx: () => svcContext(), live(){ const out = []; scene.traverse(o => { if (o.isMesh && o.material === SPBU_SIGN?.mat) { const g = o.parent.parent; out.push([g.userData.u0, Math.round(o.parent.position.x), Math.round(o.parent.position.z)]); } }); return out; }}; window.__tj.voice = {VOX, dispatch: dispatchCall, sendUnit, get responders(){ return RESPONDERS; }}; window.__tj.phone = () => PHONE;
+window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol,get ready3d(){return !!FERRY3D;},frame3d(k){if(!FERRY3D)return null;FERRY3D.t0=performance.now()-k*FERRY3D.dur*1000;ferry3dFrame(1/30);return renderer.domElement.toDataURL('image/jpeg',.85);}};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.LMK_BUILD=LMK_BUILD; window.__tj.gg=ggRule; window.__tj.apply=apply; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll; window.__tj.peds = PEDS; window.__tj.pedDbg = {step: stepPeds, blocks: pedBlocks, sigCross, KS: () => KSITES, eAt, set sig(f){ pedSig = f; }}; window.__tj.spbu = {sites: SPBU_SITES, near: spbuNear, ctx: () => svcContext(), live(){ const out = []; scene.traverse(o => { if (o.isMesh && o.material === SPBU_SIGN?.mat) { const g = o.parent.parent; out.push([g.userData.u0, Math.round(o.parent.position.x), Math.round(o.parent.position.z)]); } }); return out; }}; window.__tj.voice = {VOX, dispatch: dispatchCall, sendUnit, get responders(){ return RESPONDERS; }}; window.__tj.phone = () => PHONE;
 window.__tj.moveSvg = moveSvg; window.__tj.nextMv = nextMove;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering

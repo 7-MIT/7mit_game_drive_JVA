@@ -579,3 +579,10 @@ Semua suara game (navigasi, penyiar radio 7MIT FM, petugas telepon darurat) mema
 ### SPBU di jalan non-tol
 
 Di semua jalan nasional, kota dan kabupaten ada SPBU setiap 200 m di tiap sisi (sisi seberang bergeser 100 m): kanopi dengan pompa, minimarket, dan papan SPBU. Bangunan dan pohon di tempat itu dikosongkan. Berhenti di samping SPBU membuka layanan **SPBU**: isi BBM, angin ban, minimarket, kopi, toilet, musala, ATM, isi saldo e-Toll. Satu SPBU hanya 2 draw call (satu geometri gabungan berwarna-verteks + papan nama), jadi tetap ringan.
+
+### Marka jalan, separator beton, trotoar, pejalan kaki
+
+- **Marka sesuai Kementerian PU:** jalan nasional memakai marka kuning (garis tepi, garis lajur, garis tengah), jalan provinsi/kota/kabupaten dan jalan akses memakai marka putih. Di tol, garis tepi di sisi median kuning, garis tepi luar dan garis lajur putih. Semua garis sedikit dipertebal supaya terbaca di layar kecil.
+- **Separator beton:** jalan non-tol 4 lajur atau lebih punya separator beton pendek (0,6 m) yang terbuka di persimpangan. Median tol memakai separator beton profil *New Jersey* setinggi 1,25 m.
+- **Trotoar:** semua jalan non-tol punya trotoar 15 cm lebih tinggi dengan kerb. Di kota trotoarnya 3 m, di luar kota 2 m. Trotoar terbuka di persimpangan, gang, dan pintu masuk SPBU.
+- **Pejalan kaki NPC** berjalan di trotoar (maksimal 18, atau 8 di HP/kualitas rendah, model dipakai ulang). Di lampu merah mereka menunggu di tepi zebra cross lalu menyeberang saat fase penyeberang hijau. Di jalan tanpa separator mereka kadang menyeberang di tengah ruas, tapi hanya kalau tidak ada kendaraan dalam ±7 detik. Mobil AI berhenti untuk pejalan kaki yang menyeberang. Menabrak pejalan kaki dihitung sebagai tabrakan.
