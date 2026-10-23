@@ -595,3 +595,13 @@ Garis navigasi di peta dan jalan di dunia 3D untuk jalan non-tol (nasional, prov
 - Hasilnya dipasang lewat `setCorrRoute`. Ruas yang belum tersambung dicoba lagi saat data OSM wilayah baru selesai dimuat.
 
 **Putar balik:** di bukaan putaran balik (28 m) dan persimpangan, mobil bebas menyeberang dan boleh melebar ke bahu jalan seberang. Di jalan non-tol, putar balik sudah terhitung saat mobil menghadap kira-kira 100° ke seberang (belok kanan), jadi muat di antara kerb jalan 2 lajur.
+
+### Sirkuit Sentul & Race Season
+
+Sirkuit Sentul ada di dekat exit Sentul (Tol Jagorawi). Kalau kamu berada di area sirkuit (±2,5 km) dan pelan atau berhenti, muncul tombol **Masuk Sirkuit Sentul · Race Season**. Mode balap (`race.js`) baru dimuat saat itu dan punya scene sendiri; game jalan raya menunggu di belakangnya.
+
+- **Race Season:** 5 ronde, yaitu Sentul Grand Prix (3 lap), Balap Malam (3 lap), Sentul Basah (hujan, grip lebih rendah, 3 lap), Sentul Pendek (5 lap), dan Final (4 lap). Poin 25-18-15-12-10-8 masuk klasemen musim dan tersimpan. Setelah ronde 5 musim berikutnya dimulai dan lawan sedikit lebih cepat.
+- **Lawan:** 5 pembalap NPC. Mereka mengerem sebelum tikungan sesuai kecepatan aman tikungan, mengambil sisi dalam, dan menyalip mobil yang lebih lambat. Ada tabrakan antar mobil, keluar lintasan ke rumput (lebih lambat), dan dinding ban.
+- **Hadiah:** juara 1 dapat **Rp 2.000.000** tunai, plus XP karier (juara 150, podium 60, lainnya 20). Posisi lain hanya dapat poin.
+- **Kendali:** sama dengan berkendara biasa (keyboard, setir/gamepad, atau tombol layar di HP). Kecepatan maksimal tetap 200 km/jam.
+- **Seimbang:** di simulasi, pengemudi yang presisi bisa menang tipis; yang kurang rapi finis ke-2 atau lebih rendah.
