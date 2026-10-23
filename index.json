@@ -1,0 +1,202 @@
+{
+ "voice": "id_ID-news_tts-medium",
+ "model": "model/id_ID-news_tts-medium.onnx",
+ "clips": {
+  "a784fe9e": {
+   "file": "clips/a784fe9e.mp3",
+   "text": "Anda mendengarkan tujuh mit F M, sembilan puluh tujuh koma tujuh, teman perjalanan Anda di jalanan Nusantara. Saya Mas Bayu, menemani Anda sampai tujuan."
+  },
+  "f51b2d8b": {
+   "file": "clips/f51b2d8b.mp3",
+   "text": "Lapar di jalan? Mampir ke Warung Sambal Bu Tejo di rest area terdekat. Pedasnya bikin melek, harganya bikin senyum."
+  },
+  "e390a6b9": {
+   "file": "clips/e390a6b9.mp3",
+   "text": "Oli Tangguh Plus. Mesin adem, perjalanan jauh tetap tenang. Oli Tangguh Plus, temani mudikmu."
+  },
+  "36996dc3": {
+   "file": "clips/36996dc3.mp3",
+   "text": "Kopi Kenangan Senja, kopi susu gula aren dalam botol. Segar diminum dingin, pas buat yang nyetir malam."
+  },
+  "22722700": {
+   "file": "clips/22722700.mp3",
+   "text": "Ban Gripa Nusantara. Basah atau kering, cengkeramannya tetap pede. Ganti ban sekarang, diskon untuk pengemudi driving tujuh mit."
+  },
+  "f6bcef9b": {
+   "file": "clips/f6bcef9b.mp3",
+   "text": "Bengkel Maju Jaya, servis kilat tiga puluh menit. Ganti oli gratis cek rem. Buka setiap hari, tanpa antre."
+  },
+  "e3c49851": {
+   "file": "clips/e3c49851.mp3",
+   "text": "Asuransi Aman Sentosa. Jalan raya penuh kejutan, perlindungan jangan ditunda."
+  },
+  "cc0efa0e": {
+   "file": "clips/cc0efa0e.mp3",
+   "text": "Keripik Pedas Mak Ijah, oleh-oleh khas perjalanan. Satu bungkus tak pernah cukup."
+  },
+  "756cc529": {
+   "file": "clips/756cc529.mp3",
+   "text": "Travel Nyaman Trans Jawa. Kursi lega, sopir berpengalaman. Pesan tiket lewat HP-mu sekarang."
+  },
+  "77ccac23": {
+   "file": "clips/77ccac23.mp3",
+   "text": "Jangan lupa istirahat setiap dua jam berkendara. Mampir ke rest area, regangkan badan."
+  },
+  "2fa403eb": {
+   "file": "clips/2fa403eb.mp3",
+   "text": "Pakai sein sebelum pindah lajur, ya. Pengendara lain bukan peramal."
+  },
+  "75d8ac63": {
+   "file": "clips/75d8ac63.mp3",
+   "text": "Bahu jalan hanya untuk keadaan darurat. Jangan dipakai untuk menyalip."
+  },
+  "5d419ffe": {
+   "file": "clips/5d419ffe.mp3",
+   "text": "Saat hujan, kurangi kecepatan dan jaga jarak lebih jauh dari biasanya."
+  },
+  "dd9a944b": {
+   "file": "clips/dd9a944b.mp3",
+   "text": "Cek saldo e-Toll sebelum masuk gerbang tol supaya tidak bikin antrean."
+  },
+  "a6ab7799": {
+   "file": "clips/a6ab7799.mp3",
+   "text": "Mengantuk? Berhenti di tempat aman. Kopi bisa menunggu, keselamatan tidak."
+  },
+  "2b6a5403": {
+   "file": "clips/2b6a5403.mp3",
+   "text": "Baik, panggilan kami tutup. Tetap hati-hati di jalan."
+  },
+  "ec4d9e84": {
+   "file": "clips/ec4d9e84.mp3",
+   "text": "Demikian informasinya. Selamat jalan dan hati-hati."
+  },
+  "fe6b0849": {
+   "file": "clips/fe6b0849.mp3",
+   "text": "Patroli sudah kami arahkan ke lokasi Anda. Tetap di tempat yang aman dan nyalakan lampu hazard."
+  },
+  "b4cef85e": {
+   "file": "clips/b4cef85e.mp3",
+   "text": "Ambulans sudah berangkat. Jangan pindahkan korban, tunggu petugas datang."
+  },
+  "b716244a": {
+   "file": "clips/b716244a.mp3",
+   "text": "Unit pemadam sudah meluncur. Menjauh dari kendaraan yang terbakar, jangan coba memadamkan sendiri."
+  },
+  "b145d6a6": {
+   "file": "clips/b145d6a6.mp3",
+   "text": "Tim SAR sedang menuju lokasi Anda. Tetap tenang dan jangan tinggalkan lokasi."
+  },
+  "ed46a83d": {
+   "file": "clips/ed46a83d.mp3",
+   "text": "Derek dan petugas layanan sedang menuju lokasi Anda. Nyalakan lampu hazard dan tunggu di belakang pembatas."
+  },
+  "d8d94c51": {
+   "file": "clips/d8d94c51.mp3",
+   "text": "Layanan derek ini gratis, tidak dipungut biaya apa pun. Yang dibayar hanya biaya bengkel, bila kendaraan perlu diperbaiki."
+  },
+  "ca18bbb4": {
+   "file": "clips/ca18bbb4.mp3",
+   "text": "Kepolisian Negara Republik Indonesia, layanan satu satu nol. Ada yang bisa kami bantu?"
+  },
+  "371c2ccd": {
+   "file": "clips/371c2ccd.mp3",
+   "text": "Laporan kecelakaan kami terima. Ambulans dan patroli polisi kami kirim."
+  },
+  "f478e8cc": {
+   "file": "clips/f478e8cc.mp3",
+   "text": "Laporan kami terima. Patroli terdekat kami arahkan ke lokasi Anda."
+  },
+  "4d9e5e0f": {
+   "file": "clips/4d9e5e0f.mp3",
+   "text": "Terima kasih. Petugas kami kirim untuk mengurai lalu lintas dan menyingkirkan kendaraan yang menghalangi jalan."
+  },
+  "ab2997fe": {
+   "file": "clips/ab2997fe.mp3",
+   "text": "Layanan darurat satu satu dua. Silakan sampaikan keadaan darurat Anda."
+  },
+  "4e5b814b": {
+   "file": "clips/4e5b814b.mp3",
+   "text": "Kami teruskan ke ambulans dan kepolisian."
+  },
+  "84b69e05": {
+   "file": "clips/84b69e05.mp3",
+   "text": "Kami teruskan ke pemadam kebakaran."
+  },
+  "33f09da9": {
+   "file": "clips/33f09da9.mp3",
+   "text": "Kami teruskan ke Badan SAR Nasional."
+  },
+  "c5ad7278": {
+   "file": "clips/c5ad7278.mp3",
+   "text": "Kami teruskan ke layanan derek. Layanan derek gratis."
+  },
+  "b088bb03": {
+   "file": "clips/b088bb03.mp3",
+   "text": "Kami teruskan ke kepolisian."
+  },
+  "ed51d83f": {
+   "file": "clips/ed51d83f.mp3",
+   "text": "Kami teruskan ke layanan ambulans."
+  },
+  "ad8b44b2": {
+   "file": "clips/ad8b44b2.mp3",
+   "text": "Pemadam kebakaran dan penyelamatan, satu satu tiga. Apa yang terjadi?"
+  },
+  "4c68c279": {
+   "file": "clips/4c68c279.mp3",
+   "text": "Unit pemadam kami berangkatkan. Menjauh dari kendaraan yang terbakar."
+  },
+  "ce73215e": {
+   "file": "clips/ce73215e.mp3",
+   "text": "Unit pemadam kami berangkatkan ke lokasi."
+  },
+  "24ceed35": {
+   "file": "clips/24ceed35.mp3",
+   "text": "Unit penyelamat dan ambulans kami berangkatkan. Jangan memaksa keluar bila terjepit."
+  },
+  "e5af115c": {
+   "file": "clips/e5af115c.mp3",
+   "text": "Badan SAR Nasional, satu satu lima. Apa yang terjadi?"
+  },
+  "19af5e72": {
+   "file": "clips/19af5e72.mp3",
+   "text": "Tim SAR kami berangkatkan bersama ambulans. Tetap tenang dan jangan tinggalkan lokasi."
+  },
+  "c2bd67f4": {
+   "file": "clips/c2bd67f4.mp3",
+   "text": "Laporan kami catat. Tim SAR kami arahkan ke lokasi yang Anda sampaikan."
+  },
+  "23014d58": {
+   "file": "clips/23014d58.mp3",
+   "text": "Layanan ambulans gawat darurat, satu satu delapan. Siapa yang membutuhkan pertolongan?"
+  },
+  "cc448261": {
+   "file": "clips/cc448261.mp3",
+   "text": "Ambulans kami berangkatkan sekarang. Jangan pindahkan korban."
+  },
+  "bed45c21": {
+   "file": "clips/bed45c21.mp3",
+   "text": "Layanan kesehatan, satu satu sembilan. Ada yang bisa kami bantu?"
+  },
+  "4b580f05": {
+   "file": "clips/4b580f05.mp3",
+   "text": "Pusat informasi jalan tol, satu tiga tiga. Kami melayani derek gratis, informasi lalu lintas, dan layanan lainnya. Ada yang bisa dibantu?"
+  },
+  "16076954": {
+   "file": "clips/16076954.mp3",
+   "text": "Petugas kami membawa BBM darurat sepuluh liter. Jasa petugas gratis, BBM dibayar sesuai harga SPBU."
+  },
+  "42b8878e": {
+   "file": "clips/42b8878e.mp3",
+   "text": "Baik, petugas layanan dan derek kami kirim. Bila tidak bisa diperbaiki di tempat, kendaraan dibawa gratis ke bengkel terdekat."
+  },
+  "c0062731": {
+   "file": "clips/c0062731.mp3",
+   "text": "Terima kasih atas laporannya. Petugas patroli kami arahkan ke lokasi untuk mengamankan jalan."
+  },
+  "c7e84712": {
+   "file": "clips/c7e84712.mp3",
+   "text": "Call center Dinas Perhubungan, satu lima satu. Kami melayani derek gratis, informasi lalu lintas, dan layanan lainnya. Ada yang bisa dibantu?"
+  }
+ }
+}
