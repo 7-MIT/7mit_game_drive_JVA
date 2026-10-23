@@ -22,7 +22,7 @@ import {createGlass} from './glass.js';
 import {initReport} from './report.js';
 import {getLang, setLang} from './i18n.js';
 import * as VOX from './voice.js';
-import {DISPATCH, EMERGENCIES, shown, UNIT_NAME, UNIT_END, CANCEL, dispatchLocation, SERVICE_MENU, OTHER_MENU, TOW_FREE, FUEL_HELP, TIRE_HELP, REPORT_HELP, INFO_END, trafficInfo} from './voice-lines.js';
+import {DISPATCH, shown, UNIT_NAME, UNIT_END, CANCEL, dispatchLocation, TOW_FREE, INFO_END, trafficInfo} from './voice-lines.js';
 import {initDEM} from './elevation.js';
 import {BICYCLE, isTwoWheeler, nonTollVehicle, bicycleAcceleration, staminaStep, springStep, ackermannAngle, roadResistance, FOOD_BICYCLE_JOB} from './vehicle-dynamics.js';
 import {buildBicycle, animateBicycle, buildBicycleView} from './bicycle.js';
@@ -3289,7 +3289,8 @@ function sim(dt){
     const z = cfAt(v.sd, v.p), nearEntry = !!z && v.cfWant && !v.player && v.lane >= 0 && z.CF_IN + 30 - v.p >= 0 && z.CF_IN + 30 - v.p < 260;
     const limU = Math.min(limitAt(uOfV(v)), postedCap(v.sd,front), limitAt(uOfV(v) + v.sd*250));
     let v0 = Math.min(v.player ? limU - 0.6 : Math.min(v.v0, limU - 0.3), zoneCap(v.sd, front) - (v.player ? 0.6 : 0));
-    if (v.em) v0 = Math.min(v.esc === 'sh' ? 22 : v.esc === 'cf' ? 17 : 36, limU + 9);
+    if (v.onScene > clock) v0 = 0;
+    else if (v.em) v0 = Math.min(v.esc === 'sh' ? 22 : v.esc === 'cf' ? 17 : 36, limU + 9);
     else if (v.player && (v.noFuel || tow)) v0 = 0;
     else if (v.lane < 0 || v.lx < 0 || (nearEntry && v.lane === 0)) v0 = Math.min(v0, 16.7);
     if (v.yieldT > clock && (!v.player || cfg.auto)) v0 = Math.min(v0, v.yieldV);
@@ -5680,32 +5681,66 @@ const VOICE = {last: '', stage: new Map(), t: 0, cool: {}, dest: null, weather: 
 // the navigation voice speaks through voice.js (Piper: ready clips, or synthesis on the device; the browser voice as a fallback)
 // ---------- emergency dispatchers (phone): the operator answers, asks what happened, reads back where you are and sends help ----------
 function hereInfo(){ const u = PLR ? uOfV(PLR) : camU; return {road: EV.length ? (CORR[corrAt(u)] || {}).name || '' : '', km: EV.length ? Math.round(kmAt(u)) : 0}; }
+// a report made on the spot for an information service (synthesised: it has the place and the numbers in it)
+function infoLine(kind){
+  const u = PLR ? uOfV(PLR) : camU, h = hereInfo(), ahead = k => EV.find(e => e.kind === k && e.u > u + 200), kmTo = e => Math.max(1, Math.round(Math.abs(kmAt(e.u) - kmAt(u))));
+  if (kind === 'traffic') { const r = ahead('r'); return trafficInfo({...radioState(), rest: r ? r.name : '', restKm: r ? kmTo(r) : 0}); }
+  if (kind === 'etle') { const mine = ETLE.records.filter(r => r.player), ok = mine.filter(r => r.status === 'confirmed').length, wait = mine.filter(r => r.status !== 'confirmed' && r.status !== 'rejected').length;
+    return mine.length ? `Tercatat ${mine.length} pelanggaran tilang elektronik atas kendaraan Anda: ${ok} sudah dikonfirmasi dengan total denda ${Math.round(LAW_TOTAL.fines).toLocaleString('id-ID')} rupiah, ${wait} masih menunggu peninjauan. Rinciannya ada di panel ETLE.`
+      : 'Tidak ada catatan tilang elektronik atas kendaraan Anda. Terima kasih sudah tertib berlalu lintas.'; }
+  if (kind === 'health') { const s2 = Math.round(WAL.sleep || 0), r = ahead('r');
+    return s2 >= 60 ? `Anda menunjukkan tanda kelelahan berat, tingkat kantuk ${s2} persen. Jangan lanjutkan perjalanan, menepilah di tempat aman${r ? ` atau istirahat di ${r.name}, ${kmTo(r)} kilometer lagi` : ''}.`
+      : s2 >= 30 ? `Tingkat kantuk Anda ${s2} persen. Sebaiknya istirahat sebentar${r ? ` di ${r.name}, ${kmTo(r)} kilometer lagi` : ''}, minum air putih, dan regangkan badan.`
+      : 'Kondisi Anda baik. Tetap istirahat setiap dua jam berkendara dan jangan berkendara sambil mengantuk.'; }
+  if (kind === 'facility') { const t = KSITES.slice().sort((a, b) => Math.abs(a.u - u) - Math.abs(b.u - u))[0], r = ahead('r');
+    return t ? `Fasilitas kesehatan terdekat ada di ${t.name}, sekitar ${kmTo(t)} kilometer ${t.u > u ? 'di depan' : 'di belakang'} Anda.${r ? ` Pos kesehatan juga tersedia di ${r.name}.` : ''}`
+      : `Fasilitas kesehatan terdekat ${r ? `ada di ${r.name}, ${kmTo(r)} kilometer lagi` : 'ada di kota berikutnya'}. Untuk keadaan darurat, minta ambulans.`; }
+  if (kind === 'disaster') { const W = WEATHER[cfg.weather] || {};
+    return `Tidak ada laporan banjir atau longsor di ${h.road || 'ruas ini'}. ${W.rain ? 'Hujan sedang turun: waspadai genangan dan jalan licin.' : 'Cuaca terpantau aman.'} Tim SAR tetap siaga, hubungi kami bila melihat bencana.`; }
+  return ''; }
 async function dispatchCall(n, ui){
-  const D = DISPATCH[n]; if (!D) return ui.done(); const talk = async t => { if (!ui.alive()) return; ui.caption(shown(t)); await VOX.say(t, {channel: 'phone'}); };
-  await talk(D.greet); if (!ui.alive()) return; let unit = D.unit;
-  if (D.ask) { const k = await ui.choose(EMERGENCIES.map(([key, label]) => [key, label])); const e = EMERGENCIES.find(x => x[0] === k); unit = e[2]; await talk(e[3]); }
-  else if (D.services) { // 133 / 151: free towing, traffic information, other road services
-    let k = await ui.choose(SERVICE_MENU); if (!ui.alive()) return;
+  const D = DISPATCH[n]; if (!D) return ui.done(); const talk = async t => { if (!t || !ui.alive()) return; ui.caption(shown(t)); await VOX.say(t, {channel: 'phone'}); };
+  await talk(D.greet); if (!ui.alive()) return;
+  // the institution's services; a sub-menu opens in place
+  let menu = D.menu, it = null;
+  for (;;) { const k = await ui.choose(menu.map(m => [m.k, m.label]).concat([['no', 'Tidak jadi']])); if (!ui.alive()) return;
     if (k === 'no') { await talk(CANCEL); return ui.done(); }
-    if (k === 'info') { const S = radioState(), u = PLR ? uOfV(PLR) : camU, r = EV.find(e => e.kind === 'r' && e.u > u + 200);
-      await talk(trafficInfo({...S, rest: r ? r.name : '', restKm: r ? Math.max(1, Math.round(Math.abs(kmAt(r.u) - kmAt(u)))) : 0})); await talk(INFO_END); return ui.done(); }
-    if (k === 'other') { k = await ui.choose(OTHER_MENU); if (!ui.alive()) return; if (k === 'no') { await talk(CANCEL); return ui.done(); }
-      if (k === 'report') { await talk(REPORT_HELP); unit = 'police'; }
-      else { await talk(k === 'fuel' ? FUEL_HELP : TIRE_HELP); if (k === 'fuel' && PLR && WAL.fuel < 5) PLR.noFuel = true; } }
-    else await talk(TOW_FREE); }
-  else { const k = await ui.choose([['send', unit === 'tow' ? 'Kendaraan saya mogok / rusak' : 'Kirim bantuan ke lokasi saya'], ['no', 'Tidak jadi']]); if (k === 'no') { await talk(CANCEL); return ui.done(); } }
-  if (!ui.alive()) return; const h = hereInfo(); await talk(dispatchLocation({...h, unit, min: unit === 'tow' ? 3 : 1}));
-  sendUnit(unit); await talk(UNIT_END[unit] || D.end || ''); if (unit === 'tow' && !D.services) await talk(TOW_FREE); ui.done(); }
-// help on its way: a tow truck (the usual tow), or a police car, ambulance or fire engine coming up behind with its siren on
+    it = menu.find(m => m.k === k); if (it && it.sub) { menu = it.sub; continue; } break; }
+  if (!it) return ui.done();
+  await talk(it.say);
+  if (it.info) { await talk(infoLine(it.info)); await talk(INFO_END); return ui.done(); }
+  if (it.fuel && PLR && (WAL.fuel ?? 99) < 5) PLR.noFuel = true;
+  const units = it.units || []; if (!units.length || !ui.alive()) return ui.done();
+  await talk(dispatchLocation({...hereInfo(), units, min: units[0] === 'tow' ? 3 : 1}));
+  units.forEach((u, k) => sendUnit(u, k)); await talk(UNIT_END[units[0]]);
+  if (units.includes('tow') && it.say !== TOW_FREE && !/gratis/.test(it.say || '')) await talk(TOW_FREE);
+  ui.done(); }
+// help on its way: a tow truck (the usual tow), or a police car, ambulance, fire engine or rescue team coming up behind with
+// the siren on. On arrival it stops behind the caller and does its job, then drives on.
 const RESPONDERS = [];
-function sendUnit(unit){
+const UNIT_VEH = {police: 'police', ambulance: 'ambulance', damkar: 'damkar', sar: 'ambulance'};
+function sendUnit(unit, k = 0){
   if (unit === 'tow') { if (PLR && !tow && !PLR.rp) callTow(); return; }
-  if (!PLR || PLR.rp || !EV.length || foot) return; const sd = PLR.sd, p = PLR.p - 380, n = nAvail(sd, p);
-  const v = addVehicle(sd, Math.max(0, n - 1), p, unit, 26); v.em = true; v.v0 = 33; RESPONDERS.push({v, unit, said: false, until: clock + 120});
+  if (!PLR || PLR.rp || !EV.length || foot) return; const sd = PLR.sd, p = PLR.p - 380 - k*45, n = nAvail(sd, p);
+  const v = addVehicle(sd, Math.max(0, n - 1), p, UNIT_VEH[unit] || 'police', 26); v.em = true; v.v0 = 33; RESPONDERS.push({v, unit, said: false, until: clock + 150});
   toast(`${UNIT_NAME[unit]} menuju lokasi Anda dengan sirene`, 'warn'); }
+// what each unit does at the scene, within ~200 m of the caller
+function unitWork(unit){
+  const u = PLR ? uOfV(PLR) : camU, near = o => Math.abs(uOfV(o) - u) < 200;
+  if (unit === 'police') { const wr = vehicles.filter(o => !o.player && !o.em && near(o) && ((o.crashT || 0) > clock || (o.dmg || 0) > 60));
+    for (const o of wr) { rm(vehicles, o); killVehicle(o); }
+    return wr.length ? `Polisi mengamankan lokasi: ${wr.length} kendaraan rusak disingkirkan dari jalan` : 'Polisi memeriksa lokasi: situasi aman terkendali'; }
+  if (unit === 'damkar' || unit === 'sar') { let n = 0; for (const o of vehicles) if (near(o) && (o.dmg || 0) > 70) { o.dmg = 60; n++; }
+    FX.fire = FX.fire.filter(f => Math.abs(f.u - u) > 220);
+    if (unit === 'damkar') return n ? `Api dipadamkan: ${n} kendaraan sudah aman` : 'Petugas pemadam memeriksa lokasi: tidak ada api'; }
+  if (unit === 'ambulance' || unit === 'sar') { WAL.sleep = Math.max(0, (WAL.sleep || 0) - 30); uiNeeds();
+    return unit === 'sar' ? 'Tim SAR selesai: api dipadamkan, korban dievakuasi, pengemudi diperiksa tim medis' : 'Tim medis memeriksa Anda: kondisi baik, kantuk berkurang. Istirahatlah sejenak'; }
+  return ''; }
 function tickResponders(){ for (let i = RESPONDERS.length - 1; i >= 0; i--) { const r = RESPONDERS[i];
   if (!vehicles.includes(r.v) || clock > r.until) { RESPONDERS.splice(i, 1); continue; }
-  if (!r.said && PLR && r.v.sd === PLR.sd && r.v.p > PLR.p - 25) { r.said = true; toast(`${UNIT_NAME[r.unit]} tiba di lokasi Anda`); r.v.until = clock + 30; } } }
+  // arrived: close behind the caller (or alongside) on the same carriageway → stop there with the lights on, work, leave after 25 s
+  if (!r.said && PLR && r.v.sd === PLR.sd && PLR.p - r.v.p < 40) { r.said = true; r.v.onScene = clock + 25; r.v.until = clock + 60; toast(`${UNIT_NAME[r.unit]} tiba di lokasi Anda`);
+    setTimeout(() => { const msg = unitWork(r.unit); if (msg) toast(msg); }, 4000); } } }
 function speak(text, urgent){ if (!cfg.voice || TUT || (FLY && FLY.on)) return; VOX.say(text, {channel: 'nav', urgent}); VOICE.last = text; }
 VOX.configure({engine: cfg.voiceEngine || 'auto', strong: !MOBILE || (navigator.deviceMemory || 4) >= 4});
 try { if ('speechSynthesis' in window) speechSynthesis.getVoices(); } catch (e) {}
@@ -5949,7 +5984,7 @@ function tick(dt,stream=true){
 function streamWorld(){ if (window.__perf) { const P = window.__perf, T = (k, f) => { const a = performance.now(); f(); const d = performance.now() - a; P[k] = P[k] || {sum: 0, max: 0, n: 0}; P[k].sum += d; P[k].n++; if (d > P[k].max) P[k].max = d; };
     T('ensureAhead', ensureAhead); T('blocks', () => setupBlocks(false)); T('world', () => updateWorld(true)); T('signals', () => { updateSignals(); animGhosts(); }); return; }
   ensureAhead();setupBlocks(false);updateWorld(true);updateSignals();animGhosts();}
-window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol,get ready3d(){return !!FERRY3D;},frame3d(k){if(!FERRY3D)return null;FERRY3D.t0=performance.now()-k*FERRY3D.dur*1000;ferry3dFrame(1/30);return renderer.domElement.toDataURL('image/jpeg',.85);}};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.LMK_BUILD=LMK_BUILD; window.__tj.gg=ggRule; window.__tj.apply=apply; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll; window.__tj.circuit = {open: () => openRace(CIRCUITS[0]), get race(){ return RACE; }, here: circuitHere}; window.__tj.route = {RQ, step: routeTripRoads, OSM, openAtlas}; window.__tj.NUT = () => NUT; window.__tj.lxBounds = lxBounds; window.__tj.steerPlayer = steerPlayer; window.__tj.uTurn = uTurn; window.__tj.peds = PEDS; window.__tj.pedDbg = {step: stepPeds, blocks: pedBlocks, sigCross, KS: () => KSITES, eAt, set sig(f){ pedSig = f; }}; window.__tj.spbu = {sites: SPBU_SITES, near: spbuNear, ctx: () => svcContext(), live(){ const out = []; scene.traverse(o => { if (o.isMesh && o.material === SPBU_SIGN?.mat) { const g = o.parent.parent; out.push([g.userData.u0, Math.round(o.parent.position.x), Math.round(o.parent.position.z)]); } }); return out; }}; window.__tj.voice = {VOX, dispatch: dispatchCall, sendUnit, get responders(){ return RESPONDERS; }}; window.__tj.phone = () => PHONE;
+window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol,get ready3d(){return !!FERRY3D;},frame3d(k){if(!FERRY3D)return null;FERRY3D.t0=performance.now()-k*FERRY3D.dur*1000;ferry3dFrame(1/30);return renderer.domElement.toDataURL('image/jpeg',.85);}};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.LMK_BUILD=LMK_BUILD; window.__tj.gg=ggRule; window.__tj.apply=apply; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll; window.__tj.circuit = {open: () => openRace(CIRCUITS[0]), get race(){ return RACE; }, here: circuitHere}; window.__tj.route = {RQ, step: routeTripRoads, OSM, openAtlas}; window.__tj.NUT = () => NUT; window.__tj.lxBounds = lxBounds; window.__tj.steerPlayer = steerPlayer; window.__tj.uTurn = uTurn; window.__tj.peds = PEDS; window.__tj.pedDbg = {step: stepPeds, blocks: pedBlocks, sigCross, KS: () => KSITES, eAt, set sig(f){ pedSig = f; }}; window.__tj.spbu = {sites: SPBU_SITES, near: spbuNear, ctx: () => svcContext(), live(){ const out = []; scene.traverse(o => { if (o.isMesh && o.material === SPBU_SIGN?.mat) { const g = o.parent.parent; out.push([g.userData.u0, Math.round(o.parent.position.x), Math.round(o.parent.position.z)]); } }); return out; }}; window.__tj.voice = {VOX, dispatch: dispatchCall, sendUnit, unitWork, infoLine, get responders(){ return RESPONDERS; }}; window.__tj.phone = () => PHONE;
 window.__tj.moveSvg = moveSvg; window.__tj.nextMv = nextMove;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering

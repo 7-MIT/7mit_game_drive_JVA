@@ -569,12 +569,28 @@ Semua suara game (navigasi, penyiar radio 7MIT FM, petugas telepon darurat) mema
 2. **Piper di perangkat.** Kalimat yang berubah-ubah (lokasi dan km, info lalu lintas, jam) disintesis di Web Worker (`piper-worker.js`: espeak-ng WebAssembly untuk fonem, onnxruntime-web untuk model). Model sekitar 60 MB diunduh sekali dari branch `voice-data`, lalu disimpan di cache browser. Ini hanya di perangkat yang kuat: desktop, atau HP dengan RAM 4 GB ke atas.
 3. **Cadangan.** Selama model belum siap, di HP lemah, atau bila *Pengaturan → Mesin suara → Suara bawaan perangkat* dipilih, suara bawaan browser yang dipakai. Navigasi tidak pernah menunggu lebih dari 1,5 detik.
 
-**Dispatcher.** Nomor 112, 110, 118, 119, 113, 115, 133 dan 151 di aplikasi Telepon dijawab petugas bersuara: Rina (112), Brigadir Andi (110), Sari (118/119), Dimas (113), Yoga (115), Hadi (Info Tol 133), Rudi (call center Dishub 151).
-- 133 dan 151 melayani **derek gratis**, **informasi lalu lintas** (arus di ruas Anda, cuaca, rest area berikutnya) dan **layanan lainnya** (kehabisan BBM, ban bocor/mogok, lapor gangguan → patroli).
-- **Derek tidak dipungut biaya.** Yang dibayar hanya bengkel (jasa servis Rp 100.000 + suku cadang sesuai kerusakan) dan BBM darurat sesuai harga SPBU (10 L × Rp 10.000).
-- Suara di telepon diberi filter seperti saluran telepon, dan teks ucapan tampil di layar.
-- Petugas 112 menanyakan keadaan daruratnya (kecelakaan, mogok, kebakaran, polisi, sakit) lalu meneruskan ke unit yang tepat.
-- Petugas membacakan ruas tol dan km lokasi Anda, lalu mengirim bantuan: mobil derek, atau patroli polisi, ambulans, atau pemadam kebakaran yang datang dari belakang dengan sirene.
+**Call center.** Aplikasi Telepon punya 8 nomor layanan. Kontaknya memakai nama lembaga, dan operator menjawab atas nama lembaganya. Tiap nomor punya menu layanan sendiri:
+
+| Nomor | Lembaga | Layanan |
+|---|---|---|
+| 112 | Layanan Darurat 112 | kecelakaan (ambulans + polisi), kendaraan terbakar (pemadam), terjebak (Tim SAR), mogok (derek gratis), gangguan keamanan (polisi), ada yang sakit (ambulans) |
+| 110 | Kepolisian Negara Republik Indonesia (Polri) | lapor kecelakaan (polisi + ambulans), lapor gangguan keamanan, lapor jalan terhalang/kemacetan, cek tilang elektronik (ETLE): jumlah pelanggaran dan denda |
+| 118 | Layanan Ambulans Gawat Darurat | korban luka, sakit/pingsan (ambulans), cek kelelahan/kantuk |
+| 119 | Kementerian Kesehatan · Layanan Kesehatan | ambulans, konsultasi kelelahan, info fasilitas kesehatan terdekat |
+| 113 | Dinas Pemadam Kebakaran dan Penyelamatan | kendaraan terbakar, kebakaran di sekitar jalan, penyelamatan korban terjepit (pemadam + ambulans) |
+| 115 | Badan SAR Nasional (Basarnas) | korban terjebak / kecelakaan berat, pencarian orang hilang (Tim SAR), info bencana |
+| 133 | Pusat Informasi Jalan Tol | derek gratis, informasi lalu lintas, layanan lainnya (BBM darurat, ban bocor/mogok, lapor gangguan) |
+| 151 | Dinas Perhubungan (Dishub) | sama dengan 133 |
+
+- **Unit yang datang:** unit dikirim dengan sirene dan berhenti di belakang kamu. Lalu masing-masing bekerja:
+  - **polisi** menyingkirkan kendaraan rusak dari jalan (±200 m);
+  - **pemadam** memadamkan kendaraan yang terbakar;
+  - **ambulans** memeriksa pengemudi (kantuk −30%);
+  - **Tim SAR** melakukan semuanya.
+
+  Setelah ±25 detik unit pergi lagi.
+- **Laporan informasi** dibuat saat itu juga dari keadaan game: arus dan cuaca, rest area berikutnya, catatan ETLE dan denda, tingkat kantuk, fasilitas kesehatan terdekat, dan cuaca/bencana.
+- **Biaya:** derek tidak dipungut biaya. Yang dibayar hanya bengkel (jasa servis Rp 100.000 + suku cadang sesuai kerusakan) dan BBM darurat sesuai harga SPBU (10 L × Rp 10.000).
 
 ### SPBU di jalan non-tol
 

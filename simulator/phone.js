@@ -1,6 +1,7 @@
 import {createPhoneHome, HOME_CSS} from './phone-home.js';
 import {createPhoneStore, STORE_CSS} from './phone-store.js';
 import {DISPATCH} from './voice-lines.js';
+const SERVICES = ['112', '110', '118', '119', '113', '115', '133', '151'].map(n => [n, DISPATCH[n].name, DISPATCH[n].g]);
 // ================================================================
 // HANDPHONE: the player's phone, a full GUI with animated screens and apps.
 // Lock screen → home screen (app grid + dock) → apps that open from their icon and close back into it.
@@ -467,7 +468,7 @@ export function initPhone(A){
   P.sms = P.sms || {}; P.names = P.names || {}; P.calls = P.calls || [];
   const fmtNo = n => /^0\d{11}$/.test(n) ? `${n.slice(0, 4)}-${n.slice(4, 8)}-${n.slice(8)}` : n, intl = n => /^0\d{11}$/.test(n) ? `+62 ${n.slice(1, 4)}-${n.slice(4, 8)}-${n.slice(8)}` : n;
   const canon = t => { let d = String(t).replace(/\D/g, ''); if (d.startsWith('62')) d = '0' + d.slice(2); return d; };
-  const nameOf = n => P.names[n] || (net.online.find(o => o.no === n) || {}).name || fmtNo(n);
+  const nameOf = n => P.names[n] || (DISPATCH[n] && DISPATCH[n].name) || (net.online.find(o => o.no === n) || {}).name || fmtNo(n);
   // the network is the multiplayer connection: numbers travel with each player's position, messages and call signalling as 'ph' broadcasts
   const net = {get ready(){ return A.mp.ready(); }, get online(){ return A.mp.peers().filter(o => o.no && o.no !== P.no); }, pend: new Map(), call: null};
   const tx = m => { if (net.ready) A.mp.send({...m, from: P.no, name: P.owner}); };
@@ -542,12 +543,12 @@ export function initPhone(A){
   let tlTab = 'pad';
   APPS_IMPL.telepon = pg => { scr.style.setProperty('--acc', '#18a33a'); let num = '';
     pg.innerHTML = head('Telepon') + `<div class="myno">Nomormu <b>${fmtNo(P.no)}</b> · ${net.ready ? '<span class="on-dot"></span>online' : 'offline'}</div>`;
-    if (!net.ready) { mpOnly(pg); html(pg, `<div class="card" style="margin-top:10px"><h4>Layanan (tetap bisa dihubungi)</h4>${[['112', 'Darurat 112', 'amb'], ['110', 'Polisi', 'polisi'], ['118', 'Ambulans', 'amb'], ['119', 'Ambulans (kesehatan)', 'amb'], ['113', 'Pemadam kebakaran', 'derek'], ['115', 'Basarnas (SAR)', 'polisi'], ['133', 'Info Tol (derek gratis)', 'derek'], ['151', 'Call center Dishub (derek gratis)', 'derek']].map(([n, l, g]) => `<div class="row" data-n="${n}"><span class="ri" style="--g:${G[g]}">${ic(g === 'polisi' ? 'Shield' : g === 'amb' ? 'Ambulance' : 'Phone')}</span><span class="rt"><b>${l}</b><small>${n}</small></span>${ic('PhoneCall')}</div>`).join('')}</div>`).onclick = e => { const r = e.target.closest('.row'); if (r) call(r.dataset.n); }; return; }
+    if (!net.ready) { mpOnly(pg); html(pg, `<div class="card" style="margin-top:10px"><h4>Layanan (tetap bisa dihubungi)</h4>${SERVICES.map(([n, l, g]) => `<div class="row" data-n="${n}"><span class="ri" style="--g:${G[g]}">${ic((DISPATCH[n] || {}).icon || 'Phone')}</span><span class="rt"><b>${l}</b><small>${n}</small></span>${ic('PhoneCall')}</div>`).join('')}</div>`).onclick = e => { const r = e.target.closest('.row'); if (r) call(r.dataset.n); }; return; }
     pg.append(seg([['pad', 'Papan tombol'], ['recent', 'Terbaru'], ['kontak', 'Kontak']], tlTab, k => { tlTab = k; redraw(); }));
     if (tlTab === 'pad') {
       html(pg, `<div><div class="num"></div><div class="pad">${['1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '0', '⌫'].map(d => `<button data-d="${d}">${d}</button>`).join('')}</div>
         <button class="btn dial" style="background:#18a33a;width:66px;height:66px;border-radius:50%;margin:6px auto 14px">${ic('Phone')}</button></div>`);
-      html(pg, `<div class="card"><h4>Nomor penting</h4>${[['112', 'Darurat 112', 'amb'], ['110', 'Polisi', 'polisi'], ['118', 'Ambulans', 'amb'], ['119', 'Ambulans (kesehatan)', 'amb'], ['113', 'Pemadam kebakaran', 'derek'], ['115', 'Basarnas (SAR)', 'polisi'], ['133', 'Info Tol (derek gratis)', 'derek'], ['151', 'Call center Dishub (derek gratis)', 'derek']].map(([n, l, g]) => `<div class="row" data-n="${n}"><span class="ri" style="--g:${G[g]}">${ic(g === 'polisi' ? 'Shield' : g === 'amb' ? 'Ambulance' : 'Phone')}</span><span class="rt"><b>${l}</b><small>${n}</small></span>${ic('PhoneCall')}</div>`).join('')}</div>`);
+      html(pg, `<div class="card"><h4>Nomor penting</h4>${SERVICES.map(([n, l, g]) => `<div class="row" data-n="${n}"><span class="ri" style="--g:${G[g]}">${ic((DISPATCH[n] || {}).icon || 'Phone')}</span><span class="rt"><b>${l}</b><small>${n}</small></span>${ic('PhoneCall')}</div>`).join('')}</div>`);
       const show = () => pg.querySelector('.num').textContent = /^\d{5,}$/.test(num) && num.startsWith('0') ? fmtNo(num.padEnd(12, ' ').trim()) : num;
       pg.querySelector('.pad').onclick = e => { const d = e.target.dataset.d; if (!d) return; num = d === '⌫' ? num.slice(0, -1) : (num + d).slice(0, 15); show(); A.sfx('key'); };
       pg.querySelector('.dial').onclick = () => num && dial(num);
@@ -559,13 +560,13 @@ export function initPhone(A){
     html(pg, `<div class="card"><h4>${net.online.length} pemain online</h4>${list.length ? list.map(o => `<div class="row" data-n="${o.no}"><span class="ri" style="--g:${G.kontak}">${ic('User')}</span><span class="rt"><b>${o.off ? '' : '<span class="on-dot"></span>'}${esc(o.name)}</b><small>${fmtNo(o.no)}</small></span>${sms ? ic('MessageCircle') : ic('Phone')}</div>`).join('') : '<p>Belum ada pemain lain yang online. Bagikan nomormu ke teman!</p>'}</div>`).onclick = e => { const r = e.target.closest('.row'); if (r) onPick(r.dataset.n); }; }
   // a call to an emergency or service number: the dispatcher answers (spoken, with captions), the caller answers with buttons,
   // and help is sent to where the car is (A.dispatch speaks the lines and sends the units)
-  function call(n){ const D = DISPATCH[n] || {name: n}, g = n === '110' || n === '115' ? G.polisi : ['113', '151', '133'].includes(n) ? G.derek : G.amb;
+  function call(n){ const D = DISPATCH[n] || {name: n}, g = G[D.g] || G.amb;
     const c = document.createElement('div'); c.className = 'call'; c.style.setProperty('--g', g);
-    c.innerHTML = `<div class="av">${ic(n === '110' ? 'Shield' : n === '113' ? 'Flame' : /11[289]/.test(n) ? 'Ambulance' : n === '115' ? 'LifeBuoy' : 'Headset')}</div><h3>${esc(D.name)}</h3><p class="s">Memanggil…</p><p class="cap" aria-live="polite"></p><div class="opts"></div><button class="end" aria-label="Tutup telepon">${ic('PhoneOff')}</button>`;
+    c.innerHTML = `<div class="av">${ic(D.icon || 'Headset')}</div><h3>${esc(D.name)}</h3><p class="s">Memanggil…</p><p class="cap" aria-live="polite"></p><div class="opts"></div><button class="end" aria-label="Tutup telepon">${ic('PhoneOff')}</button>`;
     scr.append(c); A.sfx('ring'); const s2 = c.querySelector('.s'), cap = c.querySelector('.cap'), opts = c.querySelector('.opts'); let over = false, t0 = 0, tick = null;
     const end = () => { if (over) return; over = true; clearInterval(tick); A.hangup && A.hangup(); c.style.transition = 'opacity .25s'; c.style.opacity = '0'; setTimeout(() => c.remove(), 260); };
     c.querySelector('.end').onclick = end;
-    setTimeout(() => { if (over) return; t0 = Date.now(); tick = setInterval(() => { const k = Math.floor((Date.now() - t0)/1000); s2.textContent = `${String(Math.floor(k/60)).padStart(2, '0')}:${String(k%60).padStart(2, '0')} · ${esc(D.who || '')}`; }, 500);
+    setTimeout(() => { if (over) return; t0 = Date.now(); tick = setInterval(() => { const k = Math.floor((Date.now() - t0)/1000); s2.textContent = `${String(Math.floor(k/60)).padStart(2, '0')}:${String(k%60).padStart(2, '0')} · Operator`; }, 500);
       A.dispatch(n, {caption: t => { if (!over) cap.textContent = t; }, alive: () => !over,
         choose: list => new Promise(res => { opts.innerHTML = list.map(([k, l]) => `<button data-k="${k}">${esc(l)}</button>`).join(''); opts.onclick = e => { const b = e.target.closest('button'); if (!b) return; opts.innerHTML = ''; A.sfx('tap'); res(b.dataset.k); }; }),
         done: () => setTimeout(end, 1200)}); }, 2200); }
