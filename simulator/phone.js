@@ -151,6 +151,12 @@ const CSS = `
 #phone .call .opts{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:250px;margin:10px 0 140px}#phone .call .opts button{border:0;border-radius:16px;padding:8px 12px;background:rgba(255,255,255,.18);color:#fff;font:600 12px/1 inherit;cursor:pointer}
 #phone .call .end{position:absolute;bottom:60px;width:66px;height:66px;border-radius:50%;border:0;background:#ff3b30;display:grid;place-items:center;cursor:pointer}
 #phone .call .end svg{width:30px;height:30px;stroke:#fff}
+#phone .call.dsp{padding:52px 18px 0}#phone .call.dsp .av{width:66px;height:66px;margin-bottom:10px}#phone .call.dsp .av svg{width:32px;height:32px}
+#phone .call.dsp h3{font-size:19px;line-height:1.25;text-align:center;max-width:260px}#phone .call.dsp .cap{max-width:270px;min-height:2.8em;margin-top:10px!important}
+#phone .call.dsp .opts{flex:1 1 auto;min-height:0;overflow-y:auto;flex-direction:column;flex-wrap:nowrap;justify-content:flex-start;align-items:stretch;width:100%;max-width:290px;margin:10px 0 0;gap:7px;padding:2px 0 6px}
+#phone .call.dsp .opts button{width:100%;text-align:left;padding:11px 14px;border-radius:12px;font:600 13.5px/1.3 inherit;flex:0 0 auto}
+#phone .call.dsp .opts button[data-k=no]{background:transparent;border:1.5px solid rgba(255,255,255,.35);text-align:center}
+#phone .call.dsp .end{position:static;flex:0 0 auto;margin:12px 0 30px}
 @keyframes phRing{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,.35)}70%{box-shadow:0 0 0 22px rgba(255,255,255,0)}}
 @keyframes phFade{from{opacity:0}}
 #phone .radar{width:150px;height:150px;margin:14px auto;border-radius:50%;position:relative;background:radial-gradient(circle,var(--acc) 0 10px,transparent 11px)}
@@ -561,7 +567,7 @@ export function initPhone(A){
   // a call to an emergency or service number: the dispatcher answers (spoken, with captions), the caller answers with buttons,
   // and help is sent to where the car is (A.dispatch speaks the lines and sends the units)
   function call(n){ const D = DISPATCH[n] || {name: n}, g = G[D.g] || G.amb;
-    const c = document.createElement('div'); c.className = 'call'; c.style.setProperty('--g', g);
+    const c = document.createElement('div'); c.className = 'call dsp'; c.style.setProperty('--g', g);
     c.innerHTML = `<div class="av">${ic(D.icon || 'Headset')}</div><h3>${esc(D.name)}</h3><p class="s">Memanggil…</p><p class="cap" aria-live="polite"></p><div class="opts"></div><button class="end" aria-label="Tutup telepon">${ic('PhoneOff')}</button>`;
     scr.append(c); A.sfx('ring'); const s2 = c.querySelector('.s'), cap = c.querySelector('.cap'), opts = c.querySelector('.opts'); let over = false, t0 = 0, tick = null;
     const end = () => { if (over) return; over = true; clearInterval(tick); A.hangup && A.hangup(); c.style.transition = 'opacity .25s'; c.style.opacity = '0'; setTimeout(() => c.remove(), 260); };

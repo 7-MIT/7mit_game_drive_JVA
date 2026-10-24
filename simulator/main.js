@@ -3270,7 +3270,10 @@ function sim(dt){
   for (const v of vehicles){ if (v.player && !cfg.auto) continue; if (v.esc && Math.abs(v.lx - v.lane) > 0.45) continue; reg(key(v.sd, v.lane), v); }
   if (tow && Math.abs(tow.v.lx - Math.round(tow.v.lx)) < 0.45) reg(key(tow.v.sd, Math.round(tow.v.lx)), tow.v);
   if (PLR && !PLR.rp && !cfg.auto && !tow && vehicles.includes(PLR)) { const v = PLR, z = cfAt(v.sd, v.p);
-    for (const l of new Set([Math.floor(v.lx), Math.ceil(v.lx)])) {
+    // the player blocks only the lanes the car's body actually covers (half its width plus half a car's): parked on the
+    // shoulder, the traffic in the outer lane drives on past
+    const reach = ((HW[v.type] || 0.92) + 0.95)/LW + 0.05;
+    for (const l of new Set([Math.floor(v.lx), Math.ceil(v.lx)])) { if (Math.abs(v.lx - l) > reach) continue;
       if (l >= 0 || (z && z.A === v.sd && -l <= z.k)) reg(key(v.sd, l), v);
       else { const j = -l - 1; reg(key(-v.sd, j), {p: -v.sd*uOfV(v), vel: 0, len: v.len, lane: j, lx: j, phantom: true}); } } }
   for (const v of vehicles){
