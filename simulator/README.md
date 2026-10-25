@@ -628,3 +628,12 @@ Sirkuit Sentul ada di dekat exit Sentul (Tol Jagorawi). Kalau kamu berada di are
 - **Suara Piper hanya di komputer.** Di HP (termasuk iPhone, yang tidak memberi tahu ukuran RAM) suara memakai klip siap putar dan suara bawaan perangkat. Cache klip di HP dibatasi 16.
 - **Kualitas awal:** iPhone dianggap RAM 3 GB, jadi kualitas grafis mulai lebih ringan lalu naik otomatis kalau lancar.
 - **Lain-lain:** pencarian rute di HP memakai jalan utama saja, dan pejalan kaki di HP maksimal 6.
+
+### Controller / gamepad
+
+Game bisa dimainkan dengan controller apa pun yang dikenali browser: Xbox, PlayStation (DualShock/DualSense), Nintendo (Pro Controller/Joy-Con), setir dan pedal (Logitech, Thrustmaster, Fanatec, …), dan controller generik. Sambungkan lewat USB atau Bluetooth, lalu tekan salah satu tombolnya.
+
+- **Bawaan:** stik kiri untuk setir, RT/R2/ZR gas, LT/L2/ZL rem, RB/LB gigi naik/turun, A/✕/B kopling, B/○/A klakson, X/□/Y hazard, Y/△/X kamera, D-pad ←/→ sein, D-pad ↑ HP, D-pad ↓ radio, View/Create/− peta, Menu/Options/+ mode foto, L3 pengaturan. Nama tombol di layar mengikuti merek controller.
+- **Pengaturan → Controller / gamepad → Pengaturan tombol & setir:** semua aksi bisa diatur ulang ("Ubah", lalu tekan tombol atau gerakkan stik/pedal). Setir bisa memakai satu sumbu penuh atau dua arah terpisah, misalnya dua tombol. Ada juga zona mati, sensitivitas, kurva setir, setir terbalik, getar saat tabrakan beserta kekuatannya, pilihan controller kalau tersambung lebih dari satu, dan tombol kembalikan ke bawaan. Pengaturan tersimpan bersama pengaturan game.
+- **Tes gamepad:** info controller (nama, merek, mapping, jumlah tombol/sumbu, dukungan getar), diagram controller yang menyala saat ditekan, posisi kedua stik, nilai semua sumbu (−1…1) dan semua tombol (0…1, termasuk tekanan trigger), serta tes getar lemah/kuat.
+- Controller juga bisa dipakai di Sirkuit / Race Season. Selama panel controller terbuka, controller tidak menggerakkan mobil.

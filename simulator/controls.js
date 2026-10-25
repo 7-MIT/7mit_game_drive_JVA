@@ -35,20 +35,26 @@ export function readPad(p, rest){
   }
   return out;
 }
-export function createPads({input, on = {}}){
-  const rest = new Map(); let prev = {}, used = false;
+// conf(): the player's controller settings (gamepad.js); paused(): true while a menu like the controller panel has the pad
+export function createPads({input, on = {}, conf = () => null, paused = () => false}){
+  const rest = new Map(); let prev = {}, used = false, cur = null;
   addEventListener('gamepadconnected', e => { rest.set(e.gamepad.index, [...e.gamepad.axes]); on.connect && on.connect(e.gamepad); });
   addEventListener('gamepaddisconnected', e => { rest.delete(e.gamepad.index); release(); on.disconnect && on.disconnect(e.gamepad); });
   function release(){ if (!used) return; used = false; Object.assign(input, {steerA: 0, gasA: 0, brakeA: 0, gas: false, brake: false, clutch: false}); prev = {}; }
   return {poll(){
+    if (paused()) return release();
     const list = navigator.getGamepads ? [...navigator.getGamepads()].filter(Boolean) : []; if (!list.length) return release();
-    const p = list[0]; if (!rest.has(p.index)) rest.set(p.index, [...p.axes]); const r = readPad(p, rest.get(p.index));
+    const C = conf() || {}, p = list.find(q => q.index === C.index) || list[0]; cur = p; if (!rest.has(p.index)) rest.set(p.index, [...p.axes]);
+    // the player's own layout (or the standard one) through gamepad.js; a wheel with its own mapping and no layout of its own: the pedal guess
+    const r = (p.mapping === 'standard' || C.custom) && readBoundFn ? readBoundFn(p, C, rest.get(p.index)) : readPad(p, rest.get(p.index));
     const active = Math.abs(r.steer) > 0.02 || r.gas > 0.03 || r.brake > 0.03 || Object.values(r.btn).some(Boolean);
-    if (!active && !used) return; if (active && !used) { used = true; on.active && on.active(); }
+    if (!active && !used) return; if (active && !used) { used = true; on.active && on.active(p); }
     input.steerA = r.steer; input.gasA = r.gas; input.brakeA = r.brake; input.gas = r.gas > 0.05; input.brake = r.brake > 0.08; input.clutch = !!r.btn.clutch || r.clutch > 0.5;
     for (const [k, v] of Object.entries(r.btn)) { if (v && !prev[k] && on[k]) on[k](true); if (!v && prev[k] && on[k + 'Up']) on[k + 'Up'](); }
-    prev = r.btn; }, get used(){ return used; }};
+    prev = r.btn; }, get used(){ return used; }, get pad(){ return cur; }};
 }
+// set by main.js from gamepad.js (kept out of the import list so this file stays testable on its own)
+let readBoundFn = null; export const useBindings = f => { readBoundFn = f; };
 
 // ---- tilt steering (phones and tablets): turn the device like a steering wheel ----
 export function tiltSteer(e, angle){ const a = ((angle % 360) + 360) % 360, x = a === 90 ? e.beta : a === 270 ? -e.beta : e.gamma;

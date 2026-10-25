@@ -16,7 +16,8 @@ import {createCareer, SHOP} from './career.js';
 import {initCareerUI} from './career-ui.js';
 import * as ACC from './account.js';
 import {cineShot, photoShot, createRecorder, initPhotoUI, lerpAngle} from './studio.js';
-import {manualDrive, shiftOK, createPads, startTilt} from './controls.js';
+import {manualDrive, shiftOK, createPads, startTilt, useBindings} from './controls.js';
+import {readBound, padConf, openPadPanel, rumble, brandOf, BRAND_NAME} from './gamepad.js';
 import {createRadio} from './radio.js';
 import {createGlass} from './glass.js';
 import {initReport} from './report.js';
@@ -3850,7 +3851,7 @@ const MASS = {bicycle:BICYCLE.mass, taxi: 1300, derek: 8000, pickup: 1750, moto:
 const RESTI = 0.04;
 function impact1D(v1, m1, v2, m2){ const P = m1*v1 + m2*v2, Mt = m1 + m2; return [(P + m2*RESTI*(v2 - v1))/Mt, (P + m1*RESTI*(v1 - v2))/Mt]; }
 function hitAI(o, dv, side){ o.crashT = clock + Math.min(25, 5 + dv*1.2); if (dv > 3) startAngry(o, dv); if (dv > 8) o.spinY = (side || (Math.random() < 0.5 ? 1 : -1))*Math.min(0.3, dv*0.015); }
-function hitFx(dv, msg, where = 'front', o = null){
+function hitFx(dv, msg, where = 'front', o = null){ padRumble(Math.abs(dv)/12);
   if (dv > 1.5) crash(dv > 14 ? msg + ' (parah)' : msg);
   const v = PLR, u = v.rp ? v.rp.sd*v.p : uOfV(v), sd = v.rp ? v.rp.sd : v.sd, fw = Math.sign(v.vel || 1)*sd;
   const pu = where === 'side' ? u : u + (where === 'back' ? -fw : fw)*v.len*0.5, px = where === 'side' && o ? (v.x + o.x)/2 : v.x, py = v.rp ? (v.q.h || 0) : 0;
@@ -4930,6 +4931,7 @@ function rowsSpec(){
     ['view', 'Jarak pandang', [['normal','Normal'],['jauh','Jauh (lebih berat)']]],
     ['gfx', 'Grafis', [['auto','Otomatis'],['hemat','Hemat (paling ringan)'],['sedang','Sedang'],['tinggi','Tinggi (paling realistis)']]],
     ['trans', 'Transmisi', [['auto','Otomatis'],['manual','Manual (kopling otomatis) · , dan . ganti gigi'],['manualc','Manual + kopling (Spasi)']]],
+    ['padui', 'Controller / gamepad', [['set', 'Pengaturan tombol & setir'], ['test', 'Tes gamepad']]],
     ['tilt', 'Setir miring (HP/tablet)', [[false,'Mati'],[true,'Aktif (miringkan HP seperti setir)']]],
     ['radio', 'Radio 7MIT FM', [[false,'Mati'],[true,'Nyala (penyiar & iklan fiktif, Y)']]],
     ['autoSteer', 'Setir otomatis', [[false,'Mati'],[true,'Aktif (gas & rem tetap manual)']]],
@@ -5018,6 +5020,7 @@ function dropZone(z){
   OBJ = OBJ.filter(o => o.z !== z && !(o.o && o.o.cf === z));
 }
 function apply(id, v, fromServer = false){
+  if (id === 'padui') { openPads(v); return; }
   if (!fromServer && srvLocked(id)) { toast('Di multiplayer pengaturan hanya bisa diubah admin server', 'warn'); return; }
   cfg[id] = v; saveCfg();
   if (!fromServer && mp.on && mp.admin && SRV_KEYS.includes(id)) setTimeout(srvPush, 50);
@@ -5998,7 +6001,7 @@ function tick(dt,stream=true){
 function streamWorld(){ if (window.__perf) { const P = window.__perf, T = (k, f) => { const a = performance.now(); f(); const d = performance.now() - a; P[k] = P[k] || {sum: 0, max: 0, n: 0}; P[k].sum += d; P[k].n++; if (d > P[k].max) P[k].max = d; };
     T('ensureAhead', ensureAhead); T('blocks', () => setupBlocks(false)); T('world', () => updateWorld(true)); T('signals', () => { updateSignals(); animGhosts(); }); return; }
   ensureAhead();setupBlocks(false);updateWorld(true);updateSignals();animGhosts();}
-window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol,get ready3d(){return !!FERRY3D;},frame3d(k){if(!FERRY3D)return null;FERRY3D.t0=performance.now()-k*FERRY3D.dur*1000;ferry3dFrame(1/30);return renderer.domElement.toDataURL('image/jpeg',.85);}};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.LMK_BUILD=LMK_BUILD; window.__tj.gg=ggRule; window.__tj.apply=apply; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll; window.__tj.scene = scene; window.__tj.circuit = {open: () => openRace(CIRCUITS[0]), get race(){ return RACE; }, here: circuitHere}; window.__tj.route = {RQ, step: routeTripRoads, OSM, openAtlas}; window.__tj.NUT = () => NUT; window.__tj.lxBounds = lxBounds; window.__tj.steerPlayer = steerPlayer; window.__tj.uTurn = uTurn; window.__tj.peds = PEDS; window.__tj.pedDbg = {step: stepPeds, blocks: pedBlocks, sigCross, KS: () => KSITES, eAt, set sig(f){ pedSig = f; }}; window.__tj.spbu = {sites: SPBU_SITES, near: spbuNear, ctx: () => svcContext(), live(){ const out = []; scene.traverse(o => { if (o.isMesh && o.material === SPBU_SIGN?.mat) { const g = o.parent.parent; out.push([g.userData.u0, Math.round(o.parent.position.x), Math.round(o.parent.position.z)]); } }); return out; }}; window.__tj.voice = {VOX, dispatch: dispatchCall, sendUnit, unitWork, infoLine, get responders(){ return RESPONDERS; }}; window.__tj.phone = () => PHONE;
+window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol,get ready3d(){return !!FERRY3D;},frame3d(k){if(!FERRY3D)return null;FERRY3D.t0=performance.now()-k*FERRY3D.dur*1000;ferry3dFrame(1/30);return renderer.domElement.toDataURL('image/jpeg',.85);}};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.LMK_BUILD=LMK_BUILD; window.__tj.gg=ggRule; window.__tj.apply=apply; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll; window.__tj.scene = scene; window.__tj.circuit = {open: () => openRace(CIRCUITS[0]), get race(){ return RACE; }, here: circuitHere}; window.__tj.route = {RQ, step: routeTripRoads, OSM, openAtlas}; window.__tj.NUT = () => NUT; window.__tj.pads = () => PADS; window.__tj.lxBounds = lxBounds; window.__tj.steerPlayer = steerPlayer; window.__tj.uTurn = uTurn; window.__tj.peds = PEDS; window.__tj.pedDbg = {step: stepPeds, blocks: pedBlocks, sigCross, KS: () => KSITES, eAt, set sig(f){ pedSig = f; }}; window.__tj.spbu = {sites: SPBU_SITES, near: spbuNear, ctx: () => svcContext(), live(){ const out = []; scene.traverse(o => { if (o.isMesh && o.material === SPBU_SIGN?.mat) { const g = o.parent.parent; out.push([g.userData.u0, Math.round(o.parent.position.x), Math.round(o.parent.position.z)]); } }); return out; }}; window.__tj.voice = {VOX, dispatch: dispatchCall, sendUnit, unitWork, infoLine, get responders(){ return RESPONDERS; }}; window.__tj.phone = () => PHONE;
 window.__tj.moveSvg = moveSvg; window.__tj.nextMv = nextMove;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering
@@ -6061,9 +6064,15 @@ function replayStep(dt){
   for (const v of vehicles.concat(rampers)) if (v.g && !shown.has(v.g) && v.g.visible) { v.g.visible = false; R.hid.push(v.g); }
   const sp = $('replaybar')?.querySelector('span'); if (sp) sp.textContent = `${Math.max(0, Math.ceil(R.dur - R.t))} s`; }
 // gamepads and steering wheels (controls.js): sticks/wheel steer, triggers/pedals give analog gas and brake
-const PADS = createPads({input, on: {active: () => { manualNow(); toast('Gamepad / setir terhubung'); }, horn: () => playerHorn(true), hornUp: () => playerHorn(false), cam: () => $('camb').click(),
+useBindings(readBound);
+let PADUI = false;
+const PADS = createPads({input, conf: () => padConf(cfg.pad), paused: () => PADUI, on: {active: p => { manualNow(); toast(`${BRAND_NAME[brandOf(p && p.id)]} terhubung · atur tombol di Pengaturan → Controller / gamepad`); },
+  phone: () => $('phbtn').click(), radio: () => apply('radio', !cfg.radio), settings: () => $('toggle').click(), horn: () => playerHorn(true), hornUp: () => playerHorn(false), cam: () => $('camb').click(),
   up: () => shiftGear(1), down: () => shiftGear(-1), map: () => { if ($('atlas').hidden) openAtlas(); else closeAtlas(); }, left: () => setIndicator(PLR?.indicator === 1 ? 0 : 1),
   right: () => setIndicator(PLR?.indicator === -1 ? 0 : -1), hazard: () => setIndicator(PLR?.indicator === 2 ? 0 : 2), photo: () => photoToggle()}});
+// controller vibration on crashes (Pengaturan → Controller / gamepad)
+function padRumble(k = 1){ const C = padConf(cfg.pad); if (C.vib && PADS.used && PADS.pad) rumble(PADS.pad, C.vibK*Math.min(1, k), C.vibK*Math.min(1, k)*0.6, 160 + 200*Math.min(1, k)); }
+function openPads(tab){ if (PADUI) return; PADUI = true; openPadPanel({get: () => cfg.pad, set: c => { cfg.pad = c; saveCfg(); }, tab, onClose: () => { PADUI = false; }}); }
 const GLASS = createGlass();
 // bug reports from inside the game (report.js): screenshot + device, settings, position and the last errors
 const REPORT = initReport({sb: sbClient, canvas: () => renderer.domElement, render: () => renderWorld(), toast, feedback: FEEDBACK, version: '2.03',
@@ -6088,7 +6097,7 @@ renderer.setAnimationLoop(now => {
   if(now-renderLast<1000/60-.5)return;renderLast=now;
   const rawDt = (now - last)/1000, dt = Math.min(0.067, rawDt); last = now; frames++; if (rawDt > 0 && rawDt < 1) govern(rawDt);
   if(renderer.shadowMap.enabled)renderer.shadowMap.needsUpdate=(shadowFrame=(shadowFrame+1)%PROFILE.shadowEvery)===0;
-  if (RACE) { RACE.frame(dt); return; }
+  if (RACE) { PADS.poll(); RACE.frame(dt); return; }
   if (ARREST_DIALOG?.open||FERRY_ON) { if (FERRY3D && !ARREST_DIALOG?.open) ferry3dFrame(dt); else renderWorld(); return; }
   if (!$('plan').hidden && trip && !stats.done) { renderWorld(); return; }
   PADS.poll();
