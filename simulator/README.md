@@ -621,3 +621,10 @@ Sirkuit Sentul ada di dekat exit Sentul (Tol Jagorawi). Kalau kamu berada di are
 - **Hadiah:** juara 1 dapat **Rp 2.000.000** tunai, plus XP karier (juara 150, podium 60, lainnya 20). Posisi lain hanya dapat poin.
 - **Kendali:** sama dengan berkendara biasa (keyboard, setir/gamepad, atau tombol layar di HP). Kecepatan maksimal tetap 200 km/jam.
 - **Seimbang:** di simulasi, pengemudi yang presisi bisa menang tipis; yang kurang rapi finis ke-2 atau lebih rendah.
+
+### iPhone / HP: memori lebih hemat
+
+- **Geometri mobil dipakai bersama.** Sebelumnya kunci cache penggabungan model mobil ikut memuat material pelat nomor dan ID geometri, jadi hampir setiap mobil mendapat salinan model detail sendiri (±1,4 MB) yang tak pernah dilepas. Sekarang mobil dengan model yang sama memakai satu geometri. Di emulasi iPhone 13, geometri turun dari 153 MB ke 41 MB dan heap dari 219 MB ke 106 MB, dan memori tidak lagi naik terus selama bermain.
+- **Suara Piper hanya di komputer.** Di HP (termasuk iPhone, yang tidak memberi tahu ukuran RAM) suara memakai klip siap putar dan suara bawaan perangkat. Cache klip di HP dibatasi 16.
+- **Kualitas awal:** iPhone dianggap RAM 3 GB, jadi kualitas grafis mulai lebih ringan lalu naik otomatis kalau lancar.
+- **Lain-lain:** pencarian rute di HP memakai jalan utama saja, dan pejalan kaki di HP maksimal 6.

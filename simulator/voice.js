@@ -7,7 +7,7 @@ import {hashText, normText} from './voice-lines.js';
 export const VOICE_BASE = 'https://raw.githubusercontent.com/7-MIT/7mit_game_drive_jva/voice-data/';
 let ctx = null, index = null, indexP = null, worker = null, workerReady = false, workerFailed = false, seq = 0;
 const pending = new Map(), cache = new Map(), queue = [], state = {busy: false, cur: null};
-const opts = {engine: 'auto', strong: true, onState: () => {}};
+const opts = {engine: 'auto', strong: true, cacheMax: 80, onState: () => {}};
 export function configure(o){ Object.assign(opts, o); if (opts.engine === 'browser' && worker) { worker.terminate(); worker = null; workerReady = false; } }
 const audio = () => { if (!ctx) { try { ctx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { ctx = null; } } if (ctx && ctx.state === 'suspended') ctx.resume().catch(() => {}); return ctx; };
 function loadIndex(){ if (!indexP) indexP = fetch(VOICE_BASE + 'index.json', {cache: 'no-cache'}).then(r => r.ok ? r.json() : null).then(j => { index = j; return j; }).catch(() => null); return indexP; }
@@ -28,7 +28,7 @@ async function bufferFor(text){
   if (clip) { try { const r = await fetch(VOICE_BASE + clip.file); buf = await c.decodeAudioData(await r.arrayBuffer()); } catch (e) { buf = null; } }
   if (!buf && workerReady) { try { const id = ++seq, m = await new Promise((res, rej) => { pending.set(id, {res, rej}); worker.postMessage({type: 'say', id, text: key}); setTimeout(() => { if (pending.has(id)) { pending.delete(id); rej(new Error('timeout')); } }, 15000); });
       buf = c.createBuffer(1, m.pcm.length, m.rate); buf.copyToChannel(m.pcm, 0); } catch (e) { buf = null; } }
-  if (buf) { cache.set(key, buf); if (cache.size > 80) cache.delete(cache.keys().next().value); }
+  if (buf) { cache.set(key, buf); while (cache.size > opts.cacheMax) cache.delete(cache.keys().next().value); }
   return buf; }
 function playBuffer(buf, channel, gain){ return new Promise(done => { const c = audio(); const src = c.createBufferSource(); src.buffer = buf; let node = src;
   if (channel === 'phone') { const hp = c.createBiquadFilter(), lp = c.createBiquadFilter(), sh = c.createWaveShaper(); hp.type = 'highpass'; hp.frequency.value = 320; lp.type = 'lowpass'; lp.frequency.value = 3300;

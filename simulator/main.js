@@ -42,6 +42,9 @@ import {snapCorridor, createMapNodes, collectMapTraffic, TRAFFIC_COLORS, navigat
 import {setCorrRoute, corrPlaces, COAST, COAST_RINGS, REGIONS, regionOf, altAt, ALT_KM, CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, walkFree, choicesAt, edgesFrom, turnDeg, fmtKm, nodeLabel, JAVA, MADURA, corrGeo, corrLL, RULES} from './network.js';
 
 const MOBILE = matchMedia('(pointer:coarse)').matches || innerWidth < 700;
+// iPhone / iPad: Safari closes a tab that uses too much memory and never tells the RAM size, so assume a 3 GB phone there
+const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+const MEM_GB = navigator.deviceMemory ?? (IOS ? 3 : 8);
 const LW = 3.6, MED = 1.2, CH = 120, OPEN_HW = 35, OVH = 7.5, PRC = 328, BACK = MOBILE ? 260 : 460, FWD = MOBILE ? 520 : 720;
 const TRAFFIC_GAP = MOBILE ? 2 : 1;
 let VIEWX = 0;   // extra metres of road and scenery built ahead (Jarak pandang: jauh)
@@ -584,6 +587,14 @@ const mergeCache = new Map(), _mInv = new THREE.Matrix4(), _mRel = new THREE.Mat
 const detailVCMat = vEnv(new THREE.MeshStandardMaterial({vertexColors: true, roughness: 0.22, metalness: 0.6}), 0.9); SHARED.add(detailVCMat);   // trim and chrome merged: glossy
 MODEL_MATERIALS.forEach(m=>SHARED.add(m));SHARED.add(distantOpaqueMaterial);
 const DETAIL = new Set([ trimMat, grilleMat, chromeMat, lbOff, angkotStripe, ladderMat, ambStripe, ambOrange, polStripe, signBackMat]);
+// a part's shape, by content: every vehicle builds fresh geometries, so their ids never repeat; this key lets every car of
+// the same model share one merged geometry (and stops the cache from growing with every car that is built)
+const geoKeys = new WeakMap();
+function geoKey(g){ let k = geoKeys.get(g); if (k) return k;
+  if (g.parameters) k = g.type + JSON.stringify(g.parameters);
+  else { let h = 2166136261; const add = arr => { const u = new Uint32Array(arr.buffer, arr.byteOffset, arr.byteLength >> 2); for (let i = 0; i < u.length; i++) { h ^= u[i]; h = Math.imul(h, 16777619); } };
+    add(g.attributes.position.array); if (g.index) add(g.index.array); if (g.attributes.color) add(g.attributes.color.array); k = g.type + ':' + g.attributes.position.count + ':' + (h >>> 0).toString(36); }
+  geoKeys.set(g, k); return k; }
 function mergeVehicle(v){
   const g = v.g, keep = new Set([...(v.wh || []), ...(v.lights || []), ...(v.lampM ? [v.lampM.brk, v.lampM.l, v.lampM.r] : [])]); g.updateMatrixWorld(true); _mInv.copy(g.matrixWorld).invert();
   const parts = []; g.traverse(o => { if (!o.isMesh || keep.has(o) || keep.has(o.parent)) return; parts.push(o); });
@@ -591,7 +602,7 @@ function mergeVehicle(v){
   // materials in first-seen order; shared ones by identity, per-vehicle ones by their slot number
   const keyOf = o => DETAIL.has(o.material) ? 'D' : o.material, mats = [], slot = new Map();
   for (const o of parts) { const k = keyOf(o); if (!slot.has(k)) { slot.set(k, mats.length); mats.push(k === 'D' ? detailVCMat : o.material); } }
-  const sig = v.type + '|' + parts.map(o => `${o.geometry.id}:${DETAIL.has(o.material) ? 'D' + o.material.id : SHARED.has(o.material) || !o.material.userData.own ? 's' + o.material.id : 'o' + slot.get(keyOf(o))}:${o.position.x.toFixed(2)},${o.position.y.toFixed(2)},${o.position.z.toFixed(2)},${o.rotation.x.toFixed(2)}`).join(';');
+  const sig = v.type + '|' + parts.map(o => `${geoKey(o.geometry)}:${DETAIL.has(o.material) ? 'D' + o.material.id : 'm' + slot.get(keyOf(o))}:${o.position.x.toFixed(2)},${o.position.y.toFixed(2)},${o.position.z.toFixed(2)},${o.rotation.x.toFixed(2)}`).join(';');
   let tpl = mergeCache.get(sig);
   if (!tpl) { tpl = mats.map((m, i) => { const geos = parts.filter(o => slot.get(keyOf(o)) === i).map(o => { _mRel.multiplyMatrices(_mInv, o.matrixWorld); const gg = (o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone()).applyMatrix4(_mRel);
         for (const a of Object.keys(gg.attributes)) if (a !== 'position' && a !== 'normal' && a !== 'uv' && !(a==='color'&&m.vertexColors)) gg.deleteAttribute(a); if (!gg.attributes.uv) gg.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(gg.attributes.position.count*2), 2));
@@ -2547,7 +2558,7 @@ function stepFoot(dt){
 // ---------- pedestrians (NPC): walk the sidewalks of non-toll roads; cross at the signals when the crossing turns green, and on
 // undivided roads now and then mid-block when the gap in the traffic is big enough. Models are pooled; only near ones are animated.
 const PEDS = [], PED_POOL = []; let pedT = 0, pedSig = null;
-const pedMax = () => MOBILE || (QUAL && QUAL.level >= 3) ? 8 : 18;
+const pedMax = () => MOBILE ? 6 : QUAL && QUAL.level >= 3 ? 8 : 18;
 const pedLane = (pd, u) => pd.off + eAt(u);                    // |x| of a pedestrian walking on the sidewalk
 function pedFree(){ const m = PED_POOL.pop() || makePerson(); m.g.visible = true; m.g.rotation.set(0, 0, 0); if (!m.g.parent) scene.add(m.g); return m; }
 function pedGone(i){ const pd = PEDS[i]; PEDS.splice(i, 1); pd.m.g.visible = false; PED_POOL.push(pd.m); }
@@ -4601,7 +4612,7 @@ async function routeTripRoads(){
   const use = P.slice(0, -1).map((q, i) => P[i + 1].km > k0 - 0.01 && q.km < k1 + 0.01);
   if (!use.some(Boolean) || P.length < 2) { RQ.done.set(id, {v, full: true}); return; }
   RQ.busy = true; let segs = null;
-  try { segs = await routeRoad(P, c.cls === 'a' ? ['n', 'p', 's', 'c', 'r'] : c.prov ? ['p', 'n', 's', 'c'] : ['n', 'p', 's', 'c'], use); } finally { RQ.busy = false; }
+  try { segs = await routeRoad(P, MOBILE ? (c.cls === 'a' ? ['n', 'p', 's', 'c'] : ['n', 'p', 's']) : c.cls === 'a' ? ['n', 'p', 's', 'c', 'r'] : c.prov ? ['p', 'n', 's', 'c'] : ['n', 'p', 's', 'c'], use); } finally { RQ.busy = false; }
   RQ.done.set(id, {v, full: !!segs && segs.every((sg, i) => !use[i] || sg)});
   if (segs && segs.some(Boolean)) { setCorrRoute(id, segs); ROUTED.add(id); geoChanged(); }
   routeTripRoads(); }
@@ -5745,7 +5756,7 @@ function tickResponders(){ for (let i = RESPONDERS.length - 1; i >= 0; i--) { co
   if (!r.said && PLR && r.v.sd === PLR.sd && PLR.p - r.v.p < 40) { r.said = true; r.v.onScene = clock + 25; r.v.until = clock + 60; toast(`${UNIT_NAME[r.unit]} tiba di lokasi Anda`);
     setTimeout(() => { const msg = unitWork(r.unit); if (msg) toast(msg); }, 4000); } } }
 function speak(text, urgent){ if (!cfg.voice || TUT || (FLY && FLY.on)) return; VOX.say(text, {channel: 'nav', urgent}); VOICE.last = text; }
-VOX.configure({engine: cfg.voiceEngine || 'auto', strong: !MOBILE || (navigator.deviceMemory || 4) >= 4});
+VOX.configure({engine: cfg.voiceEngine || 'auto', strong: !MOBILE && MEM_GB >= 4, cacheMax: MOBILE ? 16 : 80});
 try { if ('speechSynthesis' in window) speechSynthesis.getVoices(); } catch (e) {}
 const sayKm = km => km >= 1 ? `${km < 10 ? (Math.round(km*2)/2).toString().replace('.5', ' setengah') : Math.round(km)} kilometer` : `${Math.max(50, Math.round(km*1000/50)*50)} meter`;
 const cooled = (k, s) => { if (clock - (VOICE.cool[k] ?? -1e9) < s) return false; VOICE.cool[k] = clock; return true; };
@@ -5987,13 +5998,13 @@ function tick(dt,stream=true){
 function streamWorld(){ if (window.__perf) { const P = window.__perf, T = (k, f) => { const a = performance.now(); f(); const d = performance.now() - a; P[k] = P[k] || {sum: 0, max: 0, n: 0}; P[k].sum += d; P[k].n++; if (d > P[k].max) P[k].max = d; };
     T('ensureAhead', ensureAhead); T('blocks', () => setupBlocks(false)); T('world', () => updateWorld(true)); T('signals', () => { updateSignals(); animGhosts(); }); return; }
   ensureAhead();setupBlocks(false);updateWorld(true);updateSignals();animGhosts();}
-window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol,get ready3d(){return !!FERRY3D;},frame3d(k){if(!FERRY3D)return null;FERRY3D.t0=performance.now()-k*FERRY3D.dur*1000;ferry3dFrame(1/30);return renderer.domElement.toDataURL('image/jpeg',.85);}};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.LMK_BUILD=LMK_BUILD; window.__tj.gg=ggRule; window.__tj.apply=apply; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll; window.__tj.circuit = {open: () => openRace(CIRCUITS[0]), get race(){ return RACE; }, here: circuitHere}; window.__tj.route = {RQ, step: routeTripRoads, OSM, openAtlas}; window.__tj.NUT = () => NUT; window.__tj.lxBounds = lxBounds; window.__tj.steerPlayer = steerPlayer; window.__tj.uTurn = uTurn; window.__tj.peds = PEDS; window.__tj.pedDbg = {step: stepPeds, blocks: pedBlocks, sigCross, KS: () => KSITES, eAt, set sig(f){ pedSig = f; }}; window.__tj.spbu = {sites: SPBU_SITES, near: spbuNear, ctx: () => svcContext(), live(){ const out = []; scene.traverse(o => { if (o.isMesh && o.material === SPBU_SIGN?.mat) { const g = o.parent.parent; out.push([g.userData.u0, Math.round(o.parent.position.x), Math.round(o.parent.position.z)]); } }); return out; }}; window.__tj.voice = {VOX, dispatch: dispatchCall, sendUnit, unitWork, infoLine, get responders(){ return RESPONDERS; }}; window.__tj.phone = () => PHONE;
+window.__tj.ferry={open:openFerry,get on(){return FERRY_ON;},fare:ferryFare,gol:ferryGol,get ready3d(){return !!FERRY3D;},frame3d(k){if(!FERRY3D)return null;FERRY3D.t0=performance.now()-k*FERRY3D.dur*1000;ferry3dFrame(1/30);return renderer.domElement.toDataURL('image/jpeg',.85);}};window.__tj.prof=()=>PROF;window.__tj.DEM=DEM;window.__tj.buildProfile=buildProfile;window.__tj.gYD=u=>gYD(u);window.__tj.law={ETLE, facts:trafficFacts, sample:tickTrafficLaw, record:recordLaw, get pursuit(){return PURSUIT;},panel:TRAFFIC_PANEL, signal:setIndicator, get arrests(){return LAW_TOTAL.arrests;}, review:reviewEtle, sigMain, sigCross, mustStop, get KSITES(){return KSITES;}, get cop(){return pursuitCar;},feed:renderEtleFeed};window.__tj.models={makeVehicle,makePerson,buildArchitecture};window.__tj.swapVehicle=swapPlayerVeh; window.__tj.career=CAR; window.__tj.LMK_BUILD=LMK_BUILD; window.__tj.gg=ggRule; window.__tj.apply=apply; window.__tj.garage=()=>GARAGE; window.__tj.WAL=WAL; window.__tj.bicycleSpec=BICYCLE; window.__tj.mapNode = mapNode; window.__tj.mapTraffic = mapTraffic; window.__tj.drawGMap = drawGMap; window.__tj.fly = () => FLY; window.__tj.osmJ = osmJunctions; window.__tj.LATd = () => LAT && {b: LAT.b, h: [...LAT.h].map(v => Math.round(v)), at: Math.round(LAT.at)}; window.__tj.OSM = OSM; window.__tj.ride = {start: rideStart, cancel: rideCancel, get cur(){ return ride; }}; window.__tj.jobs = {start: k => jobStart(k), get job(){ return job; }, stop: () => jobStop()}; window.__tj.signTex = {exitPanel, textPanel, bigBoard, destPanel, boardPanel}; window.__tj.mbz = () => MBZG; window.__tj.setTod = setTod; window.__tj.gY = u => gY(u); window.__tj.gYD = u => gYD(u); window.__tj.mbzRampAt = mbzRampAt; window.__tj.NODES = NODES; window.__tj.kmAt = kmAt; window.__tj.addVehicle = addVehicle; window.__tj.nAvail = nAvail; window.__tj.isToll = isToll; window.__tj.scene = scene; window.__tj.circuit = {open: () => openRace(CIRCUITS[0]), get race(){ return RACE; }, here: circuitHere}; window.__tj.route = {RQ, step: routeTripRoads, OSM, openAtlas}; window.__tj.NUT = () => NUT; window.__tj.lxBounds = lxBounds; window.__tj.steerPlayer = steerPlayer; window.__tj.uTurn = uTurn; window.__tj.peds = PEDS; window.__tj.pedDbg = {step: stepPeds, blocks: pedBlocks, sigCross, KS: () => KSITES, eAt, set sig(f){ pedSig = f; }}; window.__tj.spbu = {sites: SPBU_SITES, near: spbuNear, ctx: () => svcContext(), live(){ const out = []; scene.traverse(o => { if (o.isMesh && o.material === SPBU_SIGN?.mat) { const g = o.parent.parent; out.push([g.userData.u0, Math.round(o.parent.position.x), Math.round(o.parent.position.z)]); } }); return out; }}; window.__tj.voice = {VOX, dispatch: dispatchCall, sendUnit, unitWork, infoLine, get responders(){ return RESPONDERS; }}; window.__tj.phone = () => PHONE;
 window.__tj.moveSvg = moveSvg; window.__tj.nextMv = nextMove;
 window.__tj.jump = u => { PLR.p = u; camU = u; PLR.lane = PLR.lx = Math.min(PLR.lane, nAvail(1, u) - 1); PLR.vel = 20; setupBlocks(true); updateWorld(); fillTraffic(); for (const v of [...vehicles]) if (!v.player && v.lane === PLR.lane && Math.abs(v.p - PLR.p) < 40) { rm(vehicles, v); killVehicle(v); } };
 // test hook: advance the simulation without rendering
 window.__tj.step = (n, dt = 1/20) => { for (let i = 0; i < n; i++) tick(dt); updateSegs(); placeGroups(); place(); for (let k = 0; k < 40; k++) updateCam(dt); updateBend(); hudT = 0; updateHud(dt); drawMap(); };
 // Adaptive quality affects rendering only; traffic density and enforcement stay intact.
-const DEVICE_QUALITY=initialQuality({mobile:MOBILE,memory:navigator.deviceMemory??8,cores:navigator.hardwareConcurrency??8});
+const DEVICE_QUALITY=initialQuality({mobile:MOBILE,memory:MEM_GB,cores:navigator.hardwareConcurrency??8});
 const GOVERNOR=createQualityGovernor(DEVICE_QUALITY),QUAL=GOVERNOR.state;
 let PROFILE=qualityProfile(QUAL.level);
 function syncQuality(){
