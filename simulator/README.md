@@ -635,5 +635,10 @@ Game bisa dimainkan dengan controller apa pun yang dikenali browser: Xbox, PlayS
 
 - **Bawaan:** stik kiri untuk setir, RT/R2/ZR gas, LT/L2/ZL rem, RB/LB gigi naik/turun, A/✕/B kopling, B/○/A klakson, X/□/Y hazard, Y/△/X kamera, D-pad ←/→ sein, D-pad ↑ HP, D-pad ↓ radio, View/Create/− peta, Menu/Options/+ mode foto, L3 pengaturan. Nama tombol di layar mengikuti merek controller.
 - **Pengaturan → Controller / gamepad → Pengaturan tombol & setir:** semua aksi bisa diatur ulang ("Ubah", lalu tekan tombol atau gerakkan stik/pedal). Setir bisa memakai satu sumbu penuh atau dua arah terpisah, misalnya dua tombol. Ada juga zona mati, sensitivitas, kurva setir, setir terbalik, getar saat tabrakan beserta kekuatannya, pilihan controller kalau tersambung lebih dari satu, dan tombol kembalikan ke bawaan. Pengaturan tersimpan bersama pengaturan game.
-- **Tes gamepad:** info controller (nama, merek, mapping, jumlah tombol/sumbu, dukungan getar), diagram controller yang menyala saat ditekan, posisi kedua stik, nilai semua sumbu (−1…1) dan semua tombol (0…1, termasuk tekanan trigger), serta tes getar lemah/kuat.
+- **Tes gamepad:**
+  - info controller dan diagramnya (trigger di atas bumper, stik dan tombol berbentuk kelopak di dalam cincin). Tombol yang ditekan menyala biru, trigger terisi sesuai tekanan, dan stik ikut bergerak;
+  - nilai semua `axes` (−1…1) dan `buttons` (`value` 0…1, `touched`);
+  - bagian **Gamepad API** berisi `id`, `index`, `connected`, `mapping`, `timestamp`, dan `vibrationActuator` (`type`, `effects`);
+  - tombol `playEffect('dual-rumble')` lemah/kuat, `playEffect('trigger-rumble')`, `reset()`, dan Salin JSON;
+  - tabel mapping standar W3C (`buttons[0]`…`buttons[17]`, `axes[0]`…`axes[3]`).
 - Controller juga bisa dipakai di Sirkuit / Race Season. Selama panel controller terbuka, controller tidak menggerakkan mobil.

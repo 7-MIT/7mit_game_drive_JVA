@@ -121,30 +121,55 @@ export function openPadPanel({get, set, rumbleNow, onClose, tab = 'set'}){
     for (const b of body.querySelectorAll('[data-idx]')) b.onclick = () => { const C2 = padConf(get()); C2.index = +b.dataset.idx; save(C2); draw(); };
     body.querySelector('[data-reset]').onclick = () => { set({...DEFAULT_PAD}); draw(); };
     body.querySelector('[data-rumble]').onclick = () => { const q = pick(); if (!q || !rumble(q, padConf(get()).vibK, padConf(get()).vibK*0.6, 400)) alert('Controller ini tidak mendukung getar di browser ini.'); }; }
-  function diagram(p, br){
-    const v = i => (p.buttons[i] && (p.buttons[i].value || (p.buttons[i].pressed ? 1 : 0))) || 0, on = i => v(i) > 0.5 ? 'on' : '', L = i => buttonLabel(br, i);
-    const face = br === 'ps' ? [['△', 3], ['○', 1], ['✕', 0], ['□', 2]] : br === 'nintendo' ? [['X', 3], ['A', 1], ['B', 0], ['Y', 2]] : [['Y', 3], ['B', 1], ['A', 0], ['X', 2]];
-    const ax = (i) => p.axes[i] || 0;
-    return `<svg class="ctl" viewBox="0 0 420 230" aria-label="Diagram controller">
-      <path d="M80 60 Q210 30 340 60 Q400 70 410 150 Q415 215 360 215 Q330 215 300 170 L120 170 Q90 215 60 215 Q5 215 10 150 Q20 70 80 60Z" fill="#fff" stroke="#1b1b1b" stroke-width="3"/>
-      <rect x="60" y="22" width="70" height="20" rx="6" class="${on(6)}" fill="#fff" stroke="#1b1b1b" stroke-width="2"/><text x="95" y="36" font-size="11" text-anchor="middle">${L(6)} ${Math.round(v(6)*100)}%</text>
-      <rect x="290" y="22" width="70" height="20" rx="6" class="${on(7)}" fill="#fff" stroke="#1b1b1b" stroke-width="2"/><text x="325" y="36" font-size="11" text-anchor="middle">${L(7)} ${Math.round(v(7)*100)}%</text>
-      <rect x="62" y="46" width="66" height="12" rx="4" class="${on(4)}" fill="#fff" stroke="#1b1b1b" stroke-width="2"/><rect x="292" y="46" width="66" height="12" rx="4" class="${on(5)}" fill="#fff" stroke="#1b1b1b" stroke-width="2"/>
-      <circle cx="110" cy="105" r="24" class="${on(10)}" fill="#fff" stroke="#1b1b1b" stroke-width="2"/><circle cx="${110 + ax(0)*16}" cy="${105 + ax(1)*16}" r="9" fill="#e04f3a"/>
-      <circle cx="265" cy="150" r="24" class="${on(11)}" fill="#fff" stroke="#1b1b1b" stroke-width="2"/><circle cx="${265 + ax(2)*16}" cy="${150 + ax(3)*16}" r="9" fill="#e04f3a"/>
-      ${[[12, 155, 128, 0, -1], [13, 155, 172, 0, 1], [14, 133, 150, -1, 0], [15, 177, 150, 1, 0]].map(([i, x, y]) => `<rect x="${x - 10}" y="${y - 10}" width="20" height="20" class="${on(i)}" fill="#fff" stroke="#1b1b1b" stroke-width="2"/>`).join('')}
-      ${face.map(([t, i], k) => { const [x, y] = [[315, 80], [340, 105], [315, 130], [290, 105]][k]; return `<circle cx="${x}" cy="${y}" r="12" class="${on(i)}" fill="#fff" stroke="#1b1b1b" stroke-width="2"/><text x="${x}" y="${y + 4}" font-size="11" text-anchor="middle">${t}</text>`; }).join('')}
-      <rect x="180" y="80" width="22" height="12" rx="4" class="${on(8)}" fill="#fff" stroke="#1b1b1b" stroke-width="2"/><rect x="220" y="80" width="22" height="12" rx="4" class="${on(9)}" fill="#fff" stroke="#1b1b1b" stroke-width="2"/>
-      <circle cx="211" cy="112" r="9" class="${on(16)}" fill="#fff" stroke="#1b1b1b" stroke-width="2"/></svg>`; }
+  // the controller drawing (light outline, triggers above the bumpers, sticks and petal-shaped buttons in rings):
+  // pressed buttons fill, triggers fill as far as they are pulled, the sticks move
+  const BODY = 'M560 370 L1160 370 Q1330 370 1385 500 Q1470 720 1520 930 Q1560 1100 1545 1180 Q1530 1290 1400 1290 Q1330 1290 1250 1180 Q1180 1085 1130 1040 Q1100 1020 1050 1020 L630 1020 Q580 1020 545 1045 Q480 1100 420 1180 Q340 1290 300 1290 Q170 1290 165 1150 Q160 1000 205 830 Q260 650 330 500 Q385 370 560 370 Z';
+  function diagram(p){
+    const v = i => (p.buttons[i] && (p.buttons[i].value || (p.buttons[i].pressed ? 1 : 0))) || 0, ax = i => Math.max(-1, Math.min(1, p.axes[i] || 0));
+    const F = i => v(i) > 0.5 ? '#4f8fe0' : '#fff', K = '#111', RING = '#cbd7e8';
+    const trig = (x, i, id) => `<clipPath id="${id}"><rect x="${x}" y="82" width="92" height="136" rx="44"/></clipPath><rect x="${x}" y="${82 + 136*(1 - v(i))}" width="92" height="${136*v(i)}" fill="#4f8fe0" clip-path="url(#${id})"/><rect x="${x}" y="82" width="92" height="136" rx="44" fill="none" stroke="${K}" stroke-width="9"/>`;
+    const bump = (x, i) => `<rect x="${x}" y="270" width="134" height="46" rx="23" fill="${F(i)}" stroke="${K}" stroke-width="9"/>`;
+    const ring = (cx, cy) => `<circle cx="${cx}" cy="${cy}" r="120" fill="#fff" stroke="${RING}" stroke-width="8"/>`;
+    const stick = (cx, cy, a, b, i) => ring(cx, cy) + `<circle cx="${cx + ax(a)*42}" cy="${cy + ax(b)*42}" r="78" fill="${F(i)}" stroke="${K}" stroke-width="9"/>`;
+    // a petal pointing at the ring's centre; r = 0 up, 90 right, 180 down, 270 left
+    const petal = (cx, cy, r, i) => `<path transform="rotate(${r} ${cx} ${cy})" d="M${cx - 38} ${cy - 76} Q${cx} ${cy - 96} ${cx + 38} ${cy - 76} Q${cx + 50} ${cy - 66} ${cx + 36} ${cy - 50} L${cx + 9} ${cy - 24} Q${cx} ${cy - 16} ${cx - 9} ${cy - 24} L${cx - 36} ${cy - 50} Q${cx - 50} ${cy - 66} ${cx - 38} ${cy - 76}Z" fill="${F(i)}" stroke="${K}" stroke-width="9" stroke-linejoin="round"/>`;
+    const cross = (cx, cy, [u, rt, d, l]) => ring(cx, cy) + petal(cx, cy, 0, u) + petal(cx, cy, 90, rt) + petal(cx, cy, 180, d) + petal(cx, cy, 270, l);
+    return `<svg class="ctl" viewBox="150 60 1420 1300" aria-label="Diagram controller">
+      ${trig(548, 6, 'lt' + p.index)}${trig(1076, 7, 'rt' + p.index)}${bump(505, 4)}${bump(1076, 5)}
+      <path transform="translate(0 62)" d="${BODY}" fill="#eef3f8"/>
+      <path d="${BODY}" fill="#fff" stroke="${RING}" stroke-width="8"/>
+      <path d="M245 745 L560 1030 M1465 745 L1150 1030" stroke="#eef3f8" stroke-width="6"/>
+      ${stick(511, 587, 0, 1, 10)}${stick(1041, 837, 2, 3, 11)}
+      <circle cx="741" cy="594" r="33" fill="${F(8)}" stroke="${K}" stroke-width="9"/><circle cx="979" cy="594" r="33" fill="${F(9)}" stroke="${K}" stroke-width="9"/>
+      ${cross(1204, 587, [3, 1, 0, 2])}${cross(681, 837, [12, 15, 13, 14])}
+      ${p.buttons.length > 16 ? `<circle cx="860" cy="470" r="26" fill="${F(16)}" stroke="${K}" stroke-width="7"/>` : ''}</svg>`; }
+  // the live part of the tester (redrawn as the pad changes) and the Gamepad API view of the same pad
+  function live(p){ const br = brandOf(p.id);
+    return (p.mapping === 'standard' ? diagram(p) : '<p class="muted">Controller ini tidak memakai mapping standar: diagram tidak bisa ditampilkan, lihat sumbu dan tombol di bawah.</p>')
+      + `<h3 style="margin:8px 0 4px;font-size:14px">Sumbu · axes (${p.axes.length})</h3>${p.axes.map((a, i) => `<div class="ax"><span style="width:130px">axes[${i}] ${axisLabel(br, i)}</span><span class="bar"><i style="left:${a < 0 ? 50 + a*50 : 50}%;width:${Math.abs(a)*50}%"></i></span><code style="width:64px;text-align:right">${a.toFixed(4)}</code></div>`).join('')}`
+      + `<h3 style="margin:10px 0 4px;font-size:14px">Tombol · buttons (${p.buttons.length})</h3><div class="grid">${p.buttons.map((b, i) => `<div class="bt ${b.pressed ? 'on' : ''}"><i style="width:${Math.round((b.value || (b.pressed ? 1 : 0))*100)}%"></i><span>${i} · ${buttonLabel(br, i)}<br><b>${(b.value || 0).toFixed(2)}</b>${b.touched ? ' · touched' : ''}</span></div>`).join('')}</div>`
+      + `<h3 style="margin:12px 0 4px;font-size:14px">Gamepad API</h3><table><tr><td class="k">id</td><td><code>${esc(p.id)}</code></td></tr><tr><td class="k">index</td><td><code>${p.index}</code></td></tr><tr><td class="k">connected</td><td><code>${p.connected}</code></td></tr>
+        <tr><td class="k">mapping</td><td><code>"${esc(p.mapping)}"</code> ${p.mapping === 'standard' ? '(tata letak standar W3C)' : '(tata letak khusus perangkat)'}</td></tr><tr><td class="k">timestamp</td><td><code>${p.timestamp.toFixed(1)}</code> ms</td></tr>
+        <tr><td class="k">vibrationActuator</td><td><code>${p.vibrationActuator ? `{type: "${esc(p.vibrationActuator.type || '')}"${p.vibrationActuator.effects ? `, effects: [${[...p.vibrationActuator.effects].map(e => `"${esc(e)}"`).join(', ')}]` : ''}}` : 'null'}</code></td></tr></table>`; }
+  // the standard mapping (W3C Gamepad), for reference
+  const STD = [[0, 'Tombol bawah (A / ✕ / B)'], [1, 'Tombol kanan (B / ○ / A)'], [2, 'Tombol kiri (X / □ / Y)'], [3, 'Tombol atas (Y / △ / X)'], [4, 'Bumper kiri (LB / L1 / L)'], [5, 'Bumper kanan (RB / R1 / R)'],
+    [6, 'Trigger kiri (LT / L2 / ZL) · analog'], [7, 'Trigger kanan (RT / R2 / ZR) · analog'], [8, 'Kiri tengah (View / Create / −)'], [9, 'Kanan tengah (Menu / Options / +)'], [10, 'Tekan stik kiri (L3)'], [11, 'Tekan stik kanan (R3)'],
+    [12, 'D-pad atas'], [13, 'D-pad bawah'], [14, 'D-pad kiri'], [15, 'D-pad kanan'], [16, 'Tombol utama (Xbox / PS / Home)'], [17, 'Touchpad (sebagian controller PlayStation)']];
   function drawTest(){
-    const L = pads(); if (!L.length) { body.innerHTML = devCard(null); return; }
-    body.innerHTML = L.map(p => { const br = brandOf(p.id);
-      return devCard(p) + (p.mapping === 'standard' ? diagram(p, br) : '')
-        + `<div class="sticks">${[0, 2].filter(i => i + 1 < p.axes.length || i < p.axes.length).map(i => `<div><div class="stk ${Math.hypot(p.axes[i] || 0, p.axes[i + 1] || 0) > 0.1 ? 'on' : ''}"><i style="left:${50 + (p.axes[i] || 0)*42}%;top:${50 + (p.axes[i + 1] || 0)*42}%"></i></div><div class="muted" style="text-align:center">${i ? 'Stik kanan' : 'Stik kiri'}</div></div>`).join('')}</div>`
-        + `<h3 style="margin:8px 0 4px;font-size:14px">Sumbu (${p.axes.length})</h3>${p.axes.map((a, i) => `<div class="ax"><span style="width:118px">${axisLabel(br, i)}</span><span class="bar"><i style="left:${a < 0 ? 50 + a*50 : 50}%;width:${Math.abs(a)*50}%"></i></span><code style="width:60px;text-align:right">${a.toFixed(3)}</code></div>`).join('')}`
-        + `<h3 style="margin:10px 0 4px;font-size:14px">Tombol (${p.buttons.length})</h3><div class="grid">${p.buttons.map((b, i) => `<div class="bt ${b.pressed ? 'on' : ''}"><i style="width:${Math.round((b.value || (b.pressed ? 1 : 0))*100)}%"></i><span>${i} · ${buttonLabel(br, i)}<br><b>${(b.value || 0).toFixed(2)}</b></span></div>`).join('')}</div>`
-        + `<div class="row" style="margin-top:10px"><button class="sm" data-rb="${p.index}" data-k="0.35">Getar lemah</button><button class="sm" data-rb="${p.index}" data-k="1">Getar kuat</button><span class="muted">Waktu baca: ${Math.round(p.timestamp)} ms</span></div>`; }).join('<hr>');
-    for (const b of body.querySelectorAll('[data-rb]')) b.onclick = () => { const q = pads().find(x => x.index === +b.dataset.rb); if (!q || !rumble(q, +b.dataset.k, +b.dataset.k*0.7, 500)) alert('Controller ini tidak mendukung getar di browser ini.'); }; }
+    const L = pads(); if (!L.length) { body.innerHTML = devCard(null) + stdTable(); return; }
+    body.innerHTML = L.map(p => devCard(p) + `<div data-live="${p.index}">${live(p)}</div>`
+      + `<div class="row" style="margin-top:10px"><button class="sm" data-fx="dual-rumble" data-k="0.35" data-i="${p.index}">Getar lemah (dual-rumble)</button><button class="sm" data-fx="dual-rumble" data-k="1" data-i="${p.index}">Getar kuat</button>
+        <button class="sm" data-fx="trigger-rumble" data-k="0.8" data-i="${p.index}">Getar trigger (trigger-rumble)</button><button class="sm" data-reset-fx="${p.index}">reset()</button><button class="sm" data-json="${p.index}">Salin JSON</button></div>`).join('<hr>') + stdTable();
+    for (const b of body.querySelectorAll('[data-fx]')) b.onclick = () => { const q = pads().find(x => x.index === +b.dataset.i), a = q && q.vibrationActuator, k = +b.dataset.k;
+      if (!a || !a.playEffect) return alert('Controller ini tidak mendukung getar di browser ini.');
+      const fx = b.dataset.fx; if (a.effects && ![...a.effects].includes(fx)) return alert(`Efek "${fx}" tidak didukung controller ini.`);
+      a.playEffect(fx, fx === 'trigger-rumble' ? {startDelay: 0, duration: 500, leftTrigger: k, rightTrigger: k, strongMagnitude: k*0.5, weakMagnitude: k*0.3} : {startDelay: 0, duration: 500, strongMagnitude: k, weakMagnitude: k*0.7}).catch(e => alert('Getar gagal: ' + e)); };
+    for (const b of body.querySelectorAll('[data-reset-fx]')) b.onclick = () => { const q = pads().find(x => x.index === +b.dataset.resetFx); q && q.vibrationActuator && q.vibrationActuator.reset && q.vibrationActuator.reset(); };
+    for (const b of body.querySelectorAll('[data-json]')) b.onclick = () => { const q = pads().find(x => x.index === +b.dataset.json); if (!q) return;
+      const j = JSON.stringify({id: q.id, index: q.index, connected: q.connected, mapping: q.mapping, timestamp: q.timestamp, axes: [...q.axes], buttons: [...q.buttons].map(x => ({pressed: x.pressed, touched: x.touched, value: x.value})), vibrationActuator: q.vibrationActuator ? {type: q.vibrationActuator.type, effects: q.vibrationActuator.effects ? [...q.vibrationActuator.effects] : undefined} : null}, null, 2);
+      (navigator.clipboard ? navigator.clipboard.writeText(j) : Promise.reject()).then(() => { b.textContent = 'Tersalin'; setTimeout(() => b.textContent = 'Salin JSON', 1200); }, () => prompt('Salin data ini:', j)); }; }
+  const stdTable = () => `<h3 style="margin:14px 0 4px;font-size:14px">Mapping standar (W3C Gamepad)</h3><p class="muted">Controller dengan <code>mapping: "standard"</code> memakai nomor tombol di bawah. Sumbu: axes[0] stik kiri ←→, axes[1] stik kiri ↑↓, axes[2] stik kanan ←→, axes[3] stik kanan ↑↓ (−1 kiri/atas … 1 kanan/bawah). Browser baru mengenali controller setelah ada tombol yang ditekan (event <code>gamepadconnected</code>).</p>
+    <table>${STD.map(([i, n]) => `<tr><td class="k">buttons[${i}]</td><td>${n}</td></tr>`).join('')}</table>`;
   function draw(){ for (const b of el.querySelectorAll('.tabs button')) b.setAttribute('aria-selected', b.dataset.t === cur ? 'true' : 'false'); (cur === 'test' ? drawTest : drawSet)(); }
   function loop(){ raf = requestAnimationFrame(loop);
     if (capture) { const p = pick(); if (p) { const r = rest.get(p.index) || [...p.axes]; rest.set(p.index, r); const m = firstMove(p, r);
@@ -154,8 +179,11 @@ export function openPadPanel({get, set, rumbleNow, onClose, tab = 'set'}){
           save(C); capture = null; draw(); } }
       if (performance.now() - capT > 8000) { capture = null; draw(); } return; }
     // the tester and the device card follow the pads live (redrawn only when something changed)
-    const L = pads(), sig = cur === 'test' ? L.map(p => p.index + ':' + p.axes.map(a => a.toFixed(2)).join(',') + ':' + p.buttons.map(b => (b.value || 0).toFixed(2)).join(',')).join('|') : L.map(p => p.index).join(',');
-    if (sig !== last) { last = sig; draw(); } }
+    const L = pads(), set2 = cur + L.map(p => p.index).join(',');
+    if (set2 !== last) { last = set2; liveSig.clear(); draw(); return; }
+    if (cur === 'test') for (const p of L) { const sg = p.axes.map(a => a.toFixed(3)).join(',') + p.buttons.map(b => (b.value || 0).toFixed(2) + (b.touched ? 't' : '')).join(','), box = body.querySelector(`[data-live="${p.index}"]`);
+      if (box && liveSig.get(p.index) !== sg) { liveSig.set(p.index, sg); box.innerHTML = live(p); } } }
+  const liveSig = new Map();
   draw(); loop();
   return {close}; }
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
