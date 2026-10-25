@@ -639,6 +639,9 @@ Game bisa dimainkan dengan controller apa pun yang dikenali browser: Xbox, PlayS
   - info controller dan diagramnya (trigger di atas bumper, stik dan tombol berbentuk kelopak di dalam cincin). Tombol yang ditekan menyala biru, trigger terisi sesuai tekanan, dan stik ikut bergerak;
   - nilai semua `axes` (−1…1) dan `buttons` (`value` 0…1, `touched`);
   - bagian **Gamepad API** berisi `id`, `index`, `connected`, `mapping`, `timestamp`, dan `vibrationActuator` (`type`, `effects`);
-  - tombol `playEffect('dual-rumble')` lemah/kuat, `playEffect('trigger-rumble')`, `reset()`, dan Salin JSON;
+  - tombol `playEffect('dual-rumble', {startDelay: 0, duration, weakMagnitude, strongMagnitude})`: "kuat" = 1000 ms, kedua motor 1.0;
+  - `playEffect('trigger-rumble')`, `reset()`, dan Salin JSON;
+  - hasil mentah `navigator.getGamepads()` per frame (termasuk slot `null`);
+  - log event `gamepadconnected` / `gamepaddisconnected` di `window`;
   - tabel mapping standar W3C (`buttons[0]`…`buttons[17]`, `axes[0]`…`axes[3]`).
 - Controller juga bisa dipakai di Sirkuit / Race Season. Selama panel controller terbuka, controller tidak menggerakkan mobil.

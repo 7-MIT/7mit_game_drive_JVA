@@ -64,8 +64,13 @@ export function firstMove(p, rest){
 
 // ---------- vibration ----------
 export function rumble(p, strong = 0.6, weak = 0.4, ms = 180){ try { const a = p && p.vibrationActuator; if (!a) return false;
-  if (a.playEffect) { a.playEffect(a.type === 'trigger-rumble' ? 'trigger-rumble' : 'dual-rumble', {duration: ms, strongMagnitude: Math.min(1, strong), weakMagnitude: Math.min(1, weak)}).catch(() => {}); return true; }
+  if (a.playEffect) { a.playEffect('dual-rumble', {startDelay: 0, duration: ms, weakMagnitude: Math.min(1, weak), strongMagnitude: Math.min(1, strong)}).catch(() => {}); return true; }
   if (a.pulse) { a.pulse(Math.min(1, strong), ms); return true; } } catch (e) {} return false; }
+
+// ---------- connection events (window): kept for the tester's log ----------
+const EVENTS = [];
+if (typeof window !== 'undefined') for (const t of ['gamepadconnected', 'gamepaddisconnected']) window.addEventListener(t, e => {
+  const g = e.gamepad; EVENTS.unshift(`${new Date().toLocaleTimeString('id-ID')}  ${t}  #${g.index}  ${g.id}  (${g.buttons.length} tombol, ${g.axes.length} sumbu, mapping "${g.mapping}")`); EVENTS.length = Math.min(EVENTS.length, 30); });
 
 // ---------- the panel: settings and tester ----------
 const CSS = `#padui{position:fixed;inset:0;z-index:80;background:rgba(8,10,14,.62);display:grid;place-items:center;font-family:var(--font-sans,system-ui,sans-serif)}
@@ -79,7 +84,7 @@ const CSS = `#padui{position:fixed;inset:0;z-index:80;background:rgba(8,10,14,.6
 #padui td.k{width:34%;font-weight:600}#padui .bind{font:600 12.5px ui-monospace,monospace;background:#efece6;padding:3px 7px;border-radius:5px}
 #padui .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0}#padui .row label{font-size:13px;min-width:150px}
 #padui input[type=range]{flex:1;min-width:140px}#padui .sm{border:2px solid #1b1b1b;background:#fff;padding:4px 9px;font:600 12px inherit;cursor:pointer}#padui .sm.on{background:#ffd166}
-#padui .wait{background:#ffd166!important}
+#padui .wait{background:#ffd166!important}#padui pre.raw{background:#15181c;color:#d6e2ef;padding:10px;font:12px/1.4 ui-monospace,monospace;max-height:260px;overflow:auto;white-space:pre}
 #padui .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px}
 #padui .bt{border:2px solid #1b1b1b;padding:5px 6px;font-size:11.5px;position:relative;overflow:hidden;background:#fff}#padui .bt i{position:absolute;left:0;bottom:0;top:0;background:#7bd389;z-index:0}#padui .bt span{position:relative}
 #padui .bt.on{border-color:#0b7a3b}#padui .ax{display:flex;align-items:center;gap:8px;font-size:12px;margin:4px 0}#padui .ax .bar{flex:1;height:12px;border:2px solid #1b1b1b;position:relative;background:#fff}
@@ -155,15 +160,20 @@ export function openPadPanel({get, set, rumbleNow, onClose, tab = 'set'}){
   const STD = [[0, 'Tombol bawah (A / ✕ / B)'], [1, 'Tombol kanan (B / ○ / A)'], [2, 'Tombol kiri (X / □ / Y)'], [3, 'Tombol atas (Y / △ / X)'], [4, 'Bumper kiri (LB / L1 / L)'], [5, 'Bumper kanan (RB / R1 / R)'],
     [6, 'Trigger kiri (LT / L2 / ZL) · analog'], [7, 'Trigger kanan (RT / R2 / ZR) · analog'], [8, 'Kiri tengah (View / Create / −)'], [9, 'Kanan tengah (Menu / Options / +)'], [10, 'Tekan stik kiri (L3)'], [11, 'Tekan stik kanan (R3)'],
     [12, 'D-pad atas'], [13, 'D-pad bawah'], [14, 'D-pad kiri'], [15, 'D-pad kanan'], [16, 'Tombol utama (Xbox / PS / Home)'], [17, 'Touchpad (sebagian controller PlayStation)']];
+  // what navigator.getGamepads() returns this frame (empty slots are null), written out like the API's own example
+  function rawDump(){ const arr = navigator.getGamepads ? [...navigator.getGamepads()] : [];
+    return JSON.stringify(arr.map(q => q && {axes: [...q.axes].map(a => +a.toFixed(2)), buttons: [...q.buttons].map(b => ({pressed: b.pressed, value: +b.value.toFixed(2)})), connected: q.connected, id: q.id, index: q.index, mapping: q.mapping, timestamp: Math.round(q.timestamp)}), null, 2); }
+  const evLog = () => `<h3 style="margin:12px 0 4px;font-size:14px">Event</h3><pre class="raw" style="max-height:120px">${EVENTS.length ? EVENTS.map(esc).join('\n') : 'Belum ada event. Sambungkan / lepas controller, atau tekan tombolnya.'}</pre>`;
   function drawTest(){
-    const L = pads(); if (!L.length) { body.innerHTML = devCard(null) + stdTable(); return; }
+    const L = pads(); if (!L.length) { body.innerHTML = devCard(null) + evLog() + stdTable(); return; }
     body.innerHTML = L.map(p => devCard(p) + `<div data-live="${p.index}">${live(p)}</div>`
-      + `<div class="row" style="margin-top:10px"><button class="sm" data-fx="dual-rumble" data-k="0.35" data-i="${p.index}">Getar lemah (dual-rumble)</button><button class="sm" data-fx="dual-rumble" data-k="1" data-i="${p.index}">Getar kuat</button>
-        <button class="sm" data-fx="trigger-rumble" data-k="0.8" data-i="${p.index}">Getar trigger (trigger-rumble)</button><button class="sm" data-reset-fx="${p.index}">reset()</button><button class="sm" data-json="${p.index}">Salin JSON</button></div>`).join('<hr>') + stdTable();
+      + `<div class="row" style="margin-top:10px"><button class="sm" data-fx="dual-rumble" data-k="0.35" data-i="${p.index}">Getar lemah (dual-rumble)</button><button class="sm" data-fx="dual-rumble" data-k="1" data-i="${p.index}">Getar kuat (1000 ms, 1.0)</button>
+        <button class="sm" data-fx="trigger-rumble" data-k="0.8" data-i="${p.index}">Getar trigger (trigger-rumble)</button><button class="sm" data-reset-fx="${p.index}">reset()</button><button class="sm" data-json="${p.index}">Salin JSON</button></div>`).join('<hr>')
+      + `<h3 style="margin:12px 0 4px;font-size:14px">navigator.getGamepads()</h3><p class="muted">Dibaca sekali per frame. Trigger terbaca sebagai tombol dengan <code>value</code> desimal.</p><pre class="raw" data-raw>${esc(rawDump())}</pre>` + evLog() + stdTable();
     for (const b of body.querySelectorAll('[data-fx]')) b.onclick = () => { const q = pads().find(x => x.index === +b.dataset.i), a = q && q.vibrationActuator, k = +b.dataset.k;
       if (!a || !a.playEffect) return alert('Controller ini tidak mendukung getar di browser ini.');
       const fx = b.dataset.fx; if (a.effects && ![...a.effects].includes(fx)) return alert(`Efek "${fx}" tidak didukung controller ini.`);
-      a.playEffect(fx, fx === 'trigger-rumble' ? {startDelay: 0, duration: 500, leftTrigger: k, rightTrigger: k, strongMagnitude: k*0.5, weakMagnitude: k*0.3} : {startDelay: 0, duration: 500, strongMagnitude: k, weakMagnitude: k*0.7}).catch(e => alert('Getar gagal: ' + e)); };
+      a.playEffect(fx, fx === 'trigger-rumble' ? {startDelay: 0, duration: 500, leftTrigger: k, rightTrigger: k, weakMagnitude: k*0.3, strongMagnitude: k*0.5} : {startDelay: 0, duration: k >= 1 ? 1000 : 400, weakMagnitude: k, strongMagnitude: k}).catch(e => alert('Getar gagal: ' + e)); };
     for (const b of body.querySelectorAll('[data-reset-fx]')) b.onclick = () => { const q = pads().find(x => x.index === +b.dataset.resetFx); q && q.vibrationActuator && q.vibrationActuator.reset && q.vibrationActuator.reset(); };
     for (const b of body.querySelectorAll('[data-json]')) b.onclick = () => { const q = pads().find(x => x.index === +b.dataset.json); if (!q) return;
       const j = JSON.stringify({id: q.id, index: q.index, connected: q.connected, mapping: q.mapping, timestamp: q.timestamp, axes: [...q.axes], buttons: [...q.buttons].map(x => ({pressed: x.pressed, touched: x.touched, value: x.value})), vibrationActuator: q.vibrationActuator ? {type: q.vibrationActuator.type, effects: q.vibrationActuator.effects ? [...q.vibrationActuator.effects] : undefined} : null}, null, 2);
@@ -182,7 +192,7 @@ export function openPadPanel({get, set, rumbleNow, onClose, tab = 'set'}){
     const L = pads(), set2 = cur + L.map(p => p.index).join(',');
     if (set2 !== last) { last = set2; liveSig.clear(); draw(); return; }
     if (cur === 'test') for (const p of L) { const sg = p.axes.map(a => a.toFixed(3)).join(',') + p.buttons.map(b => (b.value || 0).toFixed(2) + (b.touched ? 't' : '')).join(','), box = body.querySelector(`[data-live="${p.index}"]`);
-      if (box && liveSig.get(p.index) !== sg) { liveSig.set(p.index, sg); box.innerHTML = live(p); } } }
+      if (box && liveSig.get(p.index) !== sg) { liveSig.set(p.index, sg); box.innerHTML = live(p); const raw = body.querySelector('[data-raw]'); if (raw) raw.textContent = rawDump(); } } }
   const liveSig = new Map();
   draw(); loop();
   return {close}; }

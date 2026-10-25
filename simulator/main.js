@@ -6067,6 +6067,7 @@ function replayStep(dt){
 useBindings(readBound);
 let PADUI = false;
 const PADS = createPads({input, conf: () => padConf(cfg.pad), paused: () => PADUI, on: {active: p => { manualNow(); toast(`${BRAND_NAME[brandOf(p && p.id)]} terhubung · atur tombol di Pengaturan → Controller / gamepad`); },
+  disconnect: g => toast(`Controller terputus: ${BRAND_NAME[brandOf(g && g.id)]}`, 'warn'),
   phone: () => $('phbtn').click(), radio: () => apply('radio', !cfg.radio), settings: () => $('toggle').click(), horn: () => playerHorn(true), hornUp: () => playerHorn(false), cam: () => $('camb').click(),
   up: () => shiftGear(1), down: () => shiftGear(-1), map: () => { if ($('atlas').hidden) openAtlas(); else closeAtlas(); }, left: () => setIndicator(PLR?.indicator === 1 ? 0 : 1),
   right: () => setIndicator(PLR?.indicator === -1 ? 0 : -1), hazard: () => setIndicator(PLR?.indicator === 2 ? 0 : 2), photo: () => photoToggle()}});
