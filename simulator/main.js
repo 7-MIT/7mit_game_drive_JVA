@@ -32,7 +32,7 @@ import {buildRoadVehicle, MODEL_MATERIALS} from './road-vehicle-models.js';
 import {TRIP_OPTIONS, ROUTE_OPTIONS, MOD_DEF, PAINTS, RIMS, LIVERY, PRESETS} from './start-options.js';
 import {buildHuman} from './human-model.js';
 import {buildArchitecture, architectureMaterials} from './architecture-models.js';
-import {JUMAY_LANDMARK, buildJumayPark, jumayParkOverlaps} from './jumay-landmark.js';
+import {JUMAY_PARKS, buildJumayPark, jumayParkOverlaps} from './jumay-landmark.js';
 import {foliageGeometry,shrubGeometry} from './natural-models.js';
 import {initialQuality,qualityProfile,ultraProfile,createQualityGovernor,createSimulationClock} from './adaptive-performance.js';
 import {attachVehicleLOD,setVehicleLOD,distantOpaqueMaterial} from './vehicle-lod.js';
@@ -1145,7 +1145,7 @@ const hillMat = M(0x5f7d45, {flatShading: true});
 // buildings / fields / hills on both sides of a chunk; toll = keep clear of ramps, the parallel road and plazas
 function roadside(g, u0, u1, Z, R, toll){
   if (lmEV !== EV) layoutLandmarks();
-  const jumayPark = LMS.find(l => l.kind === 'jumay' && l.u != null);
+  const jumayParks = LMS.filter(l => l.kind === 'jumay' && l.u != null);
   const reg = regionAt(u0 + CH/2), buildings=[], fields = [], llc = EV.length ? latLonAt(u0 + CH/2) : null, sty = llc ? archStyle(llc.lat, llc.lon) : null;
   const free = (o, u, w) => { if (eAt(u) + o - w/2 < mbzClear(u) + 3) return false;    // never build on Japek under/beside the MBZ
     if (rampFoot(o, u, w)) return false;
@@ -1155,7 +1155,7 @@ function roadside(g, u0, u1, Z, R, toll){
     const k = Math.round(u/SPAN); for (const kk of [k - 1, k, k + 1]) { const t = sutetTower(kk); if (t && Math.abs(t.u - u) < 14 + w/2 && Math.abs(Math.abs(t.x) - (eAt(u) + o)) < 14 + w/2) return false; }
     return true; };
   const house = (s, u, o, w, d, h, roof = true, wc, rc) => { const x = s*(eAt(u) + o);
-    if (jumayPark && jumayParkOverlaps(x - jumayPark.side*(eAt(jumayPark.u) + jumayPark.off), jumayPark.u - u, Math.max(d, 18), Math.max(w, 18))) return;
+    if (jumayParks.some(park => jumayParkOverlaps(x - park.side*(eAt(park.u) + park.off), park.u - u, Math.max(d, 18), Math.max(w, 18), park.o))) return;
     if (o < 70) addSolid(g, 'Menabrak bangunan', u - w/2, u + w/2, x - d/2, x + d/2);     // buildings near the road are solid when you drive off it
     if (roof && sty && h < 6 && R() < (reg === 'urban' ? 0.2 : 0.5)) { const [d2, w2] = ARCH_SIZE[sty]; buildings.push({x: s*(eAt(u) + o + (d2 - d)/2), z: Z(u), d: d2, w: w2, h, type: sty, open: sty === 'joglo' && R() < 0.2}); return; }
     buildings.push({x,z:Z(u),d,w,h,type:roof?'house':h>18?'tower':'warehouse',color:wc??WALLS[Math.floor(R()*WALLS.length)]}); };
@@ -1223,7 +1223,7 @@ function updateVolcanoes(dt){
 // Each one is placed beside the route at the point of closest approach (on the correct side), at a distance that grows
 // with the real distance from the road, so you pass it the way you would on the real drive. Simple low-poly models, real heights.
 const LMK = [
-  [JUMAY_LANDMARK.name, JUMAY_LANDMARK.lat, JUMAY_LANDMARK.lon, JUMAY_LANDMARK.kind],
+  ...JUMAY_PARKS.map(site => [site.name, site.lat, site.lon, site.kind, site]),
   ['Monas', -6.1754, 106.8272, 'monas'], ['Masjid Istiqlal', -6.1702, 106.8310, 'mosque', {dome: 45, color: 0xe9e6dc, min: 1, mh: 90}],
   ['Bundaran HI', -6.1950, 106.8230, 'tugu', {h: 30}], ['Masjid Kubah Emas', -6.3833, 106.7690, 'mosque', {dome: 30, color: 0xd9b23a, min: 4, mh: 40}],
   ['Tugu Kujang', -6.6010, 106.8050, 'tugu', {h: 25}], ['Istana Bogor', -6.5980, 106.7970, 'palace'],
@@ -1302,7 +1302,7 @@ function layoutLandmarks(){
       const L2 = bx*bx + by*by; if (L2 < 1e-6) continue; const f = clamp((px*bx + py*by)/L2, 0, 1), d = Math.hypot(px - f*bx, py - f*by);
       if (d < best) { best = d; bu = a.u + f*(b.u - a.u); bs = bx*py - by*px > 0 ? -1 : 1; } }
     if (kind === 'suramadu' && SEA) best = Infinity;     // driving over it: the bridge itself is drawn
-    if (best < 9) { const rad = {jumay: JUMAY_LANDMARK.radius, monas: 26, borobudur: 64, prambanan: 56, suramadu: 30, sate: 48, sewu: 58, palace: 40, kapal: 40, mosque: (l.o.dome || 30)*1.7}[kind] || 15; l.u = bu; l.side = bs; l.off = clamp(70 + best*70, rad + 45, 640); l.km = best; l.told = false; } }
+    if (best < 9) { const rad = {jumay: l.o.radius, monas: 26, borobudur: 64, prambanan: 56, suramadu: 30, sate: 48, sewu: 58, palace: 40, kapal: 40, mosque: (l.o.dome || 30)*1.7}[kind] || 15; l.u = bu; l.side = bs; l.off = clamp(70 + best*70, rad + 45, 640); l.km = best; l.told = false; } }
 }
 function updateLandmarks(){
   if (!EV.length) return; if (lmEV !== EV) layoutLandmarks();

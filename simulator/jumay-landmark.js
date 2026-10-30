@@ -1,11 +1,21 @@
 import * as THREE from 'three';
 import {mergeGeometries} from 'three/addons/utils/BufferGeometryUtils.js';
 
-// Fictional Jumay Park campus in the Jakarta Pusat game area, near Thamrin.
-export const JUMAY_LANDMARK = Object.freeze({
-  name: 'Kawasan Jumay Park — Jumay Corporation',
-  lat: -6.1884, lon: 106.8233, kind: 'jumay', radius: 190
-});
+// Fictional game sites. Horizontal scales define land area, independently of tower height.
+export const JUMAY_PARKS = Object.freeze([
+  ['jakarta', 'Jakarta', -6.1884, 106.8233, 1],
+  ['bandung', 'Bandung', -6.9130, 107.6040, .90],
+  ['semarang', 'Semarang', -6.9850, 110.4250, .85],
+  ['yogyakarta', 'Yogyakarta', -7.7956, 110.3695, .80],
+  ['surabaya', 'Surabaya', -7.2760, 112.7310, .95]
+].map(([id, city, lat, lon, landScale]) => Object.freeze({
+  id, city, lat, lon, landScale, kind: 'jumay', headquarters: id === 'jakarta',
+  name: `Kawasan Jumay Park ${city} — Jumay Corporation`,
+  radius: 190 * landScale, halfDepth: 295 * landScale,
+  landWidth: 380 * landScale, landDepth: 590 * landScale,
+  landArea: 380 * 590 * landScale ** 2
+})));
+export const JUMAY_LANDMARK = JUMAY_PARKS[0];
 
 export const JUMAY_PARK_PLAN = Object.freeze({
   boulevard: Object.freeze({width: 32, length: 570, lanesPerDirection: 3}),
@@ -19,13 +29,13 @@ export const JUMAY_PARK_PLAN = Object.freeze({
 });
 
 // Keep procedural roadside buildings outside the campus and its perimeter.
-export function jumayParkOverlaps(x, z, width, depth) {
-  return Math.abs(x) < JUMAY_LANDMARK.radius + width / 2 + 10 && Math.abs(z) < 305 + depth / 2;
+export function jumayParkOverlaps(x, z, width, depth, site = JUMAY_LANDMARK) {
+  return Math.abs(x) < site.radius + width / 2 + 10 && Math.abs(z) < site.halfDepth + 10 + depth / 2;
 }
 
-export function buildJumayPark(parent) {
+export function buildJumayPark(parent, site = JUMAY_LANDMARK) {
   const headquarters = new THREE.Group();
-  buildJumayHeadquarters(headquarters);
+  buildJumayHeadquarters(headquarters, site);
   headquarters.position.set(JUMAY_PARK_PLAN.headquarters.x, 0, JUMAY_PARK_PLAN.headquarters.z);
   parent.add(headquarters);
   const materials = {
@@ -116,14 +126,17 @@ export function buildJumayPark(parent) {
       mesh.rotation.y = side > 0 ? 0 : Math.PI; parent.add(mesh);
     }
   };
-  sign('JUMAY PARK', 'KAWASAN PERKANTORAN & INDUSTRI JUMAY CORPORATION', 0, 8.5, 278, 44, 5);
+  sign(`JUMAY PARK ${site.city.toUpperCase()}`, 'KAWASAN PERKANTORAN & INDUSTRI JUMAY CORPORATION', 0, 8.5, 278, 44, 5);
   sign('JUMAY BOULEVARD', 'DIBANGUN OLEH JUMAY CORPORATION', 0, 8.5, -278, 32, 6);
   JUMAY_PARK_PLAN.offices.forEach((o, i) => sign(`JUMAY OFFICE ${i + 1}`, 'PERKANTORAN JUMAY CORPORATION', o.x, o.height - 6, o.z + o.depth / 2 + .25, 45, 7));
   JUMAY_PARK_PLAN.factories.forEach((f, i) => sign(`JUMAY FACTORY ${i + 1}`, 'PABRIK JUMAY CORPORATION', f.x, 13, f.z + f.depth / 2 + .4, 46, 6));
   parent.userData.jumayPark = true;
+  parent.userData.siteId = site.id;
+  parent.userData.landArea = site.landArea;
+  parent.scale.set(site.landScale, 1, site.landScale);
 }
 
-export function buildJumayHeadquarters(parent) {
+export function buildJumayHeadquarters(parent, site = JUMAY_LANDMARK) {
   const materials = {
     stone: new THREE.MeshStandardMaterial({color: 0xd9dee3, roughness: .75}),
     glass: new THREE.MeshStandardMaterial({color: 0x37647c, metalness: .55, roughness: .22}),
@@ -173,7 +186,7 @@ export function buildJumayHeadquarters(parent) {
   ctx.fillStyle = '#162b3e'; ctx.fillRect(0, 0, 1024, 256);
   ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.font = 'bold 100px sans-serif'; ctx.fillText('JUMAY', 512, 86);
-  ctx.font = '32px sans-serif'; ctx.fillText('KANTOR PUSAT JUMAY CORPORATION', 512, 184);
+  ctx.font = '32px sans-serif'; ctx.fillText(site.headquarters ? 'KANTOR PUSAT JUMAY CORPORATION' : `KANTOR REGIONAL ${site.city.toUpperCase()}`, 512, 184);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.userData.keep = true;
@@ -186,5 +199,6 @@ export function buildJumayHeadquarters(parent) {
     sign.rotation.y = side > 0 ? 0 : Math.PI;
     parent.add(sign);
   }
-  parent.userData.jumayHeadquarters = true;
+  parent.userData.jumayHeadquarters = site.headquarters;
+  parent.userData.jumayRegionalOffice = !site.headquarters;
 }
