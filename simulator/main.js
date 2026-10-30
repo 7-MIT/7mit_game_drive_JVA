@@ -33,6 +33,7 @@ import {TRIP_OPTIONS, ROUTE_OPTIONS, MOD_DEF, PAINTS, RIMS, LIVERY, PRESETS} fro
 import {buildHuman} from './human-model.js';
 import {buildArchitecture, architectureMaterials} from './architecture-models.js';
 import {JUMAY_PARKS, buildJumayPark, jumayParkOverlaps} from './jumay-landmark.js';
+import {jumayBoulevardPlacement} from './jumay-sites.js';
 import {foliageGeometry,shrubGeometry} from './natural-models.js';
 import {initialQuality,qualityProfile,ultraProfile,createQualityGovernor,createSimulationClock} from './adaptive-performance.js';
 import {attachVehicleLOD,setVehicleLOD,distantOpaqueMaterial} from './vehicle-lod.js';
@@ -704,7 +705,9 @@ function layoutTrip(t, keepN = -1){
   const sc = cfg.scale; let lastRW = -RW_EVERY + 2600, lastCF = -CF_EVERY + 4400;
   ZONES = []; EV[0].u = 0;
   for (let i = 1; i < EV.length; i++) {
-    const a = EV[i-1].u; let gap = Math.max(1150, (EV[i].rk - EV[i-1].rk)*1000/sc), cur = a + 1150;
+    const a = EV[i-1].u;
+    if (CORR[EV[i].c].boulevard) { EV[i].u = a + CORR[EV[i].c].worldLength; continue; }
+    let gap = Math.max(1150, (EV[i].rk - EV[i-1].rk)*1000/sc), cur = a + 1150;
     for (let guard = 0; guard < 50; guard++) {
       const dueRW = lastRW + RW_EVERY, dueCF = lastCF + CF_EVERY, ty = dueRW <= dueCF ? 'rw' : 'cf', due = Math.min(dueRW, dueCF);
       const pos = Math.max(cur + (ty === 'cf' ? 230 : 0), due);
@@ -734,7 +737,7 @@ function layoutTrip(t, keepN = -1){
   laneSegs['1'] = [{p: -Infinity, n: nStart}]; laneSegs['-1'] = [{p: -Infinity, n}];
   for (const c of CHG) laneSegs['1'].push({p: c.n1 < c.n0 ? c.c - 150 : c.c, n: c.n1});
   for (const c of [...CHG].reverse()) laneSegs['-1'].push({p: c.n0 < c.n1 ? -c.c : -(c.c - 150), n: c.n0});
-  SITES = EV.filter(e => SITEK.has(e.kind));
+  SITES = EV.filter(e => SITEK.has(e.kind) && !NODES.get(e.key)?.poi?.startsWith('jumay'));
   RSITES = SITES.filter(e => RAMPK.has(e.kind)); PLAZAS = SITES.filter(e => PLZK.has(e.kind)); KSITES = SITES.filter(e => e.kind === 'k');
   for (const s of SITES) { s.id = 's' + s.i; if (!s.bays) s.bays = {'1': null, '-1': null}; if (s.phase == null) s.phase = Math.random()*SIG_CYCLE; }
   buildProfile();
@@ -1155,7 +1158,7 @@ function roadside(g, u0, u1, Z, R, toll){
     const k = Math.round(u/SPAN); for (const kk of [k - 1, k, k + 1]) { const t = sutetTower(kk); if (t && Math.abs(t.u - u) < 14 + w/2 && Math.abs(Math.abs(t.x) - (eAt(u) + o)) < 14 + w/2) return false; }
     return true; };
   const house = (s, u, o, w, d, h, roof = true, wc, rc) => { const x = s*(eAt(u) + o);
-    if (jumayParks.some(park => jumayParkOverlaps(x - park.side*(eAt(park.u) + park.off), park.u - u, Math.max(d, 18), Math.max(w, 18), park.o))) return;
+    if (jumayParks.some(park => jumayParkOverlaps(x - (park.onRoute ? 0 : park.side*(eAt(park.u) + park.off)), park.u - u, Math.max(d, 18), Math.max(w, 18), park.o))) return;
     if (o < 70) addSolid(g, 'Menabrak bangunan', u - w/2, u + w/2, x - d/2, x + d/2);     // buildings near the road are solid when you drive off it
     if (roof && sty && h < 6 && R() < (reg === 'urban' ? 0.2 : 0.5)) { const [d2, w2] = ARCH_SIZE[sty]; buildings.push({x: s*(eAt(u) + o + (d2 - d)/2), z: Z(u), d: d2, w: w2, h, type: sty, open: sty === 'joglo' && R() < 0.2}); return; }
     buildings.push({x,z:Z(u),d,w,h,type:roof?'house':h>18?'tower':'warehouse',color:wc??WALLS[Math.floor(R()*WALLS.length)]}); };
@@ -1296,11 +1299,13 @@ function layoutLandmarks(){
   lmEV = EV; for (const l of LMS) { if (l.g) l.g.visible = false; l.u = null; }
   for (const [name, lat, lon, kind, o] of LMK) {
     let l = LMS.find(x => x.name === name); if (!l) { l = {name, lat, lon, kind, o: o || {}}; LMS.push(l); }
+    l.onRoute = false; l.reverse = false;
     let best = Infinity, bu = 0, bs = 1;
     for (let i = 0; i < EV.length - 1; i++) { const a = EV[i], b = EV[i + 1]; if (a.lat == null || b.lat == null || b.u - a.u < 1) continue;
       const k = Math.cos(a.lat*Math.PI/180), ax = 0, ay = 0, bx = (b.lon - a.lon)*111*k, by = (b.lat - a.lat)*111, px = (lon - a.lon)*111*k, py = (lat - a.lat)*111;
       const L2 = bx*bx + by*by; if (L2 < 1e-6) continue; const f = clamp((px*bx + py*by)/L2, 0, 1), d = Math.hypot(px - f*bx, py - f*by);
       if (d < best) { best = d; bu = a.u + f*(b.u - a.u); bs = bx*py - by*px > 0 ? -1 : 1; } }
+    if (kind === 'jumay') { const placement = jumayBoulevardPlacement(EV, l.o); if (placement) { best = 0; bu = placement.u; l.onRoute = true; l.reverse = placement.reverse; } }
     if (kind === 'suramadu' && SEA) best = Infinity;     // driving over it: the bridge itself is drawn
     if (best < 9) { const rad = {jumay: l.o.radius, monas: 26, borobudur: 64, prambanan: 56, suramadu: 30, sate: 48, sewu: 58, palace: 40, kapal: 40, mosque: (l.o.dome || 30)*1.7}[kind] || 15; l.u = bu; l.side = bs; l.off = clamp(70 + best*70, rad + 45, 640); l.km = best; l.told = false; } }
 }
@@ -1309,8 +1314,8 @@ function updateLandmarks(){
   for (const l of LMS) { if (l.u == null) continue; const z = camU - l.u, vis = Math.abs(z) < 2600;
     if (vis && !l.g) { l.g = new THREE.Group(); const inner = new THREE.Group(); LMK_BUILD[l.kind](inner, l.o); if (l.kind === 'suramadu') inner.rotation.y = Math.PI/2; l.g.add(inner); bendObj(l.g); scene.add(l.g); }
     if (!l.g) continue; l.g.visible = vis; if (!vis) continue;
-    const x = l.side*(eAt(l.u) + l.off); l.g.position.set(x, 0, z);
-    if (!l.told && z < 900 && z > 0 && $('plan').hidden) { l.told = true; toast(`${l.name} · ${l.side > 0 ? 'kanan' : 'kiri'} jalan`); } }
+    const x = l.onRoute ? 0 : l.side*(eAt(l.u) + l.off); l.g.position.set(x, 0, z); l.g.rotation.y = l.reverse ? Math.PI : 0;
+    if (!l.told && z < 900 && z > 0 && $('plan').hidden) { l.told = true; toast(`${l.name} · ${l.onRoute ? 'Jalan Boulevard Jumay Park Utama' : (l.side > 0 ? 'kanan' : 'kiri') + ' jalan'}`); } }
 }
 
 // ---------- route signs: province borders and the start of each toll road (with its name) ----------
@@ -5804,7 +5809,7 @@ function voiceTick(dt){ if ((VOICE.t -= dt) > 0 || !cfg.voice || !PLR || !trip |
 function phoneSfx(k){ if (k === 'coin') return sfxCoin();
   const T = {tap: [[1400], 0.03, 0.025], key: [[900, 1300], 0.07, 0.03], open: [[520, 780], 0.12, 0.04], close: [[700, 460], 0.1, 0.035], unlock: [[660, 990], 0.12, 0.04], ok: [[880, 1320], 0.16, 0.05],
     err: [[300, 220], 0.18, 0.05], ring: [[440, 480], 0.5, 0.04], shutter: [[2400, 1200], 0.06, 0.06]}[k]; if (T) tone({fs: T[0], type: 'sine', dur: T[1], gain: T[2]}); }
-const placeSub = n => n.poi === 'jumay' ? `Jumay Corporation · ${n.city} · ${n.headquarters ? 'Kantor pusat' : 'Kantor regional'}` : (KIND_NAME[n.kind] || '') + (n.city && n.city !== n.name ? ' · ' + n.city : '');
+const placeSub = n => n.poi === 'jumay-boulevard' ? `Lokasi awal berkendara · Jumay Park ${n.city}` : n.poi === 'jumay' ? `Jumay Corporation · ${n.city} · ${n.headquarters ? 'Kantor pusat' : 'Kantor regional'}` : (KIND_NAME[n.kind] || '') + (n.city && n.city !== n.name ? ' · ' + n.city : '');
 PHONE = TUT ? null : initPhone({cfg, saveCfg, toast, rp: rp$, rpS, sfx: phoneSfx, btn: $('phbtn'), MP_URL, MP_KEY, ICE,
   onToggle: on => $('phbtn').setAttribute('aria-pressed', on ? 'true' : 'false'),
   state(){ const P = PLR, u = P ? uOfV(P) : 0, d = trip && trip.destIdx >= 0 ? EV[trip.destIdx] : null, r = ride;

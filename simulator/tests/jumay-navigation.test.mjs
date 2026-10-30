@@ -55,8 +55,8 @@ test('phone Maps search lists all five Jumay Parks and gives each result a regio
     NAVABLE: [...NODES.values()].filter(n => edgesFrom(n.key).length), PLR: null, EV: [],
     norm: s => s.toLowerCase(), haversine: () => 1, nodeLabel: n => n.name, KIND_NAME: {}
   });
-  const hits = api.places('Jumay Park'); assert.equal(hits.length, 5);
-  assert.equal(new Set(hits.map(n => n.key)).size, 5);
+  const hits = api.places('Jumay Park'); assert.equal(hits.length, 10);
+  assert.equal(new Set(hits.map(n => n.key)).size, 10);
   for (const site of JUMAY_PARKS) {
     const hit = hits.find(n => n.key === 'JUMAY:' + site.id);
     assert.ok(hit.sub.includes(site.headquarters ? 'Kantor pusat' : 'Kantor regional'));

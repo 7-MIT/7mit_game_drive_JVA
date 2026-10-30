@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {runInNewContext} from 'node:vm';
 import * as THREE from 'three';
+import {jumayBoulevardPlacement} from '../jumay-sites.js';
 import {JUMAY_PARKS, JUMAY_LANDMARK, JUMAY_PARK_PLAN, buildJumayHeadquarters, buildJumayPark, jumayParkOverlaps} from '../jumay-landmark.js';
 
 test('headquarters has grounded, finite geometry and a small draw-call budget', () => {
@@ -47,7 +48,7 @@ test('all five parks are registered and placed safely beside their city routes i
   const {lat, lon, name} = site;
   const near = [{lat: lat - .01, lon: lon - .001, u: 0}, {lat: lat + .01, lon: lon - .001, u: 2200}];
   for (const EV of [near, near.toReversed().map((p, i) => ({...p, u: i * 2200}))]) {
-    const LMS = [], context = {EV, LMS, LMK: landmarks, JUMAY_LANDMARK, SEA: false,
+    const LMS = [], context = {EV, LMS, LMK: landmarks, JUMAY_LANDMARK, jumayBoulevardPlacement, SEA: false,
       clamp: (x, a, b) => Math.min(b, Math.max(a, x)), lmEV: null};
     runInNewContext(layout + '\nlayoutLandmarks()', context);
     const headquarters = LMS.find(l => l.name === name);
@@ -143,7 +144,7 @@ test('Jakarta has the largest land footprint, while every branch retains offices
       assert.ok(labels.includes(`JUMAY PARK ${site.city.toUpperCase()}`));
       assert.equal(labels.includes('KANTOR PUSAT JUMAY CORPORATION'), site.headquarters);
       if (!site.headquarters) assert.ok(labels.includes(`KANTOR REGIONAL ${site.city.toUpperCase()}`));
-      assert.ok(labels.includes('JUMAY BOULEVARD'));
+      assert.ok(labels.includes('BOULEVARD JUMAY PARK UTAMA'));
       for (let i = 1; i <= 4; i++) assert.ok(labels.includes(`JUMAY FACTORY ${i}`));
       assert.ok(jumayParkOverlaps(site.radius + 5, 0, 10, 10, site));
       assert.equal(jumayParkOverlaps(site.radius + 40, 0, 10, 10, site), false);

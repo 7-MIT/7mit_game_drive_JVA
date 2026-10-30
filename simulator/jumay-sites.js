@@ -14,3 +14,14 @@ export const JUMAY_PARKS = Object.freeze([
 })));
 export const JUMAY_LANDMARK = JUMAY_PARKS[0];
 
+// Centre the campus on its actual drivable boulevard, in either direction.
+export function jumayBoulevardPlacement(events, site) {
+  const id = 'jumay-boulevard-' + site.id;
+  for (let i = 1; i < events.length; i++) {
+    const a = events[i - 1], b = events[i];
+    if (b.c !== id || !Number.isFinite(a.u) || !Number.isFinite(b.u)) continue;
+    return {u: (a.u + b.u) / 2, reverse: a.key === 'JUMAY:' + site.id};
+  }
+  return null;
+}
+

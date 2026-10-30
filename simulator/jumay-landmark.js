@@ -103,7 +103,7 @@ export function buildJumayPark(parent, site = JUMAY_LANDMARK) {
     const canvas = document.createElement('canvas'); canvas.width = 1024; canvas.height = 256;
     const ctx = canvas.getContext('2d'); ctx.fillStyle = '#162b3e'; ctx.fillRect(0, 0, 1024, 256);
     ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.font = 'bold 74px sans-serif'; ctx.fillText(title, 512, 85);
+    ctx.font = 'bold 74px sans-serif'; ctx.fillText(title, 512, 85, 960);
     ctx.font = '30px sans-serif'; ctx.fillText(subtitle, 512, 184);
     const map = new THREE.CanvasTexture(canvas); map.colorSpace = THREE.SRGBColorSpace; map.userData.keep = true;
     const mat = new THREE.MeshStandardMaterial({map, emissiveMap: map, emissive: 0xffffff, emissiveIntensity: .4});
@@ -114,7 +114,7 @@ export function buildJumayPark(parent, site = JUMAY_LANDMARK) {
     }
   };
   sign(`JUMAY PARK ${site.city.toUpperCase()}`, 'KAWASAN PERKANTORAN & INDUSTRI JUMAY CORPORATION', 0, 8.5, 278, 44, 5);
-  sign('JUMAY BOULEVARD', 'DIBANGUN OLEH JUMAY CORPORATION', 0, 8.5, -278, 32, 6);
+  sign('BOULEVARD JUMAY PARK UTAMA', 'DIBANGUN OLEH JUMAY CORPORATION', 0, 8.5, -278, 42, 6);
   JUMAY_PARK_PLAN.offices.forEach((o, i) => sign(`JUMAY OFFICE ${i + 1}`, 'PERKANTORAN JUMAY CORPORATION', o.x, o.height - 6, o.z + o.depth / 2 + .25, 45, 7));
   JUMAY_PARK_PLAN.factories.forEach((f, i) => sign(`JUMAY FACTORY ${i + 1}`, 'PABRIK JUMAY CORPORATION', f.x, 13, f.z + f.depth / 2 + .4, 46, 6));
   parent.userData.jumayPark = true;

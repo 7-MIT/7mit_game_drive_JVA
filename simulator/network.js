@@ -496,6 +496,19 @@ for (const site of JUMAY_PARKS) {
     cls: 'n', prov: true, custom: true, region: 'jawa', lanes: 3, limit: 40, planned: false,
     nodes: [{key: city.key, name: city.name, kind: city.kind, km: 0},
       {key, name, kind: 'k', km}]});
+  const startKey = 'JUMAY-BOULEVARD:' + site.id, boulevardId = 'jumay-boulevard-' + site.id;
+  const boulevardName = 'Jalan Boulevard Jumay Park Utama';
+  const startName = boulevardName + ' (' + site.city + ')';
+  const worldLength = 570 * site.landScale;
+  NODES.set(startKey, {key: startKey, name: startName, kind: 'k',
+    lat: site.lat - worldLength / 111320, lon: site.lon, city: site.city,
+    corr: new Set([boulevardId]), poi: 'jumay-boulevard', headquarters: site.headquarters});
+  destination.corr.add(boulevardId);
+  CORRIDORS.push({id: boulevardId, name: boulevardName + ' · ' + site.city,
+    short: boulevardName, cls: 'n', prov: true, custom: true, boulevard: true,
+    siteId: site.id, worldLength, region: 'jawa', lanes: 3, limit: 40, planned: false,
+    nodes: [{key: startKey, name: startName, kind: 'k', km: 0},
+      {key, name, kind: 'k', km: worldLength / 1000}]});
 }
 export const CORR = Object.fromEntries(CORRIDORS.map(c => [c.id, c]));
 const SPEED = {t: 85, n: 50, a: 30};
@@ -518,7 +531,7 @@ export function placeList(){
   const out = [], seen = new Set();
   for (const c of CORRIDORS) { if (c.cls === 'a' || c.cls === 'f') continue; const R = c.region && REGIONS[c.region], pre = R ? `${R.name}${R.beta ? ' (Beta)' : ''} · ` : '';
     for (const n of c.nodes) if ((n.kind === 'x' || n.kind === 't' || n.kind === 'k') && !seen.has(n.key)) { seen.add(n.key);
-      out.push({key: n.key, name: n.name, corr: c.id, group: pre + (c.cls === 'n' ? 'Jalan Nasional · ' : 'Tol · ') + c.short, planned: c.planned, cls: c.cls, region: c.region || 'jawa'}); } }
+      out.push({key: n.key, name: n.name, corr: c.id, group: c.boulevard ? 'Jumay Park · Mulai di boulevard' : pre + (c.cls === 'n' ? 'Jalan Nasional · ' : 'Tol · ') + c.short, planned: c.planned, cls: c.cls, region: c.region || 'jawa'}); } }
   return out;
 }
 
