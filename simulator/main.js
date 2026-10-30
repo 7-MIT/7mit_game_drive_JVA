@@ -32,7 +32,7 @@ import {buildRoadVehicle, MODEL_MATERIALS} from './road-vehicle-models.js';
 import {TRIP_OPTIONS, ROUTE_OPTIONS, MOD_DEF, PAINTS, RIMS, LIVERY, PRESETS} from './start-options.js';
 import {buildHuman} from './human-model.js';
 import {buildArchitecture, architectureMaterials} from './architecture-models.js';
-import {JUMAY_LANDMARK, buildJumayHeadquarters} from './jumay-landmark.js';
+import {JUMAY_LANDMARK, buildJumayPark, jumayParkOverlaps} from './jumay-landmark.js';
 import {foliageGeometry,shrubGeometry} from './natural-models.js';
 import {initialQuality,qualityProfile,ultraProfile,createQualityGovernor,createSimulationClock} from './adaptive-performance.js';
 import {attachVehicleLOD,setVehicleLOD,distantOpaqueMaterial} from './vehicle-lod.js';
@@ -1144,6 +1144,8 @@ const hillGeo = (() => { const g = new THREE.IcosahedronGeometry(1, 1); g.scale(
 const hillMat = M(0x5f7d45, {flatShading: true});
 // buildings / fields / hills on both sides of a chunk; toll = keep clear of ramps, the parallel road and plazas
 function roadside(g, u0, u1, Z, R, toll){
+  if (lmEV !== EV) layoutLandmarks();
+  const jumayPark = LMS.find(l => l.kind === 'jumay' && l.u != null);
   const reg = regionAt(u0 + CH/2), buildings=[], fields = [], llc = EV.length ? latLonAt(u0 + CH/2) : null, sty = llc ? archStyle(llc.lat, llc.lon) : null;
   const free = (o, u, w) => { if (eAt(u) + o - w/2 < mbzClear(u) + 3) return false;    // never build on Japek under/beside the MBZ
     if (rampFoot(o, u, w)) return false;
@@ -1153,6 +1155,7 @@ function roadside(g, u0, u1, Z, R, toll){
     const k = Math.round(u/SPAN); for (const kk of [k - 1, k, k + 1]) { const t = sutetTower(kk); if (t && Math.abs(t.u - u) < 14 + w/2 && Math.abs(Math.abs(t.x) - (eAt(u) + o)) < 14 + w/2) return false; }
     return true; };
   const house = (s, u, o, w, d, h, roof = true, wc, rc) => { const x = s*(eAt(u) + o);
+    if (jumayPark && jumayParkOverlaps(x - jumayPark.side*(eAt(jumayPark.u) + jumayPark.off), jumayPark.u - u, Math.max(d, 18), Math.max(w, 18))) return;
     if (o < 70) addSolid(g, 'Menabrak bangunan', u - w/2, u + w/2, x - d/2, x + d/2);     // buildings near the road are solid when you drive off it
     if (roof && sty && h < 6 && R() < (reg === 'urban' ? 0.2 : 0.5)) { const [d2, w2] = ARCH_SIZE[sty]; buildings.push({x: s*(eAt(u) + o + (d2 - d)/2), z: Z(u), d: d2, w: w2, h, type: sty, open: sty === 'joglo' && R() < 0.2}); return; }
     buildings.push({x,z:Z(u),d,w,h,type:roof?'house':h>18?'tower':'warehouse',color:wc??WALLS[Math.floor(R()*WALLS.length)]}); };
@@ -1248,7 +1251,7 @@ const dome = (r, mat, x, y, z, g) => { const m = new THREE.Mesh(new THREE.Sphere
 const bell = (r, x, y, z, g) => { dome(r, stoneMat, x, y, z, g); cyl(r*0.25, 0.02, r*1.1, stoneMat, x, y + r*0.9, z, g, 6); };
 const pramMat = M(0x6e6a62, {flatShading: true});
 const LMK_BUILD = {
-  jumay: buildJumayHeadquarters,
+  jumay: buildJumayPark,
   // Jam Gadang: the Bukittinggi clock tower with its gonjong roof
   jamgadang(g){ box(9, 2, 9, whiteStone, 0, 1, 0, g); box(6.5, 22, 6.5, whiteStone, 0, 13, 0, g); for (const [x, z] of [[0, 3.3], [0, -3.3], [3.3, 0], [-3.3, 0]]) cyl(1.2, 1.2, 0.2, M(0xf6f2e4), x, 20, z, g, 20).rotation[x ? 'z' : 'x'] = Math.PI/2;
     const top = new THREE.Group(); buildArchitecture(top, [{x: 0, z: 0, d: 6, w: 7, h: 0.1, type: 'gadang', color: 0xb5261e}]); top.position.y = 20.5; g.add(top); },
