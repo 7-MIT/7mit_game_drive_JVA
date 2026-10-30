@@ -1,3 +1,5 @@
+import {DELIVERY_JOBS, planDelivery} from './service-delivery.js';
+import {SERVICE_VEHICLES} from './service-vehicles.js';
 // Simulator Tol Trans-Jawa — mengemudi di jaringan tol Pulau Jawa (lajur kiri).
 // Dunia 3D dibangun di sepanjang rute yang dipilih: koordinat u = meter sepanjang rute.
 // Kamera memakai floating origin: z dunia = camU - u, sehingga mobil pemain selalu di dekat z = 0.
@@ -42,7 +44,7 @@ import {makeEtleCameras, createEtle} from './etle.js';
 import {initTrafficPanel} from './traffic-panel.js';
 import {createPursuit} from './pursuit.js';
 import {snapCorridor, createMapNodes, collectMapTraffic, TRAFFIC_COLORS, navigationStrokes} from './map-data.js';
-import {setCorrRoute, corrPlaces, COAST, COAST_RINGS, REGIONS, regionOf, altAt, ALT_KM, CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, walkFree, choicesAt, edgesFrom, turnDeg, fmtKm, nodeLabel, JAVA, MADURA, corrGeo, corrLL, RULES} from './network.js';
+import {DELIVERY_FACILITIES, setCorrRoute, corrPlaces, COAST, COAST_RINGS, REGIONS, regionOf, altAt, ALT_KM, CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, walkFree, choicesAt, edgesFrom, turnDeg, fmtKm, nodeLabel, JAVA, MADURA, corrGeo, corrLL, RULES} from './network.js';
 
 const MOBILE = matchMedia('(pointer:coarse)').matches || innerWidth < 700;
 // iPhone / iPad: Safari closes a tab that uses too much memory and never tells the RAM size, so assume a 3 GB phone there
@@ -576,7 +578,7 @@ function plateMatFor(cat, reg){
   if (pool.length < 8 && plateCount < 160 || !pool.length) { plateCount++; const [m1, m2] = randPlate(cat, reg), mat = new THREE.MeshStandardMaterial({map: plateCanvas(m1, m2, cat), roughness: 0.45}); mat.userData.plate = true; SHARED.add(mat); pool.push(mat); return mat; }
   return pick(pool);
 }
-const plateCatOf = type => type === 'police' ? 'polri' : type === 'damkar' ? 'dinas' : ['taxi', 'angkot', 'bus', 'truck', 'derek'].includes(type) ? 'umum'
+const plateCatOf = type => type === 'police' ? 'polri' : type === 'damkar' ? 'dinas' : ['kopdes', 'taxi', 'angkot', 'bus', 'truck', 'derek'].includes(type) ? 'umum'
   : type === 'pickup' || type === 'van' ? (Math.random() < 0.3 ? 'umum' : 'pribadi') : Math.random() < 0.03 ? 'dinas' : Math.random() < 0.02 ? 'listrik' : Math.random() < 0.004 ? 'diplomatik' : 'pribadi';
 function plateVehicle(g, type){
   const ll = EV.length ? latLonAt(camU) : {lat: -6.2, lon: 106.8}, mat = plateMatFor(plateCatOf(type), regionCode(ll.lat, ll.lon));
@@ -654,12 +656,12 @@ function makeVehicle0(type, color, noMerge = false){
   if (type === 'bicycle') { const paint = vEnv(new THREE.MeshPhysicalMaterial({color: color ?? 0x249b79, metalness:0.5, roughness:0.28, clearcoat:0.8, clearcoatRoughness:0.18})); paint.userData.own = true;
     const v = buildBicycle({paint, tyre:tyreMat, metal:chromeMat, dark:trimMat, head:headMat, tail:tailMat}); bendObj(v.g); v.g.rotation.order='YXZ'; for (const w of v.front) w.rotation.order='YXZ'; return v; }
   const own = c => { const m = M(c, {roughness:0.4, metalness:0.3}); m.userData.own = true; return m; };
-  const pc = color ?? (type==='taxi' ? 0x1e5aa8 : type==='derek' ? 0xf2b705 : type==='police' || type==='ambulance' ? 0xf6f6f4 : type==='damkar' ? 0xc8160f : type==='angkot' ? pick([0x2a6fd1,0x2f9a4a,0x2f9a4a,0xd23a2a,0xe8c22a,0x3a9fd8,0x8a2bb0]) : pick(PAINT));
+  const pc = SERVICE_VEHICLES[type]?.color ?? color ?? (type==='taxi' ? 0x1e5aa8 : type==='derek' ? 0xf2b705 : type==='police' || type==='ambulance' ? 0xf6f6f4 : type==='damkar' ? 0xc8160f : type==='angkot' ? pick([0x2a6fd1,0x2f9a4a,0x2f9a4a,0xd23a2a,0xe8c22a,0x3a9fd8,0x8a2bb0]) : pick(PAINT));
   // metallic paints get a sharper, stronger reflection than solid colours (white, red); both have a clear-coat sheen
   const solidP = SOLID_PAINT.has(pc) || ['taxi', 'derek', 'police', 'ambulance', 'damkar', 'angkot'].includes(type) || (color != null && new THREE.Color(pc).getHSL({}).l > 0.85);
   const paint = vEnv(new THREE.MeshPhysicalMaterial({color:pc,clearcoat:0.9,clearcoatRoughness:0.16}), solidP ? 0.8 : 1.15); paint.userData.own = true; paint.roughness = solidP ? 0.3 : 0.24; paint.metalness = solidP ? 0.12 : 0.6;
   const tail=color!=null?brakeMat:tailMat, variant=type==='car'&&color==null?pick(['sedan','hatch','mpv','mpv']):type==='truck'&&color==null&&Math.random()<.4?'boxTruck':null;
-  const cargo=own(pick([0xe2e4e1,0xb9c3ca,0x9aa5ac,0x356288]));
+  const cargo=own(SERVICE_VEHICLES[type]?.color ?? pick([0xe2e4e1,0xb9c3ca,0x9aa5ac,0x356288]));
   const res=buildRoadVehicle(type,{paint,glass:glassMat,head:headMat,tail,chrome:chromeMat,grille:grilleMat,plate:plateMat,cargo},variant);
   res.paintMaterial=paint;
   const body=res.g,top=res.dimensions.height;
@@ -678,11 +680,11 @@ function makeVehicle0(type, color, noMerge = false){
 }
 // remove a vehicle's own materials from the reflection list when it goes
 const _killV = m => VMATS.delete(m);
-const LEN = t => t === 'truck' ? 16 : t === 'bus' ? 12.5 : t === 'damkar' ? 9 : t === 'derek' ? 8.6 : 6;
+const LEN = t => t === 'kopdes' ? 8.2 : t === 'mbg' ? 5.4 : t === 'truck' ? 16 : t === 'bus' ? 12.5 : t === 'damkar' ? 9 : t === 'derek' ? 8.6 : 6;
 function killVehicle(v){ if (poolPut(v)) { v.dead = true; return; } if(v.g.parent)v.g.parent.remove(v.g);const materials=new Set(),geometries=new Set();v.g.traverse(o=>{if(!o.isMesh)return;materials.add(o.material);geometries.add(o.geometry);});for(const m of materials)if(!SHARED.has(m)&&m.userData.own){_killV(m);if(m.map&&!m.userData.plate)m.map.dispose();m.dispose();}for(const g of geometries)if(g&&!g.userData.keep)g.dispose();v.dead=true; }
 
 const rm = (arr, v) => { const i = arr.indexOf(v); if (i >= 0) arr.splice(i, 1); };
-const heavy = v => v.type==='truck' || v.type==='bus';
+const heavy = v => v.type==='truck' || v.type==='bus' || v.type==='kopdes';
 const heavyMin = n => n >= 5 ? 2 : n >= 2 ? 1 : 0;
 
 // ================================================================
@@ -691,7 +693,7 @@ const heavyMin = n => n >= 5 ? 2 : n >= 2 ? 1 : 0;
 let NUT = [];   // putaran balik on non-toll divided roads: [{u}]
 let trip = null, EV = [], SITES = [], RSITES = [], PLAZAS = [], KSITES = [], ZONES = [], OVS = [], OPENS = [], OBJ = [], CHG = [];
 const laneSegs = {'1': [], '-1': []};
-const nCorr = c => cfg.lanes === 'auto' ? CORR[c].lanes : +cfg.lanes;   // the lane setting applies to every road
+const nCorr = c => CORR[c].boulevard ? 3 : CORR[c].serviceAccess ? 1 : cfg.lanes === 'auto' ? CORR[c].lanes : +cfg.lanes;   // campus and facility access roads retain their designed lane counts
 const PLZK = new Set(['g', 't', 'te', 'ti']), RAMPK = new Set(['x', 'j', 'r']), SITEK = new Set(['x', 'j', 'r', 'g', 't', 'te', 'ti', 'k']);
 const RW_EVERY = 5600, CF_EVERY = 9400, ZEXT = {rw: 1150, cf: 1380};
 
@@ -941,7 +943,35 @@ function suramaduBridge(g, u0, u1, Z){
       const top = H - 8 + Math.abs(d)/200*6; for (const sx of [-1, 1]) pts.push(sx*(e + 4.4), top, Z(pu), sx*(e + 2.9), 1.2, Z(ud)); } }
   if (pts.length) { const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3)); g.add(new THREE.LineSegments(geo, cableMat)); }
 }
+// One drivable surface for Jumay: campus meshes only supply the adjoining plots.
+function buildChunkBoulevard(i){
+  const u0 = i * CH, u1 = u0 + CH, g = new THREE.Group(), Z = u => u0 - u;
+  g.userData.u0 = u0; g.userData.boulevard = true;
+  const us = []; for (let u = u0; u <= u1; u += 10) us.push(u);
+  g.add(strip(us, u => -eAt(u) - .8, u => eAt(u) + .8, 0, asphalt, Z));
+  const lamps = [];
+  for (const side of [-1, 1]) {
+    g.add(strip(us, u => side * (eAt(u) - .12), u => side * (eAt(u) + .12), .018, white, Z));
+    g.add(strip(us, u => side * (eAt(u) + .8), u => side * (eAt(u) + 5.8), SW_H, swMat, Z));
+    g.add(wall(us, u => side * (eAt(u) + .8), 0, SW_H, curbMatD, Z));
+    for (let lane = 1; lane < 3; lane++) {
+      const marks = [];
+      for (let u = Math.ceil(u0 / 9) * 9; u < u1; u += 9) marks.push([side * (MED + lane * LW), Z(u + 1.5)]);
+      g.add(instanced(dashGeo, white, marks, .018));
+    }
+    for (let u = Math.ceil(u0 / 30) * 30; u < u1; u += 30) lamps.push([side * (eAt(u) + 4.5), Z(u)]);
+  }
+  // Low planted median, with regular openings for the campus entrances.
+  for (let u = Math.ceil(u0 / 12) * 12; u < u1; u += 12) {
+    if (Math.floor(u / 60) % 3 === 0) continue;
+    g.add(solid(1.6, .2, Math.min(10, u1 - u), barMat, 0, .1, Z(u + Math.min(10, u1 - u) / 2)));
+  }
+  g.add(instanced(sPoleGeo, lampMat, lamps), instanced(headGeo, lampHeadMat, lamps.map(([x,z]) => [x - Math.sign(x) * .9,z]), 7.9));
+  bendObj(g); scene.add(g); return g;
+}
+
 function buildChunkNat(i){
+  if (EV.length && CORR[corrAt(i * CH + CH / 2)]?.boulevard) return buildChunkBoulevard(i);
   const u0 = i*CH, u1 = u0 + CH, g = new THREE.Group(), R = rng(i*7919 + 29);
   g.userData.u0 = u0; const Z = u => -(u - u0); const nearbyBuildings=[], spbuHere = [];
   const us = []; for (let u = u0; u <= u1 + 0.01; u += 10) us.push(u);
@@ -1312,7 +1342,7 @@ function layoutLandmarks(){
 function updateLandmarks(){
   if (!EV.length) return; if (lmEV !== EV) layoutLandmarks();
   for (const l of LMS) { if (l.u == null) continue; const z = camU - l.u, vis = Math.abs(z) < 2600;
-    if (vis && !l.g) { l.g = new THREE.Group(); const inner = new THREE.Group(); LMK_BUILD[l.kind](inner, l.o); if (l.kind === 'suramadu') inner.rotation.y = Math.PI/2; l.g.add(inner); bendObj(l.g); scene.add(l.g); }
+    if (vis && !l.g) { l.g = new THREE.Group(); const inner = new THREE.Group(); LMK_BUILD[l.kind](inner, l.o, {onRoute: l.onRoute}); if (l.kind === 'suramadu') inner.rotation.y = Math.PI/2; l.g.add(inner); bendObj(l.g); scene.add(l.g); }
     if (!l.g) continue; l.g.visible = vis; if (!vis) continue;
     const x = l.onRoute ? 0 : l.side*(eAt(l.u) + l.off); l.g.position.set(x, 0, z); l.g.rotation.y = l.reverse ? Math.PI : 0;
     if (!l.told && z < 900 && z > 0 && $('plan').hidden) { l.told = true; toast(`${l.name} · ${l.onRoute ? 'Jalan Boulevard Jumay Park Utama' : (l.side > 0 ? 'kanan' : 'kiri') + ' jalan'}`); } }
@@ -1414,7 +1444,7 @@ function drawMirrors(dt){
   const v = PLR, want = !MOBILE && cfg.mirror !== false && QUAL.level < 4 && v && !foot && (camMode === 'chase' || camMode === 'cockpit') && $('plan').hidden && $('atlas').hidden;
   if (!want) return; if (!mirBox) layoutMirrors();
   if ((mirT -= dt) < 0) { mirT = 1; layoutMirrors(); }
-  const g = v.g, fwd = headV, up = 1.25 + (v.rp && v.q ? v.q.h || 0 : 0) + (heavy(v) ? 1.3 : v.type === 'suv' || v.type === 'van' || v.type === 'angkot' ? 0.35 : 0);
+  const g = v.g, fwd = headV, up = 1.25 + (v.rp && v.q ? v.q.h || 0 : 0) + (heavy(v) ? 1.3 : v.type === 'suv' || v.type === 'mbg' || v.type === 'van' || v.type === 'angkot' ? 0.35 : 0);
   const right = tmpV2.set(-fwd.z, 0, fwd.x);
   mirrorElapsed+=dt;const W=innerWidth,H=innerHeight,redraw=mirrorElapsed>=1/PROFILE.mirrorHz;if(redraw)mirrorElapsed=0;
   const bikeView = camMode === 'cockpit' && PLR && isTwoWheeler(PLR.type);
@@ -2257,7 +2287,7 @@ function gapInfo(v, list){
     if (d >= 0 && gap < ld){ ld = gap; lead = o; } else if (d < 0 && gap < fd){ fd = gap; fol = o; } }
   return {lead, ld, fol, fd};
 }
-const ACC_K = {bicycle:1.0, truck: 0.55, bus: 0.75, damkar: 0.9, derek: 0.9, van: 1.15, ambulance: 1.5, angkot: 1.1, pickup: 1.25, moto: 1.9, suv: 1.4, car: 1.45, taxi: 1.45, police: 1.7};
+const ACC_K = {mbg:1.15,kopdes:.7,bicycle:1.0, truck: 0.55, bus: 0.75, damkar: 0.9, derek: 0.9, van: 1.15, ambulance: 1.5, angkot: 1.1, pickup: 1.25, moto: 1.9, suv: 1.4, car: 1.45, taxi: 1.45, police: 1.7};
 function idm(v, lead, gap, v0){
   // how hard each kind of vehicle pulls away and brakes comfortably: loaded trucks and buses slowly, motorbikes briskly
   const a = v.player ? 2.2 : ACC_K[v.type] || 1.4, b = heavy(v) ? 1.7 : 2.2, s0 = heavy(v) ? 3.5 : 2.5, Th = followSeconds(!!(WEATHER[cfg.weather]||{}).rain,heavy(v));
@@ -2619,8 +2649,8 @@ function placeFoot(){ if (!foot) return; const f = foot, sd = PLR.sd || 1; f.g.p
 // ================================================================
 // TRIP NEEDS: fuel, cash and e-Toll balance, drowsiness; services at rest areas and in towns
 // ================================================================
-const TANK = {moto: 4, car: 42, taxi: 42, police: 50, suv: 55, pickup: 45, van: 55, ambulance: 60, angkot: 40, bus: 200, truck: 300, damkar: 150, derek: 120};
-const KM_L = {moto: 40, car: 13, taxi: 13, police: 11, suv: 9, pickup: 10, van: 9, ambulance: 8, angkot: 11, bus: 4, truck: 3.5, damkar: 3, derek: 5};
+const TANK = {mbg:60,kopdes:150,moto: 4, car: 42, taxi: 42, police: 50, suv: 55, pickup: 45, van: 55, ambulance: 60, angkot: 40, bus: 200, truck: 300, damkar: 150, derek: 120};
+const KM_L = {mbg:9,kopdes:5,moto: 40, car: 13, taxi: 13, police: 11, suv: 9, pickup: 10, van: 9, ambulance: 8, angkot: 11, bus: 4, truck: 3.5, damkar: 3, derek: 5};
 const WAL = Object.assign({cash: 750000, etoll: 300000, fuel: null, sleep: 0}, cfg.wal || {});
 // garage, career, daily missions and achievements (career.js); its state is saved inside cfg
 const CAR = createCareer({state: TUT ? null : cfg.car, save: () => saveCfg(), reward: (n, why) => earn(n, why), notify: (k, t) => { if (k === 'xp') return; toast(t, k === 'level' || k === 'ach' ? 'good' : ''); if (k !== 'mission') sfxCoin(); if (PHONE) PHONE.notify('dompet', k === 'level' ? 'Naik level' : k === 'ach' ? 'Pencapaian' : 'Misi harian', t); }});
@@ -2827,7 +2857,7 @@ function liveryTex(kind, c1, c2){
 function autoPlate(cat){ cfg.plateAuto = cfg.plateAuto || {}; if (!cfg.plateAuto[cat]) { cfg.plateAuto[cat] = randPlate(cat, 'B')[0]; saveCfg(); } return cfg.plateAuto[cat]; }
 const COLOR_NAME = {'#ec3013': 'Merah', '#f4f4f2': 'Putih', '#1b1c1f': 'Hitam', '#8d939a': 'Silver', '#1f3f73': 'Biru tua', '#2f5a4a': 'Hijau tua', '#e0a020': 'Kuning', '#6a1d2b': 'Merah marun', '#3a9fd8': 'Biru muda', '#f07a1a': 'Oranye',
   '#c9ccd0': 'Krom', '#d4af37': 'Emas', '#b02020': 'Merah', '#3a6fd8': 'Biru'};
-function vehInfo(){ const m = MODS(), t = PLR ? PLR.type : cfg.veh, cat = m.plateCat || plateCatOf(t), d = new Date(), fixed = ['taxi', 'police', 'ambulance', 'damkar', 'angkot'].includes(t);
+function vehInfo(){ const m = MODS(), t = PLR ? PLR.type : cfg.veh, cat = m.plateCat || plateCatOf(t), d = new Date(), fixed = ['mbg', 'kopdes', 'taxi', 'police', 'ambulance', 'damkar', 'angkot'].includes(t);
   return {type: t, label: (VEH[t] || VEH.car).label, gol: (VEH[t] || VEH.car).gol, plate: t==='bicycle'?'SEPEDA':(m.plate || autoPlate(cat)).toUpperCase(), plateCat: cat, plateName: PLATE_NAME[cat], plateStyle: PLATE_STYLE[cat],
     valid: `${String(d.getMonth() + 1).padStart(2, '0')} · ${String((d.getFullYear() + 5) % 100).padStart(2, '0')}`, paint: fixed ? 'Warna dinas / armada' : (COLOR_NAME[m.paint] || 'Kustom ' + m.paint), paintHex: fixed ? '#f4f4f2' : m.paint,
     paint2: COLOR_NAME[m.paint2] || m.paint2, rim: COLOR_NAME[m.rim] || m.rim, livery: LIVERY[m.livery] || 'Polos', tint: m.tint ? 'Gelap' : 'Standar', spoiler: m.spoiler, low: m.low, stripe: m.stripe,
@@ -2845,7 +2875,7 @@ function applyMods(v, m){
         plateM.userData.own = true; } o.material = plateM; } });
   // livery on the body paint
   const bodyM = g.children.find(o => o.isMesh && o.material && o.material.userData && o.material.userData.own && o.material !== glassM && o.material !== plateM)?.material;
-  if (bodyM && bodyM.isMeshStandardMaterial) { const lv = m.livery && m.livery !== 'polos' && LIVERY[m.livery] ? m.livery : null;
+  if (bodyM && bodyM.isMeshStandardMaterial && !SERVICE_VEHICLES[v.type]) { const lv = m.livery && m.livery !== 'polos' && LIVERY[m.livery] ? m.livery : null;
     if (bodyM.userData.paint == null) bodyM.userData.paint = bodyM.color.getHex();
     bodyM.map = lv ? liveryTex(lv, '#' + new THREE.Color(bodyM.userData.paint).getHexString(), m.paint2 || '#f4f4f2') : null; bodyM.color.set(lv ? 0xffffff : bodyM.userData.paint); bodyM.needsUpdate = true; }
   const box3 = new THREE.Box3().setFromObject(g), top = box3.max.y, len = v.len, w = (HW[v.type] || 0.92)*2;
@@ -2957,7 +2987,7 @@ function uForCK(c, km){ for (let i = 0; i < EV.length - 1; i++) { const a = EV[i
 const nameTagCache = new Map();
 function mpModel(p, build){
   if (p.v) { scene.remove(p.v.g); killVehicle(p.v); p.v = null; }
-  if (!build) return; const md = p.mod || MOD_DEF, fixed = ['taxi', 'police', 'ambulance', 'damkar', 'angkot'].includes(p.type);
+  if (!build) return; const md = p.mod || MOD_DEF, fixed = ['mbg', 'kopdes', 'taxi', 'police', 'ambulance', 'damkar', 'angkot'].includes(p.type);
   p.v = makeVehicle(p.type, fixed ? null : new THREE.Color(md.paint || '#3a6fd8').getHex(), true); applyMods(p.v, md);
   const tex = canvasTex(1, 0.22, (x, w, h) => { x.fillStyle = 'rgba(20,20,22,0.82)'; x.fillRect(0, 0, w, h); x.fillStyle = '#fff'; x.textAlign = 'center'; x.textBaseline = 'middle'; fit(x, p.name, w - 40, h*0.7, 800); x.fillText(p.name, w/2, h/2 + 4); });
   const tag = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.57), new THREE.MeshBasicMaterial({map: tex, transparent: true, depthWrite: false})); tag.material.userData.own = true;
@@ -3373,7 +3403,7 @@ function sim(dt){
     if (v.player && v.prefLane != null) { if (clock > v.prefT) { v.prefLane = null; hudLane(); }
       else { const tl = clamp(v.prefLane, 0, n - 1); if (tl !== v.lane) { const nl = v.lane + Math.sign(tl - v.lane); v.cd = 0.4; if (tryNormal(v, nl)) { v.lane = nl; hudLane(); } } continue; } }
     if (v.player && cfg.auto && v.lane === 0 && n > 1 && Math.random() < 0.3) { if (tryNormal(v, 1)) { v.lane = 1; continue; } }
-    if(!v.em&&['bicycle','moto','truck','pickup','derek'].includes(v.type)&&v.lane>=0&&v.lane<n-1&&tryNormal(v,v.lane+1)){signalTo(v,v.lane+1);continue;}
+    if(!v.em&&['bicycle','moto','truck','kopdes','pickup','derek'].includes(v.type)&&v.lane>=0&&v.lane<n-1&&tryNormal(v,v.lane+1)){signalTo(v,v.lane+1);continue;}
     discretionary(v, lead, nearEntry);
   }
   for (const v of vehicles){
@@ -3483,7 +3513,7 @@ function place(){
 // ================================================================
 // every motor vehicle can reach 200 km/h and never goes faster (VMAX); heavy ones get there slowly (acc)
 const VMAX = 200/3.6;
-const VEH = {car:{label:'Sedan', vmax:VMAX, acc:3.2, gol:'Gol I', rate:1000}, suv:{label:'SUV', vmax:VMAX, acc:2.9, gol:'Gol I', rate:1000},
+const VEH = {mbg:{label:'Mobil MBG',vmax:VMAX,acc:2.4,gol:'Gol I',rate:1000}, kopdes:{label:'Truk Kopdes',vmax:VMAX,acc:1.6,gol:'Gol II',rate:1500}, car:{label:'Sedan', vmax:VMAX, acc:3.2, gol:'Gol I', rate:1000}, suv:{label:'SUV', vmax:VMAX, acc:2.9, gol:'Gol I', rate:1000},
   bus:{label:'Bus', vmax:VMAX, acc:1.6, gol:'Gol I', rate:1000}, truck:{label:'Truk', vmax:VMAX, acc:1.45, gol:'Gol III', rate:1650},
   pickup:{label:'Pickup', vmax:VMAX, acc:2.6, gol:'Gol I', rate:1000}, taxi:{label:'Taksi', vmax:VMAX, acc:3.1, gol:'Gol I', rate:1000},
   bicycle:{label:BICYCLE.label,vmax:BICYCLE.vmax,acc:1.5,gol:'non-tol',rate:0}, moto:{label:'Motor', vmax:VMAX, acc:3.8, gol:'non-tol', rate:0}, angkot:{label:'Angkot', vmax:VMAX, acc:2.4, gol:'Gol I', rate:1000}, ambulance:{label:'Ambulans', vmax:VMAX, acc:2.8, gol:'Gol I', rate:1000},
@@ -3493,7 +3523,7 @@ const stats = {t0: 0, toll: 0, viol: 0, crashes: 0, lastPay: 0, missed: false, d
 let offT = 0, shoulderT = 0, speedT = 0, heavyT = 0, violCd = 0, crashCd = 0, shake = 0;
 function spawnPlayer(){
   if (PLR) { const i = vehicles.indexOf(PLR); if (i >= 0) vehicles.splice(i, 1); const j = rampers.indexOf(PLR); if (j >= 0) rampers.splice(j, 1); killVehicle(PLR); }
-  const md = MODS(), pc = new THREE.Color(md.paint).getHex(), fixed = ['taxi', 'police', 'ambulance', 'damkar', 'angkot'].includes(cfg.veh);
+  const md = MODS(), pc = new THREE.Color(md.paint).getHex(), fixed = ['mbg', 'kopdes', 'taxi', 'police', 'ambulance', 'damkar', 'angkot'].includes(cfg.veh);
   const v = makeVehicle(VEH[cfg.veh] ? cfg.veh : 'car', fixed ? null : pc, true); v.player = true; v.paint = fixed ? 0xf4f4f2 : pc; v.dmg = 0; v.stamina = 100; detailPlayerVehicle(v); applyMods(v, md);
   const o = EV[0], n = nAvail(1, 0), startP = o.kind === 't' || o.kind === 'g' ? 160 : o.kind === 'k' || o.kind === 'n0' ? 30 : 320;
   Object.assign(v, {sd: 1, lane: Math.max(0, n - 1), p: startP, vel: v.type === 'bicycle' ? 0 : o.kind === 'k' || o.kind === 'n0' ? 8 : 16, cd: 0, yaw: 0, cfWant: false, v0: v.type === 'bicycle' ? BICYCLE.cruise : limitAt(startP)});
@@ -3507,6 +3537,7 @@ function spawnPlayer(){
 // every job pays at least Rp 3.000.000 per order (or per halte for bus and angkot), plus per km or per passenger
 const JOB_MIN = 3000000;
 const JOBS = {
+  ...DELIVERY_JOBS,
   ojek:   {name: 'Ojek online', veh: 'moto', desc: 'Jemput penumpang di pinggir jalan, antar ke tujuan', pay: 'Rp 3.000.000 + Rp 25.000/km', base: JOB_MIN, perKm: 25000, kind: 'ride', who: 'penumpang'},
   food_bicycle: {...FOOD_BICYCLE_JOB},
   food:   {name: 'Antar makanan', veh: 'moto', desc: 'Ambil pesanan di warung, antar ke pelanggan', pay: 'Rp 3.000.000 + Rp 25.000/km', base: JOB_MIN, perKm: 25000, kind: 'ride', who: 'pesanan'},
@@ -3519,7 +3550,7 @@ let job = null;
 // swap the player's vehicle in place (same spot, lane and speed), without rebuilding the world
 function swapPlayerVeh(type){
   const old = PLR; if (!old || old.rp || foot || tow || !VEH[type] || (nonTollVehicle(type) && isToll(uOfV(old)))) return false;
-  const md = MODS(), fixed = ['taxi', 'police', 'ambulance', 'damkar', 'angkot'].includes(type), pc = new THREE.Color(md.paint).getHex();
+  const md = MODS(), fixed = ['mbg', 'kopdes', 'taxi', 'police', 'ambulance', 'damkar', 'angkot'].includes(type), pc = new THREE.Color(md.paint).getHex();
   const v = makeVehicle(type, fixed ? null : pc, true); v.player = true; v.paint = fixed ? 0xf4f4f2 : pc; v.dmg = 0; v.stamina = 100; detailPlayerVehicle(v); applyMods(v, md);
   for (const k of ['sd', 'p', 'lane', 'lx', 'vel', 'hd', 'yaw', 'steer', 'cd', 'paid', 'x', 'v0']) v[k] = old[k];
   if (type === 'bicycle') { v.vel = Math.min(Math.max(0,v.vel),4.5); v.v0 = BICYCLE.cruise; }
@@ -3577,13 +3608,73 @@ function phoneTick(dt){
   for (let i = FOOD.length - 1; i >= 0; i--) if (clock >= FOOD[i].eta) { const f = FOOD.splice(i, 1)[0]; WAL.sleep = Math.max(0, WAL.sleep - f.fresh); uiNeeds(); toast(`${f.name} tiba · lebih segar`); if (PHONE) PHONE.notify('ojek', 'Pesanan tiba', `${f.name} sudah diantar · kantuk −${f.fresh}%`); }
   for (const pc of PARCELS) if (!pc.done && clock - pc.t0 >= pc.dur) { pc.done = true; if (PHONE) PHONE.notify('blue', 'Paket terkirim', `${pc.id} tiba di ${pc.to}`); }
   if (PHONE) PHONE.tick(dt); }
+// A delivery manifest keeps fixed facility keys, so missed stops never move down the road.
+function deliveryNavigate(){
+  const st = job?.stops[job.i]; if (!st?.key || !setNav(st.key, true)) return false;
+  const target = EV[trip.destIdx];
+  if (!target || target.key !== st.key) return false;
+  st.u = target.u - 80;
+  job.route = EV; job.hold = 0; jobMarker(); jobUI(); return true;
+}
+function deliveryStart(k){
+  const J = JOBS[k], P = PLR, here = latLonAt(uOfV(P));
+  const next = EV[replanIdx(uOfV(P))];
+  const stops = planDelivery(k, here, DELIVERY_FACILITIES, key => !!next && !!findRoute(next.key,key,'mix'));
+  if (!stops) return toast('Tidak ada fasilitas pengiriman yang dapat dicapai dari jalan ini', 'warn');
+  const prevVeh = carReturn || cfg.veh;
+  if (cfg.veh !== J.veh && !swapPlayerVeh(J.veh)) return toast('Kendaraan pengiriman belum bisa dipakai di sini', 'warn');
+  carReturn = null;
+  job = {k,J,stops,i:0,earned:0,pax:0,hold:0,prevVeh,viol0:stats.viol,crash0:stats.crashes,
+    dmg0:PLR.dmg || 0,t0:clock,deliveryKm:0,lastRK:rkAt(uOfV(PLR))};
+  if (!deliveryNavigate()) { jobStop(); return toast('Rute ke fasilitas tidak ditemukan', 'warn'); }
+  $('jobdlg').hidden = true;
+  toast(`${J.name}: ambil muatan di ${stops[0].name}, lalu ${stops.length - 1} tujuan pengiriman`);
+}
+function deliveryTick(dt){
+  const P = PLR, st = job.stops[job.i];
+  if (!st) return jobStop();
+  if (job.route !== EV) {
+    const target = EV[trip.destIdx];
+    if (target?.key === st.key) { st.u = target.u - 80; job.route = EV; job.lastRK = rkAt(uOfV(P)); }
+    else { if (!deliveryNavigate()) { toast('Navigasi pengiriman terputus · pekerjaan dibatalkan', 'warn'); jobStop(); } return; }
+  }
+  const u = uOfV(P), rk = rkAt(u);
+  if (job.i > 0) job.deliveryKm += Math.abs(rk - job.lastRK);
+  job.lastRK = rk;
+  const there = !P.rp && !foot && !tow && Math.abs(u - st.u) < 18 && Math.abs(P.vel) < 1.2 && P.x < -eAt(st.u) + LW;
+  job.hold = there ? job.hold + dt : 0;
+  if (job.hold > 1.5) {
+    job.hold = 0;
+    if (st.kind === 'pick') {
+      job.deliveryKm = 0;
+      toast(`Muatan ${job.J.who} diambil dari ${st.name} · antar ke ${job.stops.length - 1} tujuan`);
+    } else {
+      const km = Math.max(.5,job.deliveryKm), stars = jobStars();
+      const fare = Math.round((job.J.base + job.J.perKm * km) / 500) * 500;
+      job.earned += fare; CAR.ev.job(stars);
+      earn(fare,`${job.J.name} · ${st.name} · ${'★'.repeat(stars)}`);
+      job.deliveryKm = 0;
+    }
+    job.i++;
+    if (job.i >= job.stops.length) {
+      const total = job.earned; jobStop();
+      toast(`Semua pengiriman selesai · pendapatan ${rp$(total)}`); return;
+    }
+    if (!deliveryNavigate()) { toast('Tujuan berikutnya tidak dapat dicapai · pekerjaan dihentikan', 'warn'); jobStop(); return; }
+    job.lastRK = rkAt(uOfV(PLR));
+  }
+  if (job && (job.uiT = (job.uiT || 0) - dt) < 0) { job.uiT = .3; jobUI(); }
+}
+
 function jobStart(k){
   const J = JOBS[k], P = PLR; if (!J || !P || !trip) return;
   if (P.rp || foot || tow) return toast('Kembali ke jalan utama dulu', 'warn');
+  if (job) jobStop();
   const u = uOfV(P);
   if (nonTollVehicle(J.veh) && isToll(u)) return toast(`${VEH[J.veh].label} tidak boleh di jalan tol: mulai dari jalan non-tol`, 'warn');
   if (k === 'angkot' && isToll(u)) return toast('Angkot tidak beroperasi di jalan tol: mulai dari jalan non-tol', 'warn');
   if (corrAt(u) === 'mbz' && !MBZ_OK.has(J.veh)) return toast('Kendaraan ini tidak boleh di Tol Layang MBZ', 'warn');
+  if (J.kind === 'delivery') return deliveryStart(k);
   const prevVeh = carReturn || cfg.veh; carReturn = null; if (cfg.veh !== J.veh && !swapPlayerVeh(J.veh)) return;
   // a motorbike may not use toll roads: the road ahead is planned again without them
   if (nonTollVehicle(J.veh)) { const i0 = Math.max(0, evAt(u)); if (EV.slice(i0, EV.length - 1).some(e => CORR[e.cNext] && CORR[e.cNext].cls === 't')) { const i = replanIdx(u), e = EV[i];
@@ -3600,20 +3691,42 @@ function jobStart(k){
   job = {k, J, stops, i: 0, earned: 0, pax: 0, hold: 0, prevVeh, viol0: stats.viol, crash0: stats.crashes, dmg0: P.dmg || 0, t0: clock};
   $('jobdlg').hidden = true; jobMarker(); jobUI(); toast(`${J.name}: ${jobGoal()}`);
 }
-function jobStop(){ if (!job) return; if (job.mk) { scene.remove(job.mk); job.mk.traverse(o => {if(o.geometry&&!o.geometry.userData.keep)o.geometry.dispose();}); } const back = job.prevVeh; job = null; jobUI();
+function disposeJobMarker(){
+  const g = job?.mk; if (!g) return;
+  scene.remove(g);
+  const geometries = new Set(), materials = new Set(), textures = new Set();
+  g.traverse(o => {
+    if (o.geometry && !o.geometry.userData.keep) geometries.add(o.geometry);
+    for (const m of (Array.isArray(o.material) ? o.material : [o.material])) if (m?.userData.own) materials.add(m);
+  });
+  for (const m of materials) { for (const t of [m.map,m.emissiveMap]) if (t && !t.userData.keep) textures.add(t); m.dispose(); }
+  for (const t of textures) t.dispose();
+  for (const g of geometries) g.dispose();
+  job.mk = null;
+}
+function jobStop(){ if (!job) return; disposeJobMarker(); const back = job.prevVeh, companyDelivery = job.J.kind === 'delivery'; job = null; jobUI();
   // a company vehicle goes back: the player continues in their own one (when it can be swapped here)
-  if (PLR && !CAR.owns(PLR.type) && back && CAR.owns(back) && back !== PLR.type) { if (swapPlayerVeh(back)) toast(`Kendaraan perusahaan dikembalikan · kembali ke ${VEH[back].label}`); else carReturn = back; } }
+  if (PLR && (companyDelivery || !CAR.owns(PLR.type)) && back && CAR.owns(back) && back !== PLR.type) { if (swapPlayerVeh(back)) toast(`Kendaraan perusahaan dikembalikan · kembali ke ${VEH[back].label}`); else carReturn = back; } }
 let carReturn = null, islandNow = 'jawa';
 const JOB_COL = {pick: 0x2fa84f, drop: 0xec3013, halte: 0x1f5fbf};
 // the marker: a glowing post and a waiting person (or a bus-stop shelter) on the verge
 function jobMarker(){
-  if (job.mk) { scene.remove(job.mk); job.mk.traverse(o => {if(o.geometry&&!o.geometry.userData.keep)o.geometry.dispose();}); job.mk = null; }
+  disposeJobMarker();
   const st = job.stops[job.i]; if (!st) return; const g = new THREE.Group(), col = JOB_COL[st.kind];
   const glow = new THREE.MeshBasicMaterial({color: col, transparent: true, opacity: 0.55}), solidM = M(col);
+  glow.userData.own = solidM.userData.own = true;
   const post = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 9, 12, 1, true), glow); post.position.y = 4.5; g.add(post);
   const ring = new THREE.Mesh(new THREE.TorusGeometry(1.4, 0.12, 8, 28), solidM); ring.rotation.x = Math.PI/2; ring.position.y = 0.15; g.add(ring);
   if (st.kind === 'halte') { g.add(solid(3.4, 0.12, 1.6, M(0x1f5fbf), 0, 2.5, 0), solid(0.1, 2.5, 0.1, M(0x8a8f96), -1.6, 1.25, -0.7), solid(0.1, 2.5, 0.1, M(0x8a8f96), 1.6, 1.25, -0.7), solid(3.2, 0.1, 0.5, M(0xc9ccd0), 0, 0.5, -0.5)); }
-  const n = st.kind === 'halte' ? Math.min(4, st.on) : 1;
+  if (job.J.kind === 'delivery') {
+    const school = st.type === 'school', depot = st.kind === 'pick';
+    buildArchitecture(g,[{x:-8,z:0,d:10,w:16,h:school?6:5,type:school?'shop':'warehouse',color:school?0xf4e3b4:0xe5eadf}]);
+    const board = panelMesh(12,2,canvasTex(12,2,(x,w,h)=>{x.fillStyle=school?'#244f75':'#197b56';x.fillRect(0,0,w,h);x.fillStyle='#fff';x.textAlign='center';x.textBaseline='middle';x.font='bold 40px sans-serif';x.fillText(st.name,w/2,h/2,w-20);}));
+    board.position.set(-8,5.5,5.1);g.add(board);
+    const cargoM=M(depot?0x3e8b67:0xc28c43);cargoM.userData.own=true;
+    for (let b=0;b<4;b++) g.add(solid(.8,.5,.6,cargoM,-2+b*.9,.25,-1));
+  }
+  const n = job.J.kind === 'delivery' ? 0 : st.kind === 'halte' ? Math.min(4, st.on) : 1;
   for(let i=0;i<n;i++){const person=buildHuman({shirt:[0x365c7d,0x974b38,0x477357,0xb28b42][i%4]});person.g.position.set(-.9+i*.6,0,.2);g.add(person.g);
     if(st.kind==='pick'&&(job.k==='food'||job.k==='food_bicycle')){person.g.visible=false;buildArchitecture(g,[{x:1.2,z:0,d:2.1,w:2.2,h:2.6,type:'shop',color:0xd9b687,awning:0x8a4b35}]);}
     if(st.kind==='pick'&&job.k==='truk'){person.g.visible=false;for(let b=0;b<3;b++)g.add(solid(1.1,1.1,1.1,M(0xb8894a),-1+b*1.15,.55,0));}}
@@ -3623,6 +3736,7 @@ function jobMarker(){
 function placeJob(){ if (!job || !job.mk) return; const st = job.stops[job.i]; if (!st) return; const sd = 1, e = eAt(st.u);
   job.mk.position.set(-sd*(e + (isToll(st.u) ? 4.2 : 3.4)), 0, camU - st.u); job.mk.visible = Math.abs(camU - st.u) < 900; }
 function jobGoal(){ if (!job) return ''; const st = job.stops[job.i]; if (!st) return ''; const d = st.u - (PLR.p + PLR.len/2), dk = fmtKm(Math.max(0, d)/1000*cfg.scale);
+  if (job.J.kind === 'delivery') return `${st.kind === 'pick' ? 'Ambil muatan' : `Antar ${job.i}/${job.stops.length - 1}`} · ${st.name} · ${fmtKm(Math.abs(st.u - uOfV(PLR))/1000*cfg.scale)}`;
   if (st.kind === 'pick') return `${(job.k === 'food' || job.k === 'food_bicycle') ? 'Ambil pesanan di warung' : job.k === 'truk' ? 'Muat paket di gudang' : 'Jemput penumpang'} · ${dk}`;
   if (st.kind === 'drop') return `${(job.k === 'food' || job.k === 'food_bicycle') ? 'Antar pesanan' : job.k === 'truk' ? 'Antar paket ke gudang' : 'Antar penumpang'} ke tujuan · ${dk}`;
   return `Halte ${job.i + 1}/${job.stops.length} · ${dk} · ${job.pax} penumpang di dalam`; }
@@ -3630,7 +3744,9 @@ function jobUI(){ const c = $('jobcard'); c.hidden = !job; $('jobb').setAttribut
   $('jc-name').textContent = job.J.name; $('jc-goal').textContent = jobGoal() + (job.hold > 0 ? ' · berhenti…' : ''); $('jc-pay').textContent = `Pendapatan pekerjaan ini ${rp$(job.earned)} · menepi di samping penanda lalu berhenti`; }
 function jobStars(){ const s = clamp(5 - (stats.viol - job.viol0) - 2*(stats.crashes - job.crash0), 1, 5); return s; }
 function jobTick(dt){
-  if (!job || !PLR) return; const P = PLR, st = job.stops[job.i]; if (!st) return jobStop();
+  if (!job || !PLR) return;
+  if (job.J.kind === 'delivery') return deliveryTick(dt);
+  const P = PLR, st = job.stops[job.i]; if (!st) return jobStop();
   if (P.rp || foot || tow) { job.hold = 0; return; }
   const front = P.p + P.len/2, d = st.u - front, n = nAvail(P.sd, P.p);
   if (d < -150) { toast(job.J.kind === 'line' ? 'Halte terlewat: penumpang menunggu bus berikutnya' : 'Titik terlewat! Putar balik atau batalkan pekerjaan', 'bad'); if (job.J.kind === 'line') { job.i++; jobMarker(); } else { job.stops[job.i].u = jobSpot(front + 400); } return; }
@@ -3658,7 +3774,7 @@ function openJobs(){
   for (const [k, J] of Object.entries(JOBS)) { const b = document.createElement('button'), bt = document.createElement('b'), sp = document.createElement('span'), pp = document.createElement('span');
     bt.textContent = J.name; sp.textContent = `${J.desc} · ${VEH[J.veh].label}`; pp.textContent = J.pay; b.append(bt, sp, pp); b.setAttribute('aria-pressed', job && job.k === k ? 'true' : 'false');
     b.onclick = () => { if (job) jobStop(); jobStart(k); }; L.append(b); }
-  $('job-stat').textContent = job ? `Sedang bekerja: ${job.J.name} · ${jobGoal()} · pendapatan ${rp$(job.earned)}` : `Pilih pekerjaan. Kendaraan diganti otomatis sesuai pekerjaan. Tunai ${rp$(WAL.cash)}`;
+  $('job-stat').textContent = job ? `Sedang bekerja: ${job.J.name} · ${jobGoal()} · pendapatan ${rp$(job.earned)}${job.J.kind === 'delivery' ? ' · Daftar tujuan: ' + job.stops.slice(1).map(s => s.name).join(' → ') : ''}` : `Pilih pekerjaan. Kendaraan diganti otomatis sesuai pekerjaan. Tunai ${rp$(WAL.cash)}`;
   $('job-stop').hidden = !job; $('jobdlg').hidden = false;
 }
 const slopeG = v => v.rp ? 0 : 9.81*(v.sd || 1)*gYD(uOfV(v))*Math.cos(v.hd || 0);    // g · grade along the direction of travel
@@ -3749,7 +3865,7 @@ function lxBounds(v){
 }
 // steering like a real car (bicycle model): the wheel turns gradually, less at speed; the car's heading follows
 // from speed, wheelbase and steering angle, limited by tyre grip; the sideways speed is speed × sin(heading)
-const wheelbase = v => v.type === 'bicycle' ? BICYCLE.wheelbase : v.type === 'moto' ? 1.35 : v.type === 'derek' ? 4.4 : heavy(v) ? 6.2 : v.type === 'damkar' ? 4.6 : v.type === 'angkot' ? 2.4 : v.type === 'suv' || v.type === 'van' ? 2.9 : 2.7;
+const wheelbase = v => v.type === 'bicycle' ? BICYCLE.wheelbase : v.type === 'moto' ? 1.35 : v.type === 'derek' ? 4.4 : v.type === 'kopdes' ? 5.55 : heavy(v) ? 6.2 : v.type === 'damkar' ? 4.6 : v.type === 'angkot' ? 2.4 : v.type === 'suv' || v.type === 'mbg' || v.type === 'van' ? 2.9 : 2.7;
 // ---------- the MBZ ramps: taken like an exit on the left; on the deck the world switches from Japek to the MBZ ----------
 // travel coordinate (p = sd·u) where the ramps of travel direction sd start: up from Japek to the deck, down from the deck to Japek
 function mbzStarts(sd){ const G = MBZG; return sd > 0 ? {up: G.F, down: G.uE} : {up: -G.M, down: -G.uH}; }
@@ -3856,9 +3972,9 @@ function steerPlayer(v, dt){
       if (ks.i === trip.destIdx) { stats.done = true; v.vel = 0; arrive(ks, le); } else if (!seamlessLeft(v, ks, le)) continueFrom(ks, le); }
   }
 }
-const HW = {bicycle:0.34, taxi:0.92, derek:1.15, pickup:0.95, moto:0.4, car:0.92, suv:0.98, van:1.0, police:0.92, truck:1.25, bus:1.25, angkot:0.85, ambulance:1.0, damkar:1.25};
+const HW = {mbg:1.0,kopdes:1.2,bicycle:0.34, taxi:0.92, derek:1.15, pickup:0.95, moto:0.4, car:0.92, suv:0.98, van:1.0, police:0.92, truck:1.25, bus:1.25, angkot:0.85, ambulance:1.0, damkar:1.25};
 // masses (kg) for collisions: momentum is shared, a small restitution bounces the cars apart
-const MASS = {bicycle:BICYCLE.mass, taxi: 1300, derek: 8000, pickup: 1750, moto: 220, car: 1300, suv: 1850, van: 2100, police: 1500, bus: 11000, truck: 15000, angkot: 1150, ambulance: 2700, damkar: 13000};
+const MASS = {mbg:2500,kopdes:8000,bicycle:BICYCLE.mass, taxi: 1300, derek: 8000, pickup: 1750, moto: 220, car: 1300, suv: 1850, van: 2100, police: 1500, bus: 11000, truck: 15000, angkot: 1150, ambulance: 2700, damkar: 13000};
 const RESTI = 0.04;
 function impact1D(v1, m1, v2, m2){ const P = m1*v1 + m2*v2, Mt = m1 + m2; return [(P + m2*RESTI*(v2 - v1))/Mt, (P + m1*RESTI*(v1 - v2))/Mt]; }
 function hitAI(o, dv, side){ o.crashT = clock + Math.min(25, 5 + dv*1.2); if (dv > 3) startAngry(o, dv); if (dv > 8) o.spinY = (side || (Math.random() < 0.5 ? 1 : -1))*Math.min(0.3, dv*0.015); }
@@ -3971,7 +4087,7 @@ function playerRules(dt){ tickGanjilGenap(dt);
     v.inBlock = inBlock;
   }
 
-  const dest = EV[trip.destIdx]; if (!dest || stats.done) return;
+  const dest = EV[trip.destIdx]; if (!dest || stats.done || job?.J.kind === 'delivery') return;
   if (dest.kind !== 'x' && dest.kind !== 't' && dest.kind !== 'te') { if (v.p >= dest.u - (dest.kind === 'k' ? SL : 0)) { stats.done = true; setTimeout(() => arrive(dest), 600); } return; }
   // missed the destination: recalculate from the next place the route can still change (GPS style)
   if (!stats.missed && v.p - dest.u > (dest.kind === 'x' ? -150 : 60)) { stats.missed = true; toast(`${dest.kind === 'x' ? 'Exit ' : ''}${dest.name} terlewat. Menghitung ulang rute…`, 'bad'); setNav(trip.dest, true); }
@@ -4124,7 +4240,7 @@ function horn(type, dist = 0, pan = 0, mood = Math.random()){
 function crashSound(dv){ if (!snd) return; noise({gain: Math.min(0.6, 0.12 + dv*0.025), lp: 900 + dv*60, dur: 0.35 + Math.min(0.6, dv*0.03)}); tone({fs: [180, 260], type: 'sawtooth', dur: 0.12, gain: Math.min(0.15, dv*0.01), lp: 900}); }
 function thunder(){ const far = Math.random(); noise({gain: 0.5 - far*0.3, lp: 160 + (1 - far)*200, dur: 3 + far*2, at: 0.3 + far*2});
   hemi.intensity *= 3; setTimeout(() => { hemi.intensity /= 3; }, 110); setTimeout(() => { hemi.intensity *= 2; setTimeout(() => { hemi.intensity /= 2; }, 70); }, 230); }
-const ENGINE = {car: {mul: 2, w: 'sawtooth', lp: 1, g: 1, trem: 0.15}, suv: {mul: 1.8, w: 'sawtooth', lp: 0.9, g: 1.05, trem: 0.2}, pickup: {mul: 1.7, w: 'sawtooth', lp: 0.85, g: 1.1, trem: 0.3},
+const ENGINE = {mbg:{mul:1.7,w:'sawtooth',lp:.85,g:1.1,trem:.3},kopdes:{mul:1.05,w:'sawtooth',lp:.5,g:1.35,trem:.5},car: {mul: 2, w: 'sawtooth', lp: 1, g: 1, trem: 0.15}, suv: {mul: 1.8, w: 'sawtooth', lp: 0.9, g: 1.05, trem: 0.2}, pickup: {mul: 1.7, w: 'sawtooth', lp: 0.85, g: 1.1, trem: 0.3},
   taxi: {mul: 2, w: 'sawtooth', lp: 1, g: 1, trem: 0.15}, police: {mul: 2.1, w: 'sawtooth', lp: 1.15, g: 1.05, trem: 0.12}, ambulance: {mul: 1.8, w: 'sawtooth', lp: 0.9, g: 1, trem: 0.2},
   angkot: {mul: 2.3, w: 'square', lp: 1.1, g: 0.9, trem: 0.35}, moto: {mul: 3.2, w: 'square', lp: 1.6, g: 0.75, trem: 0.6},
   bus: {mul: 1.1, w: 'sawtooth', lp: 0.55, g: 1.3, trem: 0.45}, truck: {mul: 1.05, w: 'sawtooth', lp: 0.5, g: 1.35, trem: 0.5}, damkar: {mul: 1.1, w: 'sawtooth', lp: 0.55, g: 1.3, trem: 0.45}};
@@ -4331,7 +4447,7 @@ function updateCam(dt){
     camera.position.lerp(want, Math.min(1, dt*5)); camera.position.x += shk;
     camera.lookAt(pPos.x + headV.x*ahead, 1.4 + qh, pPos.z + headV.z*ahead); camera.fov = fovFor(58);
   } else if (camMode === 'cockpit') {
-    const mo = isTwoWheeler(v.type), h = (v.type === 'bus' || v.type === 'truck') ? 2.6 : v.type === 'suv' ? 1.6 : v.type==='bicycle'?1.62:mo ? 1.42 : 1.3;
+    const mo = isTwoWheeler(v.type), h = heavy(v) ? 2.6 : v.type === 'mbg' ? 1.8 : v.type === 'suv' ? 1.6 : v.type==='bicycle'?1.62:mo ? 1.42 : 1.3;
     camera.position.copy(pPos).addScaledVector(headV, mo ? -0.15 : v.len*0.05); camera.position.y = h + qh; camera.position.x += (mo ? 0 : v.sd*0.36) + shk;   // the driver sits on the right; a rider in the middle
     camera.lookAt(camera.position.x + headV.x*30, camera.position.y - 0.6, camera.position.z + headV.z*30); camera.fov = fovFor(66);
   } else if (camMode === 'drone') {
@@ -5140,6 +5256,7 @@ function finishExit(site){
   continueFrom(site, ed);
 }
 function arrive(site, onward){
+  if (job?.J.kind === 'delivery') { stats.done = false; return; }
   if (trip && trip.ferry && site.key === trip.ferry.leg.a) { openFerry(trip.ferry); return; }      // at the port: the ferry
   if (ride) rideFinish(site);
   stats.done = true; const d = $('done'), mins = Math.round((clock - stats.t0)/60), routeTrip = !!trip.home && trip.home !== site.key;
@@ -5159,7 +5276,7 @@ function arrive(site, onward){
 // buy a ticket for the vehicle's golongan, cross (the clock moves on by the crossing time) and drive on from the far port.
 // Fares are approximate tariffs per vehicle class.
 // ================================================================
-const FERRY_GOL = {bicycle: 'I', moto: 'II', car: 'IV-A', suv: 'IV-A', taxi: 'IV-A', police: 'IV-A', van: 'IV-A', angkot: 'IV-A', ambulance: 'IV-A', pickup: 'IV-B',
+const FERRY_GOL = {mbg:'IV-A',kopdes:'V-B',bicycle: 'I', moto: 'II', car: 'IV-A', suv: 'IV-A', taxi: 'IV-A', police: 'IV-A', van: 'IV-A', angkot: 'IV-A', ambulance: 'IV-A', pickup: 'IV-B',
   bus: 'VI-A', derek: 'V-B', damkar: 'VI-B', truck: 'VII'};
 const FERRY_FARE = {
   mb: {I: 21000, II: 64000, 'IV-A': 495000, 'IV-B': 465000, 'V-B': 1060000, 'VI-A': 1610000, 'VI-B': 1700000, VII: 2310000},
@@ -5809,7 +5926,7 @@ function voiceTick(dt){ if ((VOICE.t -= dt) > 0 || !cfg.voice || !PLR || !trip |
 function phoneSfx(k){ if (k === 'coin') return sfxCoin();
   const T = {tap: [[1400], 0.03, 0.025], key: [[900, 1300], 0.07, 0.03], open: [[520, 780], 0.12, 0.04], close: [[700, 460], 0.1, 0.035], unlock: [[660, 990], 0.12, 0.04], ok: [[880, 1320], 0.16, 0.05],
     err: [[300, 220], 0.18, 0.05], ring: [[440, 480], 0.5, 0.04], shutter: [[2400, 1200], 0.06, 0.06]}[k]; if (T) tone({fs: T[0], type: 'sine', dur: T[1], gain: T[2]}); }
-const placeSub = n => n.poi === 'jumay-boulevard' ? `Lokasi awal berkendara · Jumay Park ${n.city}` : n.poi === 'jumay' ? `Jumay Corporation · ${n.city} · ${n.headquarters ? 'Kantor pusat' : 'Kantor regional'}` : (KIND_NAME[n.kind] || '') + (n.city && n.city !== n.name ? ' · ' + n.city : '');
+const placeSub = n => n.poi === 'delivery' ? `Fasilitas pengiriman · ${n.city}` : n.poi === 'jumay-boulevard' ? `Lokasi awal berkendara · Jumay Park ${n.city}` : n.poi === 'jumay' ? `Jumay Corporation · ${n.city} · ${n.headquarters ? 'Kantor pusat' : 'Kantor regional'}` : (KIND_NAME[n.kind] || '') + (n.city && n.city !== n.name ? ' · ' + n.city : '');
 PHONE = TUT ? null : initPhone({cfg, saveCfg, toast, rp: rp$, rpS, sfx: phoneSfx, btn: $('phbtn'), MP_URL, MP_KEY, ICE,
   onToggle: on => $('phbtn').setAttribute('aria-pressed', on ? 'true' : 'false'),
   state(){ const P = PLR, u = P ? uOfV(P) : 0, d = trip && trip.destIdx >= 0 ? EV[trip.destIdx] : null, r = ride;
@@ -5897,7 +6014,7 @@ function trafficFacts(v){
   if(v.rp){const sd=v.rp.sd,u=sd*(v.rp.pc+(v.q?.u||0)-v.rp.shift),id=lawIdentity(v);return {id,plate:v.player?(v.type==='bicycle'?'SEPEDA':vehInfo().plate):`B ${1000+(+id.slice(3)||0)%9000} SIM`,player:!!v.player,type:v.type,u,sd,front:v.rp.d+v.len/2,speed:v.vel,lane:0,lanes:1,route:v.rp,time:clock,priority:sirenOn(v),ramp:true,road:CORR[corrAt(u)].name,limit:rampLimit(v.rp),indicator:0,gap:Infinity,exemptShoulder:true,leftException:true,lights:[],signal:null};}
   const u=uOfV(v),n=nAvail(v.sd,v.p),front=v.p+v.len/2,cf=cfAt(v.sd,v.p),legalCf=cf&&cf.A===v.sd&&v.lx<0&&-v.lx<=cf.k,sa=siteAhead(v.sd,v.p),g=gapInfo(v,laneList(v.sd,Math.round(v.lx))),priority=sirenOn(v),indicator=v.player&&!cfg.auto?v.indicator||0:v.lawSignal||0;
   const emergency=EMS.find(e=>e!==v&&e.sd===v.sd&&v.p-e.p>0&&v.p-e.p<70&&Math.abs(e.x-v.x)<2.8);
-  const leftRequired=n>1&&v.lx<n-1-.55&&['bicycle','moto','truck','pickup','derek'].includes(v.type);
+  const leftRequired=n>1&&v.lx<n-1-.55&&['bicycle','moto','truck','kopdes','pickup','derek'].includes(v.type);
   return {id:lawIdentity(v),plate:v.player?(v.type==='bicycle'?'SEPEDA':vehInfo().plate):`B ${1000+(+lawIdentity(v).slice(3)||0)%9000} SIM`,player:!!v.player,type:v.type,
     u,sd:v.sd,front,speed:v.vel,lane:Math.round(v.lx),lanes:n,route:EV,time:clock,priority,ramp:!!v.rp,road:CORR[corrAt(u)].name,
     limit:v.rp?rampLimit(v.rp):Math.min(limitAt(u),postedCap(v.sd,front),v.lx<0?60/3.6:Infinity),indicator,

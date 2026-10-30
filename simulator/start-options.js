@@ -1,7 +1,7 @@
 // Shared by the lightweight welcome page and the in-game journey planner.
 export const TRIP_OPTIONS=[['route','Rute (A → B)'],['free','Keliling bebas'],['santai','Santai'],['mp','Multiplayer']];
 export const ROUTE_OPTIONS=[['mix','Tol + jalan nasional (tercepat)'],['toll','Utamakan tol'],['nr','Jalan nasional saja']];
-export const VEHICLE_OPTIONS=[['car','Sedan'],['suv','SUV'],['bus','Bus'],['truck','Truk'],['pickup','Pickup'],['taxi','Taksi'],['bicycle','Sepeda'],['moto','Motor'],['angkot','Angkot'],['ambulance','Ambulans'],['damkar','Damkar'],['police','Polisi']];
+export const VEHICLE_OPTIONS=[['car','Sedan'],['suv','SUV'],['bus','Bus'],['truck','Truk'],['mbg','Mobil MBG'],['kopdes','Truk Kopdes'],['pickup','Pickup'],['taxi','Taksi'],['bicycle','Sepeda'],['moto','Motor'],['angkot','Angkot'],['ambulance','Ambulans'],['damkar','Damkar'],['police','Polisi']];
 export const MOD_DEF={paint:'#ec3013',paint2:'#f4f4f2',livery:'polos',rim:'#c9ccd0',tint:0,plate:'',plateCat:'',spoiler:false,low:false,stripe:false};
 export const PAINTS=['#ec3013','#f4f4f2','#1b1c1f','#8d939a','#1f3f73','#2f5a4a','#e0a020','#6a1d2b','#3a9fd8','#f07a1a'];
 export const RIMS=['#c9ccd0','#1b1c1f','#d4af37','#b02020','#3a6fd8'];

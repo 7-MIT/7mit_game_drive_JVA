@@ -1,3 +1,4 @@
+import {registerDeliveryFacilities} from './service-delivery.js';
 // Jaringan Jalan Tol Pulau Jawa: data koridor, exit, simpang susun, dan pencarian rute.
 // KM dan koordinat diperkirakan dari peta publik. Urutan exit sudah sesuai, tetapi angka KM bisa meleset beberapa km.
 // kind: x = exit (gerbang tol di ujung ramp), j = simpang susun (JCT), r = rest area,
@@ -510,6 +511,7 @@ for (const site of JUMAY_PARKS) {
     nodes: [{key: startKey, name: startName, kind: 'k', km: 0},
       {key, name, kind: 'k', km: worldLength / 1000}]});
 }
+export const DELIVERY_FACILITIES = registerDeliveryFacilities(NODES, CORRIDORS);
 export const CORR = Object.fromEntries(CORRIDORS.map(c => [c.id, c]));
 const SPEED = {t: 85, n: 50, a: 30};
 // the islands of the network and their extent [south, west, north, east]; Sumatera and Bali are in beta
@@ -579,7 +581,8 @@ export function choicesAt(key, prev, mode = 'mix'){
 export function straightOf(key, prev, prevC, mode = 'mix'){
   const opts = choicesAt(key, prev, mode).map(o => o.e).filter(e => e.cls !== 'f'); if (!opts.length) return null;      // a ferry is only taken when chosen
   const same = opts.find(o => o.c === prevC && o.to !== prev); if (same) return same;
-  const pool = opts.filter(o => CORR[o.c].cls !== 'a'); const P = pool.length ? pool : opts;
+  const through = opts.filter(o => !CORR[o.c].serviceAccess);
+  const pool = (through.length ? through : opts).filter(o => CORR[o.c].cls !== 'a'); const P = pool.length ? pool : opts;
   return P.map(o => ({o, d: Math.abs(turnDeg(prev, key, o.to))})).sort((a, b) => a.d - b.d)[0].o; }
 export function walkFree(from, prev, prevC, first, maxKm, mode = 'mix'){
   const legs = []; let cur = from, pv = prev, pc = prevC, km = 0, e = first;

@@ -645,3 +645,16 @@ Game bisa dimainkan dengan controller apa pun yang dikenali browser: Xbox, PlayS
   - log event `gamepadconnected` / `gamepaddisconnected` di `window`;
   - tabel mapping standar W3C (`buttons[0]`…`buttons[17]`, `axes[0]`…`axes[3]`).
 - Controller juga bisa dipakai di Sirkuit / Race Season. Selama panel controller terbuka, controller tidak menggerakkan mobil.
+
+
+### Jumay Boulevard dan pengiriman MBG / Kopdes
+
+Boulevard memakai satu permukaan jalan dengan tiga lajur per arah, trotoar dan lampu jalan. Permukaan kawasan tidak lagi menutupi marka jalan. Setiap Jumay Park berisi 10 kantor dan 16 gudang/pabrik, dengan geometri digabung per material untuk membatasi draw call.
+
+Buka **Kerja → Pengantar MBG** atau **Pengantar Kopdes**. Kendaraan perusahaan dipinjamkan otomatis: van putih beridentitas MBG atau truk boks Kopdes. MBG mengambil muatan di SPPG terdekat yang dapat dicapai, lalu mengantar ke tiga sekolah. Kopdes mengambil muatan di Koperasi Desa terdekat, lalu mengantar ke toko mitra dan gudang distribusi. Navigasi berganti ke tujuan berikutnya setelah selesai memuat atau membongkar.
+
+Menepilah di penanda fasilitas dan berhenti sekitar 1,5 detik. Bayaran masuk setelah setiap pengiriman; setelah semua tujuan selesai atau pekerjaan dibatalkan, kendaraan perusahaan dikembalikan. Tujuan yang terlewat tetap berada di lokasi asalnya. Kedua kendaraan juga tersedia di pilihan kendaraan dan garasi.
+
+Fasilitas SPPG, sekolah dan koperasi pada fitur ini adalah lokasi simulasi, terhubung melalui jalan akses ke kota-kota dalam jaringan game; bukan daftar alamat fasilitas nyata.
+
+Tes: `node --test simulator/tests/*.mjs` (Three.js 0.160.0 dan jsdom diperlukan untuk menjalankan seluruh pemeriksaan).

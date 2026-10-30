@@ -8,11 +8,13 @@ export const JUMAY_PARK_PLAN = Object.freeze({
   boulevard: Object.freeze({width: 32, length: 570, lanesPerDirection: 3}),
   headquarters: Object.freeze({x: -100, z: -175, width: 88, depth: 72}),
   offices: Object.freeze([
-    Object.freeze({x: 105, z: -205, width: 64, depth: 58, height: 56}),
-    Object.freeze({x: 105, z: -100, width: 72, depth: 62, height: 38})
+    ...[63, 140].flatMap(x => [-248, -174, -100].map((z, i) =>
+      Object.freeze({x, z, width: 54, depth: 52, height: 30 + i * 12 + (x === 63 ? 12 : 0)}))),
+    ...[-63, -140].flatMap(x => [-252, -72].map(z =>
+      Object.freeze({x, z, width: 48, depth: 42, height: z === -252 ? 28 : 40})))
   ]),
-  factories: Object.freeze([-105, 105].flatMap(x => [65, 205].map(z =>
-    Object.freeze({x, z, width: 100, depth: 60, height: 16}))))
+  factories: Object.freeze([-140, -63, 63, 140].flatMap(x => [40, 90, 205, 260].map(z =>
+    Object.freeze({x, z, width: 56, depth: 34, height: 10 + (z === 205 ? 4 : 0)}))))
 });
 
 // Keep procedural roadside buildings outside the campus and its perimeter.
@@ -20,7 +22,7 @@ export function jumayParkOverlaps(x, z, width, depth, site = JUMAY_LANDMARK) {
   return Math.abs(x) < site.radius + width / 2 + 10 && Math.abs(z) < site.halfDepth + 10 + depth / 2;
 }
 
-export function buildJumayPark(parent, site = JUMAY_LANDMARK) {
+export function buildJumayPark(parent, site = JUMAY_LANDMARK, {onRoute = false} = {}) {
   const headquarters = new THREE.Group();
   buildJumayHeadquarters(headquarters, site);
   headquarters.position.set(JUMAY_PARK_PLAN.headquarters.x, 0, JUMAY_PARK_PLAN.headquarters.z);
@@ -30,7 +32,7 @@ export function buildJumayPark(parent, site = JUMAY_LANDMARK) {
     road: new THREE.MeshStandardMaterial({color: 0x343b43, roughness: .95}),
     pavement: new THREE.MeshStandardMaterial({color: 0xbec4c6, roughness: .85}),
     white: new THREE.MeshStandardMaterial({color: 0xf5f4eb, roughness: .8}),
-    glass: new THREE.MeshStandardMaterial({color: 0x37647c, roughness: .25, metalness: .5}),
+    glass: new THREE.MeshStandardMaterial({color: 0x37647c, roughness: .25, metalness: .5, emissive: 0x254557, emissiveIntensity: .3}),
     metal: new THREE.MeshStandardMaterial({color: 0x92a5b0, roughness: .6, metalness: .3}),
     garden: new THREE.MeshStandardMaterial({color: 0x3d7046, roughness: .95})
   };
@@ -40,11 +42,17 @@ export function buildJumayPark(parent, site = JUMAY_LANDMARK) {
     if (!batches.has(kind)) batches.set(kind, []);
     batches.get(kind).push(g);
   };
-  box('ground', 380, .08, 590, 0, .04, 0);
-  const road = (w, d, x, z) => box('road', w, .08, d, x, .12, z);
+  // The live road owns its asphalt, marks and sidewalk. Never cover it with a campus slab.
+  if (onRoute) for (const side of [-1, 1]) box('ground', 166, .08, 590, side * 107, .04, 0);
+  else box('ground', 380, .08, 590, 0, .04, 0);
+  const road = (w, d, x, z) => {
+    if (!onRoute) return box('road', w, .08, d, x, .12, z);
+    for (const [lo, hi] of [[x - w / 2, Math.min(-24, x + w / 2)], [Math.max(24, x - w / 2), x + w / 2]])
+      if (hi > lo) box('road', hi - lo, .08, d, (lo + hi) / 2, .12, z);
+  };
   // Jumay Boulevard: six lanes with a planted median and broad sidewalks.
   road(32, 570, 0, 0);
-  for (const x of [-19, 19]) box('pavement', 5, .22, 570, x, .19, 0);
+  if (!onRoute) for (const x of [-19, 19]) box('pavement', 5, .22, 570, x, .19, 0);
   // Cross streets connect every office and factory plot to the boulevard.
   for (const z of [-10, 135]) {
     road(340, 16, 0, z);
@@ -56,34 +64,38 @@ export function buildJumayPark(parent, site = JUMAY_LANDMARK) {
     box('pavement', width + 8, .24, 12, x, .2, entrance + 12);
   }
   for (const f of JUMAY_PARK_PLAN.factories) {
-    road(120, 25, f.x, f.z + 45);
-    road(Math.abs(f.x), 12, f.x / 2, f.z + 45);
+    road(f.width + 4, 10, f.x, f.z + f.depth / 2 + 6);
+    road(Math.abs(f.x), 8, f.x / 2, f.z + f.depth / 2 + 6);
   }
   // Leave the junctions and plot entrances clear of median and lane dashes.
   const openings = [-10, 135, ...[JUMAY_PARK_PLAN.headquarters, ...JUMAY_PARK_PLAN.offices].map(p => p.z + p.depth / 2 + 8), 110, 250];
-  for (let z = -275; z < 280; z += 12) {
+  for (let z = -275; !onRoute && z < 280; z += 12) {
     if (openings.some(j => Math.abs(z - j) < 15)) continue;
     box('pavement', 3, .32, 10, 0, .28, z);
     box('garden', 2.6, .25, 9.6, 0, .565, z);
     for (const x of [-10.8, -6.2, 6.2, 10.8]) box('white', .16, .025, 5, x, .175, z);
   }
-  for (const x of [-15.5, 15.5]) box('white', .18, .025, 570, x, .175, 0);
+  if (!onRoute) for (const x of [-15.5, 15.5]) box('white', .18, .025, 570, x, .175, 0);
   for (const o of JUMAY_PARK_PLAN.offices) {
     box('pavement', o.width + 8, .4, o.depth + 8, o.x, .28, o.z);
     box('glass', o.width, o.height, o.depth, o.x, o.height / 2 + .48, o.z);
     for (let y = 4; y < o.height; y += 4) box('metal', o.width + .3, .25, o.depth + .3, o.x, y, o.z);
+    for (let dx = -o.width / 2 + 5; dx < o.width / 2; dx += 7)
+      for (const side of [-1, 1]) box('metal', .25, o.height, .3, o.x + dx, o.height / 2 + .48, o.z + side * (o.depth / 2 + .16));
+    box('metal', 14, .5, 5, o.x, 4, o.z + o.depth / 2 + 2);
     box('metal', o.width + 2, 1, o.depth + 2, o.x, o.height + .98, o.z);
   }
   for (const f of JUMAY_PARK_PLAN.factories) {
     box('pavement', f.width + 8, .4, f.depth + 8, f.x, .28, f.z);
     box('white', f.width, f.height, f.depth, f.x, f.height / 2 + .48, f.z);
     box('metal', f.width + 3, 1.2, f.depth + 3, f.x, f.height + 1.08, f.z);
+    box('glass', f.width * .7, 1.4, .2, f.x, 7, f.z + f.depth / 2 + .12);
     // Loading bays, roof vents and separate utility stacks distinguish the factories.
-    for (const dx of [-32, -12, 12, 32]) {
-      box('metal', 12, 7, .3, f.x + dx, 4, f.z + 30.2);
+    for (const dx of [-18, 0, 18]) {
+      box('metal', 12, 7, .3, f.x + dx, 4, f.z + f.depth / 2 + .2);
       box('metal', 9, 2, 6, f.x + dx, f.height + 2.6, f.z);
     }
-    box('metal', 4, 27, 4, f.x + 40, 13.98, f.z - 20);
+    box('metal', 4, 27, 4, f.x + 22, 13.98, f.z - 10);
   }
   // Perimeter planting and the main entrance portal.
   for (const x of [-180, 180]) for (let z = -270; z < 290; z += 40) {
@@ -115,8 +127,11 @@ export function buildJumayPark(parent, site = JUMAY_LANDMARK) {
   };
   sign(`JUMAY PARK ${site.city.toUpperCase()}`, 'KAWASAN PERKANTORAN & INDUSTRI JUMAY CORPORATION', 0, 8.5, 278, 44, 5);
   sign('BOULEVARD JUMAY PARK UTAMA', 'DIBANGUN OLEH JUMAY CORPORATION', 0, 8.5, -278, 42, 6);
-  JUMAY_PARK_PLAN.offices.forEach((o, i) => sign(`JUMAY OFFICE ${i + 1}`, 'PERKANTORAN JUMAY CORPORATION', o.x, o.height - 6, o.z + o.depth / 2 + .25, 45, 7));
-  JUMAY_PARK_PLAN.factories.forEach((f, i) => sign(`JUMAY FACTORY ${i + 1}`, 'PABRIK JUMAY CORPORATION', f.x, 13, f.z + f.depth / 2 + .4, 46, 6));
+  JUMAY_PARK_PLAN.offices.slice(0, 2).forEach((o, i) => sign(`JUMAY OFFICE ${i + 1}`, 'PERKANTORAN JUMAY CORPORATION', o.x, o.height - 6, o.z + o.depth / 2 + .25, 45, 7));
+  JUMAY_PARK_PLAN.factories.slice(0, 4).forEach((f, i) => sign(`JUMAY FACTORY ${i + 1}`, 'GUDANG & INDUSTRI JUMAY CORPORATION', f.x, 13, f.z + f.depth / 2 + .4, 46, 6));
+  parent.userData.officeCount = JUMAY_PARK_PLAN.offices.length;
+  parent.userData.warehouseCount = JUMAY_PARK_PLAN.factories.length;
+  parent.userData.onRoute = onRoute;
   parent.userData.jumayPark = true;
   parent.userData.siteId = site.id;
   parent.userData.landArea = site.landArea;

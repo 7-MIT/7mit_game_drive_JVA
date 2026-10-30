@@ -6,6 +6,7 @@
 export const SHOP = {
   car: {price: 0}, moto: {price: 0}, bicycle: {price: 0},
   pickup: {price: 18000000}, taxi: {price: 15000000}, angkot: {price: 20000000}, suv: {price: 25000000, lvl: 2},
+  mbg: {price: 40000000, lvl: 2}, kopdes: {price: 65000000, lvl: 3},
   truck: {price: 80000000, lvl: 3}, bus: {price: 90000000, lvl: 4},
   ambulance: {price: 35000000, lvl: 4}, police: {price: 45000000, lvl: 6}, damkar: {price: 60000000, lvl: 5},
 };

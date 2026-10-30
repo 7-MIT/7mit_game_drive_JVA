@@ -1,3 +1,4 @@
+import {SERVICE_VEHICLES, brandServiceVehicle} from './service-vehicles.js';
 import * as THREE from 'three';
 import {mergeGeometries,toCreasedNormals} from 'three/addons/utils/BufferGeometryUtils.js';
 import {geometry,rounded,mesh,block,ellipsoid,tube,panel} from './model-primitives.js';
@@ -114,7 +115,7 @@ function commercial(g,s,m,type){const l=s.length,w=s.width,F=l/2,r=s.r,cabLen=ty
 }
 export function buildRoadVehicle(type,{paint,glass,head,tail,chrome,grille,plate,cargo=paint},variant=null){
   const m={paint,glass,head,tail,chrome,grille,plate,cargo,trim,fabric};if(type==='moto'){const v=motorcycle(m);v.realistic=v.detailed=true;return v;}
-  let key=type==='car'?variant||'sedan':type==='police'||type==='taxi'?'sedan':type==='ambulance'?'van':type==='truck'?variant||'truck':type;
+  let key=SERVICE_VEHICLES[type]?.base || (type==='car'?variant||'sedan':type==='police'||type==='taxi'?'sedan':type==='ambulance'?'van':type==='truck'?variant||'truck':type);
   const s=VEHICLE_DIMENSIONS[key]||VEHICLE_DIMENSIONS.sedan,g=new THREE.Group(),commercialType=['truck','boxTruck','damkar','derek'].includes(key);
   if(commercialType)commercial(g,s,m,key);else{mesh(g,bodyGeometry(s),paint);cabin(g,s,m);passengerDetails(g,s,m,type);
     if(type==='angkot'||type==='van'||type==='ambulance'||type==='bus'){
@@ -125,5 +126,5 @@ export function buildRoadVehicle(type,{paint,glass,head,tail,chrome,grille,plate
     }
   }
   const wheelWidth=s.length>7?.32:type==='angkot'?.19:.23,wh=[];for(const a of s.axles)for(const side of [-1,1])wh.push(wheel(g,s.r,wheelWidth,side*(s.width/2-wheelWidth*.48),a,s.length>7));
-  const result={g,wh,len:s.length,r:s.r,type,v0:type==='angkot'?15:type==='truck'?21:25,realistic:true,detailed:true,dimensions:s};g.userData.modelType=key;return result;
+  const result={g,wh,len:s.length,r:s.r,type,v0:type==='angkot'?15:type==='truck'?21:25,realistic:true,detailed:true,dimensions:s};g.userData.modelType=key;brandServiceVehicle(result,type);return result;
 }

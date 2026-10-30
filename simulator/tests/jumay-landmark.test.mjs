@@ -64,7 +64,7 @@ test('all five parks are registered and placed safely beside their city routes i
   }
 });
 
-test('Jumay Park includes its headquarters, offices and four factories within safe roadside bounds', () => {
+test('Jumay Park includes its headquarters, dense offices and warehouses within safe roadside bounds', () => {
   const previous = globalThis.document, labels = [];
   globalThis.document = {createElement: () => ({getContext: () => ({
     fillRect() {}, fillText(text) { labels.push(text); }
@@ -72,6 +72,8 @@ test('Jumay Park includes its headquarters, offices and four factories within sa
   try {
     const root = new THREE.Group(); buildJumayPark(root);
     assert.equal(root.userData.jumayPark, true);
+    assert.equal(root.userData.officeCount, 10);
+    assert.equal(root.userData.warehouseCount, 16);
     const headquarters = root.children.find(o => o.userData.jumayHeadquarters);
     assert.ok(headquarters);
     assert.equal(headquarters.position.x, JUMAY_PARK_PLAN.headquarters.x);
@@ -88,7 +90,7 @@ test('Jumay Park includes its headquarters, offices and four factories within sa
       for (const n of mesh.geometry.attributes.position.array) assert.ok(Number.isFinite(n));
       triangles += (mesh.geometry.index?.count ?? mesh.geometry.attributes.position.count) / 3;
     });
-    assert.ok(triangles < 6500, `${triangles} triangles`);
+    assert.ok(triangles < 12000, `${triangles} triangles`);
     assert.ok(drawCalls <= 32, `${drawCalls} draw calls`);
     assert.ok(labels.includes('JUMAY PARK JAKARTA'));
     assert.ok(labels.includes('DIBANGUN OLEH JUMAY CORPORATION'));
@@ -151,4 +153,20 @@ test('Jakarta has the largest land footprint, while every branch retains offices
       root.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
     }
   } finally { globalThis.document = previous; }
+});
+
+test('live boulevard has no second campus asphalt or ground slab over its driving lanes',()=>{
+ const old=globalThis.document;
+ globalThis.document={createElement:()=>({getContext:()=>({fillRect(){},fillText(){}})})};
+ try{
+  for(const site of JUMAY_PARKS){
+   const root=new THREE.Group();buildJumayPark(root,site,{onRoute:true});
+   assert.equal(root.userData.onRoute,true);
+   root.traverse(o=>{
+    if(!o.isMesh||![0x343b43,0x71806a].includes(o.material.color?.getHex()))return;
+    const p=o.geometry.attributes.position;
+    for(let i=0;i<p.count;i++)assert.ok(Math.abs(p.getX(i))>=24,'campus surfaces leave the live road clear');
+   });
+  }
+ }finally{globalThis.document=old;}
 });
