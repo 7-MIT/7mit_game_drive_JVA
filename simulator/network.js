@@ -4,6 +4,8 @@
 //       g = gerbang tol di jalur utama (barrier), t = ujung jalan tol (gerbang tol di jalur utama, tol berakhir)
 // Koordinat [lat, lon] yang kosong diisi dengan interpolasi berdasarkan KM.
 
+import {JUMAY_PARKS} from './jumay-sites.js';
+
 const C = (id, name, short, lanes, limit, nodes, planned = false) => ({id, name, short, lanes, limit, planned, cls: 't',
   nodes: nodes.map(([name, km, kind, lat, lon]) => ({name, km, kind, lat, lon}))});
 // Jalan Nasional (non-tol): every node is a town or junction with a signalised intersection (kind k)
@@ -480,6 +482,21 @@ for (const N of [...NODES.values()]) {
     nodes: [{name: N.name, km: 0, kind: N.kind, key: N.key}, {name: best.name, km, kind: 'k', key: best.key}]});
   N.corr.add(id); best.corr.add(id);
 }
+// Fictional campus approaches belong to the routable non-toll network.
+// Keep their coordinates fixed when real-world OpenStreetMap data loads.
+for (const site of JUMAY_PARKS) {
+  const city = NODES.get('N:' + site.city);
+  if (!city) throw new Error('Missing Jumay Park city: ' + site.city);
+  const key = 'JUMAY:' + site.id, id = 'jumay-' + site.id, name = 'Jumay Park ' + site.city;
+  const km = Math.max(.35, Math.round(hav(city, site) * 130) / 100);
+  const destination = {key, name, kind: 'k', lat: site.lat, lon: site.lon,
+    city: site.city, corr: new Set([id]), poi: 'jumay', headquarters: site.headquarters};
+  NODES.set(key, destination); city.corr.add(id);
+  CORRIDORS.push({id, name: 'Jalan Akses ' + name, short: 'Akses ' + name,
+    cls: 'n', prov: true, custom: true, region: 'jawa', lanes: 3, limit: 40, planned: false,
+    nodes: [{key: city.key, name: city.name, kind: city.kind, km: 0},
+      {key, name, kind: 'k', km}]});
+}
 export const CORR = Object.fromEntries(CORRIDORS.map(c => [c.id, c]));
 const SPEED = {t: 85, n: 50, a: 30};
 // the islands of the network and their extent [south, west, north, east]; Sumatera and Bali are in beta
@@ -658,7 +675,7 @@ export function corrGeo(id){
     if (last) { const sh = (SHAPE[id] || {})[`${c.nodes[i - 1].name}>${n.name}`];
       if (sh) { const pts = [last, ...sh.map(([lat, lon]) => ({lat, lon})), q]; let tot = 0; const d = [0]; for (let k = 1; k < pts.length; k++) { tot += hav2(pts[k - 1], pts[k]); d.push(tot); }
         for (let k = 1; k < pts.length - 1; k++) ctl.push({lat: pts[k].lat, lon: pts[k].lon, km: last.km + (q.km - last.km)*d[k]/(tot || 1)}); } }
-    const l2 = ctl[ctl.length - 1]; if (l2 && hav2(l2, q) < 0.3) { if (q.km > l2.km) l2.km = q.km; return; } ctl.push(q); });
+    const l2 = ctl[ctl.length - 1]; if (!c.custom && l2 && hav2(l2, q) < 0.3) { if (q.km > l2.km) l2.km = q.km; return; } ctl.push(q); });
   const out = [];
   if (ctl.length === 1) out.push(ctl[0]);
   const T = (a, b) => Math.sqrt(Math.max(1e-9, hav2(a, b)));

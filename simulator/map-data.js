@@ -10,7 +10,7 @@ export function roadMatches(c, r) {
   });
 }
 export function snapCorridor(osm, q, c, kinds, maxKm) {
-  if (!q || !osm.ready || c?.planned) return q;
+  if (!q || !osm.ready || c?.planned || c?.custom) return q;
   const match = c && osm.snap(q.lat, q.lon, kinds, maxKm, r => roadMatches(c, r));
   return match || osm.snap(q.lat, q.lon, kinds, maxKm) || q;
 }

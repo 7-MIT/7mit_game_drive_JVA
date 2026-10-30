@@ -4613,7 +4613,7 @@ function routeRoad(P, kinds, use){ return new Promise(res => {
 async function routeTripRoads(){
   if (!OSM.ready || !EV.length || RQ.busy) return;
   const here = corrIdAt(PLR ? uOfV(PLR) : camU), ids = [...new Set([here, ...EV.map(e => e.cNext)])].filter(id => { const c = CORR[id], d = RQ.done.get(id);
-    return c && (c.cls === 'n' || c.cls === 'a') && !(d && (d.full || d.v === OSMV)); });
+    return c && !c.custom && (c.cls === 'n' || c.cls === 'a') && !(d && (d.full || d.v === OSMV)); });
   if (!ids.length) return; const id = ids[0], c = CORR[id], P = corrPlaces(id), v = OSMV;
   let k0 = Infinity, k1 = -Infinity; for (let i = 0; i < EV.length - 1; i++) if (EV[i].cNext === id) { k0 = Math.min(k0, EV[i].kmOut, EV[i + 1].km); k1 = Math.max(k1, EV[i].kmOut, EV[i + 1].km); }
   const use = P.slice(0, -1).map((q, i) => P[i + 1].km > k0 - 0.01 && q.km < k1 + 0.01);
@@ -4787,9 +4787,9 @@ function osmDetailIn(la0, lo0, la1, lo1, z){ const a0 = Math.min(la0, la1), a1 =
     out.sort((p, q) => Math.hypot(p[0] - cla, p[1] - clo) - Math.hypot(q[0] - cla, q[1] - clo)).slice(0, cap).forEach(([la, lo]) => fn(la, lo)); };
   if (z > 1.2) ask(1, OSM.loadTile, 6); if (z > 3.0) ask(0.1, OSM.loadStreets, 12); }
 // where OpenStreetMap has not loaded yet (another island, or offline), the game's own roads are drawn instead
-const OUT_ROADS = CORRIDORS.filter(c => c.region && c.region !== 'laut');
+const OUT_ROADS = CORRIDORS.filter(c => c.custom || c.region && c.region !== 'laut');
 function fallbackRoads(x, P, W, H, w = 1){ x.save(); x.lineCap = x.lineJoin = 'round';
-  for (const c of OUT_ROADS) { if (!roadInView(c.id, P, W, H) || c.nodes.every(q => { const N = NODES.get(q.key); return N && OSM.mainOK(N.lat, N.lon); })) continue;
+  for (const c of OUT_ROADS) { if (!roadInView(c.id, P, W, H) || !c.custom && c.nodes.every(q => { const N = NODES.get(q.key); return N && OSM.mainOK(N.lat, N.lon); })) continue;
     x.setLineDash(c.planned ? [4*w, 3*w] : []); x.lineWidth = (c.cls === 't' ? 1.8 : c.prov || c.cls === 'a' ? 0.8 : 1.3)*w;
     x.strokeStyle = c.cls === 't' ? OSM_STYLE.t : c.cls === 'a' ? 'rgba(80,88,94,0.6)' : c.prov ? OSM_STYLE.p : OSM_STYLE.n; strokeRoad(x, P, c.id); }
   x.restore(); }
@@ -4825,10 +4825,10 @@ function drawAtlas(){
     drawNavigation(x, atP, u, i1, clamp(3 + z*0.8, 3, 9)); }
   drawMapTraffic(x, atP, W, H, true);
   // nodes + labels (priority order, no overlaps)
-  const show = n => n.kind === 'j' ? z > 0.6 : n.kind === 'k' ? (n.city && n.city === n.name ? true : z > 0.9) : n.kind === 'r' ? z > 3.2 : z > 1.6;
+  const show = n => n.poi === 'jumay' ? z > 0.6 : n.kind === 'j' ? z > 0.6 : n.kind === 'k' ? (n.city && n.city === n.name ? true : z > 0.9) : n.kind === 'r' ? z > 3.2 : z > 1.6;
   const pts = [];
   for (const n of NODES.values()) { if (n.lat == null || !show(n)) continue; const [a, b] = atP(mapNode(n).lat, mapNode(n).lon); if (!inView(a, b)) continue; pts.push({n, a, b}); }
-  for (const {n, a, b} of pts) { x.fillStyle = n.kind === 'k' ? '#fff' : n.kind === 'j' ? '#0c6a3c' : n.kind === 'r' ? '#0d3b7a' : '#f2c230'; x.strokeStyle = '#201e1d'; x.lineWidth = 1.2;
+  for (const {n, a, b} of pts) { x.fillStyle = n.poi === 'jumay' ? '#7952b3' : n.kind === 'k' ? '#fff' : n.kind === 'j' ? '#0c6a3c' : n.kind === 'r' ? '#0d3b7a' : '#f2c230'; x.strokeStyle = '#201e1d'; x.lineWidth = 1.2;
     const r = n.kind === 'k' ? clamp(2.5 + z*0.6, 2.5, 5.5) : clamp(2 + z*0.5, 2, 5);
     x.beginPath(); if (n.kind === 'j') x.rect(a - r, b - r, 2*r, 2*r); else x.arc(a, b, r, 0, Math.PI*2); x.fill(); x.stroke(); }
   const pri = n => n.kind === 'k' && n.city === n.name ? 0 : n.kind === 'j' ? 2 : n.kind === 'k' ? 1 : n.kind === 'r' ? 4 : 3;
@@ -4873,9 +4873,10 @@ function cardActions(key){
 function showNode(key){
   const n = nodeLL(key); AT.sel = key;
   $('at-title').textContent = n.kind === 'j' ? nodeLabel(n) : n.name;
-  const roads = [...n.corr].map(id => CORR[id]).filter(c => c.cls !== 'a').map(c => (c.cls === 'n' ? 'Jl. Nasional ' : 'Tol ') + c.short);
+  const roads = [...n.corr].map(id => CORR[id]).filter(c => c.cls !== 'a').map(c => c.custom ? c.name : (c.cls === 'n' ? 'Jl. Nasional ' : 'Tol ') + c.short);
   const acc = [...n.corr].map(id => CORR[id]).filter(c => c.cls === 'a').map(c => c.nodes.find(q => q.key !== key)).map(q => (q.kind === 'k' ? 'kota ' : 'GT ') + q.name);
   let info = `${KIND_NAME[n.kind] || ''}${n.city && n.city !== n.name ? ' · ' + n.city : ''}. ${roads.join(', ')}${acc.length ? '. Akses: ' + acc.join(', ') : ''}.`;
+  if (n.poi === 'jumay') info = `Kawasan perkantoran & industri Jumay Corporation · ${n.city}${n.headquarters ? ' · Kantor pusat · Kawasan Jumay Park terluas' : ' · Kantor regional'}. Akses melalui ${roads.join(', ')}.`;
   if (PLR && trip && edgesFrom(key).length) { const u = uOfV(PLR), i = replanIdx(u), e = EV[i], legs = e.key === key ? [] : legsFor(e.key, null, key, prevKeyOf(e));
     if (legs) { const km = Math.max(0, e.rk - rkAt(u)) + legs.reduce((a, l) => a + Math.abs(CORR[l.c].nodes.find(q => q.key === l.b).km - CORR[l.c].nodes.find(q => q.key === l.a).km), 0);
       const h = legHours(legs) + Math.max(0, e.rk - rkAt(u))/70;
@@ -4914,7 +4915,7 @@ $('at-q').oninput = () => { const q = norm($('at-q').value.trim()), ul = $('at-r
   const hits = [...NODES.values()].filter(n => n.lat != null && (norm(n.name).includes(q) || (n.city && norm(n.city).includes(q))))
     .sort((a, b) => (norm(b.name).startsWith(q) - norm(a.name).startsWith(q)) || ((a.kind === 'k' ? 0 : 1) - (b.kind === 'k' ? 0 : 1)) || a.name.localeCompare(b.name)).slice(0, 14);
   for (const n of hits) { const li = document.createElement('li'), b = document.createElement('button'), t = document.createElement('b'), sp = document.createElement('span'), sm = document.createElement('small');
-    t.textContent = KIND_TAG[n.kind] || '•'; sp.textContent = n.kind === 'j' ? nodeLabel(n) : n.name;
+    t.textContent = n.poi === 'jumay' ? 'PARK' : KIND_TAG[n.kind] || '•'; sp.textContent = n.kind === 'j' ? nodeLabel(n) : n.name;
     sm.textContent = [...n.corr].map(id => CORR[id]).filter(c => c.cls !== 'a').map(c => c.short).join(' · '); sp.append(sm);
     b.append(t, sp); b.onclick = () => { ul.hidden = true; AT.lon = n.lon; AT.lat = n.lat; AT.k = Math.max(AT.k, 700); showNode(n.key); }; li.append(b); ul.append(li); }
   if (!hits.length) { const li = document.createElement('li'); li.style.padding = '10px'; li.textContent = 'Tidak ditemukan'; ul.append(li); }
@@ -5655,6 +5656,8 @@ function drawGMap(cv, view){
   const label = (t, a, b, size, wt, col) => { x.font = `${wt} ${size}px Archivo, sans-serif`; const w = x.measureText(t).width + 6, bx = [a - w/2, b - size/2 - 2, w, size + 4];
     if (boxes.some(q => bx[0] < q[0] + q[2] && bx[0] + bx[2] > q[0] && bx[1] < q[1] + q[3] && bx[1] + bx[3] > q[1])) return; boxes.push(bx);
     x.lineWidth = 3.5; x.strokeStyle = 'rgba(255,255,255,0.95)'; x.strokeText(t, a, b); x.fillStyle = col; x.fillText(t, a, b); };
+  if (z > .6) for (const n of NODES.values()) { if (n.poi !== 'jumay') continue; const [a, b] = P(n.lat, n.lon); if (!inV(a, b, 0)) continue;
+    x.fillStyle = '#7952b3'; x.beginPath(); x.arc(a, b, 5, 0, Math.PI*2); x.fill(); label(n.name, a, b - 12, 11, 700, '#654092'); }
   for (const n of TOWNS) { const [a, b] = P(n.lat, n.lon); if (inV(a, b, 0)) label(n.name, a, b, z > 2 ? 13 : 11, 700, GM.ink); }
   if (z > 2.4) for (const n of NODES.values()) { if (n.lat == null || n.kind === 'k') continue; const [a, b] = P(mapNode(n).lat, mapNode(n).lon); if (!inV(a, b, 0)) continue;
     x.fillStyle = n.kind === 'j' ? '#188038' : n.kind === 'r' ? '#0d3b7a' : '#80868b'; x.beginPath(); x.arc(a, b, 2.5, 0, Math.PI*2); x.fill(); label(n.kind === 'j' || n.kind === 'r' ? n.name : 'GT ' + n.name.replace(/^GT /, ''), a, b + 11, 10, 600, GM.sub); }
@@ -5801,7 +5804,7 @@ function voiceTick(dt){ if ((VOICE.t -= dt) > 0 || !cfg.voice || !PLR || !trip |
 function phoneSfx(k){ if (k === 'coin') return sfxCoin();
   const T = {tap: [[1400], 0.03, 0.025], key: [[900, 1300], 0.07, 0.03], open: [[520, 780], 0.12, 0.04], close: [[700, 460], 0.1, 0.035], unlock: [[660, 990], 0.12, 0.04], ok: [[880, 1320], 0.16, 0.05],
     err: [[300, 220], 0.18, 0.05], ring: [[440, 480], 0.5, 0.04], shutter: [[2400, 1200], 0.06, 0.06]}[k]; if (T) tone({fs: T[0], type: 'sine', dur: T[1], gain: T[2]}); }
-const placeSub = n => (KIND_NAME[n.kind] || '') + (n.city && n.city !== n.name ? ' · ' + n.city : '');
+const placeSub = n => n.poi === 'jumay' ? `Jumay Corporation · ${n.city} · ${n.headquarters ? 'Kantor pusat' : 'Kantor regional'}` : (KIND_NAME[n.kind] || '') + (n.city && n.city !== n.name ? ' · ' + n.city : '');
 PHONE = TUT ? null : initPhone({cfg, saveCfg, toast, rp: rp$, rpS, sfx: phoneSfx, btn: $('phbtn'), MP_URL, MP_KEY, ICE,
   onToggle: on => $('phbtn').setAttribute('aria-pressed', on ? 'true' : 'false'),
   state(){ const P = PLR, u = P ? uOfV(P) : 0, d = trip && trip.destIdx >= 0 ? EV[trip.destIdx] : null, r = ride;
