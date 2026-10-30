@@ -32,6 +32,7 @@ import {buildRoadVehicle, MODEL_MATERIALS} from './road-vehicle-models.js';
 import {TRIP_OPTIONS, ROUTE_OPTIONS, MOD_DEF, PAINTS, RIMS, LIVERY, PRESETS} from './start-options.js';
 import {buildHuman} from './human-model.js';
 import {buildArchitecture, architectureMaterials} from './architecture-models.js';
+import {JUMAY_LANDMARK, buildJumayHeadquarters} from './jumay-landmark.js';
 import {foliageGeometry,shrubGeometry} from './natural-models.js';
 import {initialQuality,qualityProfile,ultraProfile,createQualityGovernor,createSimulationClock} from './adaptive-performance.js';
 import {attachVehicleLOD,setVehicleLOD,distantOpaqueMaterial} from './vehicle-lod.js';
@@ -1219,6 +1220,7 @@ function updateVolcanoes(dt){
 // Each one is placed beside the route at the point of closest approach (on the correct side), at a distance that grows
 // with the real distance from the road, so you pass it the way you would on the real drive. Simple low-poly models, real heights.
 const LMK = [
+  [JUMAY_LANDMARK.name, JUMAY_LANDMARK.lat, JUMAY_LANDMARK.lon, JUMAY_LANDMARK.kind],
   ['Monas', -6.1754, 106.8272, 'monas'], ['Masjid Istiqlal', -6.1702, 106.8310, 'mosque', {dome: 45, color: 0xe9e6dc, min: 1, mh: 90}],
   ['Bundaran HI', -6.1950, 106.8230, 'tugu', {h: 30}], ['Masjid Kubah Emas', -6.3833, 106.7690, 'mosque', {dome: 30, color: 0xd9b23a, min: 4, mh: 40}],
   ['Tugu Kujang', -6.6010, 106.8050, 'tugu', {h: 25}], ['Istana Bogor', -6.5980, 106.7970, 'palace'],
@@ -1246,6 +1248,7 @@ const dome = (r, mat, x, y, z, g) => { const m = new THREE.Mesh(new THREE.Sphere
 const bell = (r, x, y, z, g) => { dome(r, stoneMat, x, y, z, g); cyl(r*0.25, 0.02, r*1.1, stoneMat, x, y + r*0.9, z, g, 6); };
 const pramMat = M(0x6e6a62, {flatShading: true});
 const LMK_BUILD = {
+  jumay: buildJumayHeadquarters,
   // Jam Gadang: the Bukittinggi clock tower with its gonjong roof
   jamgadang(g){ box(9, 2, 9, whiteStone, 0, 1, 0, g); box(6.5, 22, 6.5, whiteStone, 0, 13, 0, g); for (const [x, z] of [[0, 3.3], [0, -3.3], [3.3, 0], [-3.3, 0]]) cyl(1.2, 1.2, 0.2, M(0xf6f2e4), x, 20, z, g, 20).rotation[x ? 'z' : 'x'] = Math.PI/2;
     const top = new THREE.Group(); buildArchitecture(top, [{x: 0, z: 0, d: 6, w: 7, h: 0.1, type: 'gadang', color: 0xb5261e}]); top.position.y = 20.5; g.add(top); },
@@ -1296,7 +1299,7 @@ function layoutLandmarks(){
       const L2 = bx*bx + by*by; if (L2 < 1e-6) continue; const f = clamp((px*bx + py*by)/L2, 0, 1), d = Math.hypot(px - f*bx, py - f*by);
       if (d < best) { best = d; bu = a.u + f*(b.u - a.u); bs = bx*py - by*px > 0 ? -1 : 1; } }
     if (kind === 'suramadu' && SEA) best = Infinity;     // driving over it: the bridge itself is drawn
-    if (best < 9) { const rad = {monas: 26, borobudur: 64, prambanan: 56, suramadu: 30, sate: 48, sewu: 58, palace: 40, kapal: 40, mosque: (l.o.dome || 30)*1.7}[kind] || 15; l.u = bu; l.side = bs; l.off = clamp(70 + best*70, rad + 45, 640); l.km = best; l.told = false; } }
+    if (best < 9) { const rad = {jumay: JUMAY_LANDMARK.radius, monas: 26, borobudur: 64, prambanan: 56, suramadu: 30, sate: 48, sewu: 58, palace: 40, kapal: 40, mosque: (l.o.dome || 30)*1.7}[kind] || 15; l.u = bu; l.side = bs; l.off = clamp(70 + best*70, rad + 45, 640); l.km = best; l.told = false; } }
 }
 function updateLandmarks(){
   if (!EV.length) return; if (lmEV !== EV) layoutLandmarks();
