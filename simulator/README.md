@@ -680,3 +680,10 @@ The game uses the 7 MIT design system, design.7mit (https://claude.ai/artifact/C
 - Shape: panels and cards `radius-lg` 22px with a soft shadow; buttons and fields `radius-sm` 8px; pills fully rounded. Control borders are `--edge` `#ae6f77` (3:1 on the surface).
 - `index.html` has a `#ds-7mit` style block with the shape rules. The account, bug report and photo-mode dialogs carry the same colours in their own CSS.
 - Car paints and in-world signs keep their colours.
+
+## Radio 7MIT FM: lagu dari YouTube dan request lewat telepon
+
+- Radio memutar lagu dari YouTube (Indonesia, Jawa, English) dari daftar stasiun di `radio.js` (`PLAYLIST`). Lagu dicari lewat judul saat gilirannya tiba (`ytFind` di `main.js`), jadi tidak ada ID video yang bisa basi. Penyiar tetap membacakan jam, cuaca, lalu lintas, iklan dan tips di sela lagu.
+- Pemain tidak bisa memilih lagu dari menu. Satu-satunya jalan: telepon **Radio 7MIT FM, 0813-1324-5123** (aplikasi Telepon, "Nomor penting", atau ketik nomornya di papan tombol). Penyiar menjawab dan muncul kotak teks: cari judul lagu/video atau tempel link YouTube (satu video).
+- Nomornya sama untuk semua pemain. Request masuk ke satu antrean, urut waktu kirim, dan dikirim ke pemain lain lewat multiplayer (event `radio`). Batas: 20 antrean, 3 per pemain, jeda 20 detik per request. Tanpa multiplayer antreannya hanya milikmu.
+- Lagu request diputar lebih dulu daripada lagu stasiun. Jika video tidak bisa diputar (diblokir atau dihapus), radio lanjut ke lagu berikutnya. Memutar musik dari aplikasi Musik mematikan radio.

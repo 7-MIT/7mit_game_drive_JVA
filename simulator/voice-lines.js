@@ -7,6 +7,8 @@ export const normText = t => String(t).replace(/\s+/g, ' ').trim();
 export function hashText(t){ let h = 2166136261; for (const c of normText(t)) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619); } return (h >>> 0).toString(16).padStart(8, '0'); }
 
 export const STATION = '7MIT FM 97,7';
+// the station's request line: the same number for every player, requests from everyone queue up behind each other
+export const RADIO_NO = '081313245123';
 export const STATION_ID = `Anda mendengarkan tujuh mit F M, sembilan puluh tujuh koma tujuh, teman perjalanan Anda di jalanan Nusantara. Saya Mas Bayu, menemani Anda sampai tujuan.`;
 export const ADS = [
   'Lapar di jalan? Mampir ke Warung Sambal Bu Tejo di rest area terdekat. Pedasnya bikin melek, harganya bikin senyum.',

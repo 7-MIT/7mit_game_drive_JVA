@@ -1,7 +1,7 @@
 import {createPhoneHome, HOME_CSS} from './phone-home.js';
 import {createPhoneStore, STORE_CSS} from './phone-store.js';
-import {DISPATCH} from './voice-lines.js';
-const SERVICES = ['112', '110', '118', '119', '113', '115', '133', '151'].map(n => [n, DISPATCH[n].name, DISPATCH[n].g]);
+import {DISPATCH, RADIO_NO} from './voice-lines.js';
+const SERVICES = ['112', '110', '118', '119', '113', '115', '133', '151'].map(n => [n, DISPATCH[n].name, DISPATCH[n].g]).concat([[RADIO_NO, 'Radio 7MIT FM · request lagu', 'musik']]);
 // ================================================================
 // HANDPHONE: the player's phone, a full GUI with animated screens and apps.
 // Lock screen → home screen (app grid + dock) → apps that open from their icon and close back into it.
@@ -156,6 +156,9 @@ const CSS = `
 #phone .call.dsp .opts{flex:1 1 auto;min-height:0;overflow-y:auto;flex-direction:column;flex-wrap:nowrap;justify-content:flex-start;align-items:stretch;width:100%;max-width:290px;margin:10px 0 0;gap:7px;padding:2px 0 6px}
 #phone .call.dsp .opts button{width:100%;text-align:left;padding:11px 14px;border-radius:12px;font:600 13.5px/1.3 inherit;flex:0 0 auto}
 #phone .call.dsp .opts button[data-k=no]{background:transparent;border:1.5px solid rgba(255,255,255,.35);text-align:center}
+#phone .call.radio .rq{width:100%;max-width:290px;display:flex;flex-direction:column;flex:1 1 auto;min-height:0}#phone .call.radio .rq[hidden]{display:none}
+#phone .call.radio .srch{margin:8px 0 0}#phone .call.radio .opts{margin:8px 0 0;max-height:150px;flex:0 1 auto}#phone .call.radio .opts button small{display:block;opacity:.65;font-weight:500;margin-top:2px}
+#phone .call.radio .rnow{font-size:12px;line-height:1.5;margin-top:8px;overflow-y:auto;opacity:.92}#phone .call.radio .rnow small{display:block;opacity:.65;margin-top:6px}#phone .call.radio .rnow b{display:block;font-size:13.5px}#phone .call.radio .rnow i{opacity:.6}
 #phone .call.dsp .end{position:static;flex:0 0 auto;margin:12px 0 30px}
 @keyframes phRing{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,.35)}70%{box-shadow:0 0 0 22px rgba(255,255,255,0)}}
 @keyframes phFade{from{opacity:0}}
@@ -474,7 +477,7 @@ export function initPhone(A){
   P.sms = P.sms || {}; P.names = P.names || {}; P.calls = P.calls || [];
   const fmtNo = n => /^0\d{11}$/.test(n) ? `${n.slice(0, 4)}-${n.slice(4, 8)}-${n.slice(8)}` : n, intl = n => /^0\d{11}$/.test(n) ? `+62 ${n.slice(1, 4)}-${n.slice(4, 8)}-${n.slice(8)}` : n;
   const canon = t => { let d = String(t).replace(/\D/g, ''); if (d.startsWith('62')) d = '0' + d.slice(2); return d; };
-  const nameOf = n => P.names[n] || (DISPATCH[n] && DISPATCH[n].name) || (net.online.find(o => o.no === n) || {}).name || fmtNo(n);
+  const nameOf = n => n === RADIO_NO ? 'Radio 7MIT FM' : P.names[n] || (DISPATCH[n] && DISPATCH[n].name) || (net.online.find(o => o.no === n) || {}).name || fmtNo(n);
   // the network is the multiplayer connection: numbers travel with each player's position, messages and call signalling as 'ph' broadcasts
   const net = {get ready(){ return A.mp.ready(); }, get online(){ return A.mp.peers().filter(o => o.no && o.no !== P.no); }, pend: new Map(), call: null};
   const tx = m => { if (net.ready) A.mp.send({...m, from: P.no, name: P.owner}); };
@@ -507,7 +510,7 @@ export function initPhone(A){
   function ringTone(on){ clearInterval(net.ringT); if (on) { A.sfx('ring'); net.ringT = setInterval(() => A.sfx('ring'), 1600); } }
   async function micStream(){ try { return await navigator.mediaDevices.getUserMedia({audio: {echoCancellation: true, noiseSuppression: true}}); } catch (e) { A.toast('Mikrofon tidak diizinkan: lawan bicara tidak mendengar suaramu', 'warn'); return null; } }
   function dial(n){ n = canon(n); if (!n) return;
-    if (DISPATCH[n]) return call(n);
+    if (DISPATCH[n] || n === RADIO_NO) return call(n);
     if (n === P.no) return A.toast('Itu nomormu sendiri', 'warn');
     if (net.call) return A.toast('Masih ada panggilan', 'warn');
     if (!open) toggle(true); lock.classList.add('gone');
@@ -549,12 +552,12 @@ export function initPhone(A){
   let tlTab = 'pad';
   APPS_IMPL.telepon = pg => { scr.style.setProperty('--acc', '#18a33a'); let num = '';
     pg.innerHTML = head('Telepon') + `<div class="myno">Nomormu <b>${fmtNo(P.no)}</b> · ${net.ready ? '<span class="on-dot"></span>online' : 'offline'}</div>`;
-    if (!net.ready) { mpOnly(pg); html(pg, `<div class="card" style="margin-top:10px"><h4>Layanan (tetap bisa dihubungi)</h4>${SERVICES.map(([n, l, g]) => `<div class="row" data-n="${n}"><span class="ri" style="--g:${G[g]}">${ic((DISPATCH[n] || {}).icon || 'Phone')}</span><span class="rt"><b>${l}</b><small>${n}</small></span>${ic('PhoneCall')}</div>`).join('')}</div>`).onclick = e => { const r = e.target.closest('.row'); if (r) call(r.dataset.n); }; return; }
+    if (!net.ready) { mpOnly(pg); html(pg, `<div class="card" style="margin-top:10px"><h4>Layanan (tetap bisa dihubungi)</h4>${SERVICES.map(([n, l, g]) => `<div class="row" data-n="${n}"><span class="ri" style="--g:${G[g]}">${ic(n === RADIO_NO ? 'Radio' : (DISPATCH[n] || {}).icon || 'Phone')}</span><span class="rt"><b>${l}</b><small>${fmtNo(n)}</small></span>${ic('PhoneCall')}</div>`).join('')}</div>`).onclick = e => { const r = e.target.closest('.row'); if (r) call(r.dataset.n); }; return; }
     pg.append(seg([['pad', 'Papan tombol'], ['recent', 'Terbaru'], ['kontak', 'Kontak']], tlTab, k => { tlTab = k; redraw(); }));
     if (tlTab === 'pad') {
       html(pg, `<div><div class="num"></div><div class="pad">${['1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '0', '⌫'].map(d => `<button data-d="${d}">${d}</button>`).join('')}</div>
         <button class="btn dial" style="background:#18a33a;width:66px;height:66px;border-radius:50%;margin:6px auto 14px">${ic('Phone')}</button></div>`);
-      html(pg, `<div class="card"><h4>Nomor penting</h4>${SERVICES.map(([n, l, g]) => `<div class="row" data-n="${n}"><span class="ri" style="--g:${G[g]}">${ic((DISPATCH[n] || {}).icon || 'Phone')}</span><span class="rt"><b>${l}</b><small>${n}</small></span>${ic('PhoneCall')}</div>`).join('')}</div>`);
+      html(pg, `<div class="card"><h4>Nomor penting</h4>${SERVICES.map(([n, l, g]) => `<div class="row" data-n="${n}"><span class="ri" style="--g:${G[g]}">${ic(n === RADIO_NO ? 'Radio' : (DISPATCH[n] || {}).icon || 'Phone')}</span><span class="rt"><b>${l}</b><small>${fmtNo(n)}</small></span>${ic('PhoneCall')}</div>`).join('')}</div>`);
       const show = () => pg.querySelector('.num').textContent = /^\d{5,}$/.test(num) && num.startsWith('0') ? fmtNo(num.padEnd(12, ' ').trim()) : num;
       pg.querySelector('.pad').onclick = e => { const d = e.target.dataset.d; if (!d) return; num = d === '⌫' ? num.slice(0, -1) : (num + d).slice(0, 15); show(); A.sfx('key'); };
       pg.querySelector('.dial').onclick = () => num && dial(num);
@@ -566,7 +569,8 @@ export function initPhone(A){
     html(pg, `<div class="card"><h4>${net.online.length} pemain online</h4>${list.length ? list.map(o => `<div class="row" data-n="${o.no}"><span class="ri" style="--g:${G.kontak}">${ic('User')}</span><span class="rt"><b>${o.off ? '' : '<span class="on-dot"></span>'}${esc(o.name)}</b><small>${fmtNo(o.no)}</small></span>${sms ? ic('MessageCircle') : ic('Phone')}</div>`).join('') : '<p>Belum ada pemain lain yang online. Bagikan nomormu ke teman!</p>'}</div>`).onclick = e => { const r = e.target.closest('.row'); if (r) onPick(r.dataset.n); }; }
   // a call to an emergency or service number: the dispatcher answers (spoken, with captions), the caller answers with buttons,
   // and help is sent to where the car is (A.dispatch speaks the lines and sends the units)
-  function call(n){ const D = DISPATCH[n] || {name: n}, g = G[D.g] || G.amb;
+  function call(n){ if (n === RADIO_NO) return radioCall();
+    const D = DISPATCH[n] || {name: n}, g = G[D.g] || G.amb;
     const c = document.createElement('div'); c.className = 'call dsp'; c.style.setProperty('--g', g);
     c.innerHTML = `<div class="av">${ic(D.icon || 'Headset')}</div><h3>${esc(D.name)}</h3><p class="s">Memanggil…</p><p class="cap" aria-live="polite"></p><div class="opts"></div><button class="end" aria-label="Tutup telepon">${ic('PhoneOff')}</button>`;
     scr.append(c); A.sfx('ring'); const s2 = c.querySelector('.s'), cap = c.querySelector('.cap'), opts = c.querySelector('.opts'); let over = false, t0 = 0, tick = null;
@@ -576,6 +580,33 @@ export function initPhone(A){
       A.dispatch(n, {caption: t => { if (!over) cap.textContent = t; }, alive: () => !over,
         choose: list => new Promise(res => { opts.innerHTML = list.map(([k, l]) => `<button data-k="${k}">${esc(l)}</button>`).join(''); opts.onclick = e => { const b = e.target.closest('button'); if (!b) return; opts.innerHTML = ''; A.sfx('tap'); res(b.dataset.k); }; }),
         done: () => setTimeout(end, 1200)}); }, 2200); }
+
+  // the radio's request line (0813-1324-5123): the announcer answers, a text box takes a song title or a YouTube link, and the request
+  // joins the queue the station shares with every player. It works without multiplayer too (then the queue is yours alone).
+  let radioRedraw = null;
+  function radioCall(){ if (scr.querySelector('.call')) return A.toast('Masih ada panggilan', 'warn'); if (!open) toggle(true); lock.classList.add('gone');
+    const c = document.createElement('div'); c.className = 'call dsp radio'; c.style.setProperty('--g', G.musik);
+    c.innerHTML = `<div class="av">${ic('Radio')}</div><h3>Radio 7MIT FM 97,7</h3><p class="s">Memanggil…</p><p class="cap" aria-live="polite"></p>
+      <div class="rq" hidden><form class="srch" autocomplete="off">${ic('Search')}<input class="inp" placeholder="Cari lagu/video atau tempel link YouTube" enterkeyhint="search" maxlength="200"></form><div class="opts rres"></div><div class="rnow"></div></div>
+      <button class="end" aria-label="Tutup telepon">${ic('PhoneOff')}</button>`;
+    scr.append(c); A.sfx('ring'); const s2 = c.querySelector('.s'), cap = c.querySelector('.cap'), box = c.querySelector('.rq'), res = c.querySelector('.rres'), inp = c.querySelector('input'), nowEl = c.querySelector('.rnow');
+    let over = false, t0 = 0, tick = null, tok = 0;
+    const say = t => { cap.textContent = t; A.radio.say(t); };
+    const end = () => { if (over) return; over = true; clearInterval(tick); radioRedraw = null; A.hangup && A.hangup(); c.style.transition = 'opacity .25s'; c.style.opacity = '0'; setTimeout(() => c.remove(), 260); };
+    c.querySelector('.end').onclick = end;
+    // what is on the air and who is waiting
+    const status = () => { const S = A.radio.state(); nowEl.innerHTML = `<small>Sedang mengudara</small><b>${S.now ? esc(S.now.title) : 'Musik stasiun'}</b>${S.queue.length ? `<small>Antrean request (${S.queue.length})${S.online ? ' · semua pemain' : ''}</small>` + S.queue.slice(0, 4).map((q, i) => `<div>${i + 1}. ${esc(q.title)} <i>${esc(q.by)}</i></div>`).join('') : '<small>Belum ada request, kamu yang pertama</small>'}`; };
+    radioRedraw = () => { if (!over) status(); };
+    const show = items => { res.innerHTML = items.map((v, i) => `<button data-i="${i}">${esc(v.title)}${v.by ? `<small>${esc(v.by)}</small>` : ''}</button>`).join(''); res.onclick = e => { const b = e.target.closest('button'); if (!b) return; pick(items[+b.dataset.i]); }; };
+    function pick(v){ const r = A.radio.request(v); A.sfx('tap');
+      if (r.ok) { res.innerHTML = ''; inp.value = ''; status(); say(`Siap. ${v.title}, masuk antrean nomor ${r.pos}. Terima kasih sudah request di tujuh mit F M.`); }
+      else say({wait: 'Sabar ya, request berikutnya bisa dikirim dalam beberapa detik.', user: 'Request kamu sudah banyak yang mengantri. Tunggu salah satunya diputar dulu ya.', full: 'Antrean request sedang penuh. Coba lagi sebentar lagi.', dup: 'Lagu itu sudah ada di antrean.'}[r.why] || 'Maaf, lagu itu tidak bisa kami putar.'); }
+    c.querySelector('form').onsubmit = async e => { e.preventDefault(); const v = inp.value.trim(); if (!v) return; const my = ++tok; res.innerHTML = '<p style="opacity:.7;font-size:12px">Mencari…</p>'; inp.blur();
+      const out = await A.radio.lookup(v); if (over || my !== tok) return;
+      if (!out.items.length) { res.innerHTML = ''; return say(out.err || 'Maaf, lagu itu tidak ketemu. Coba judul lain atau tempel link YouTube.'); }
+      if (out.items.length === 1 && /^https?:|youtu/i.test(v)) return pick(out.items[0]); show(out.items); cap.textContent = 'Pilih lagunya'; };
+    setTimeout(() => { if (over) return; t0 = Date.now(); tick = setInterval(() => { const k = Math.floor((Date.now() - t0)/1000); s2.textContent = `${String(Math.floor(k/60)).padStart(2, '0')}:${String(k%60).padStart(2, '0')} · Penyiar`; }, 500);
+      box.hidden = false; status(); say('Halo, dengan Radio tujuh mit F M. Mau request lagu apa? Ketik judulnya atau tempel link YouTube.'); setTimeout(() => inp.focus(), 300); }, 1800); }
 
   // Pesan: SMS conversations with other players, and the phone's notifications
   let psTab = 'sms';
@@ -680,5 +711,5 @@ export function initPhone(A){
 
   look(); drawHome();
   const peersChanged = () => { if (cur === 'kontak' || cur === 'pesan' || cur === 'telepon') redraw(); };
-  return {musicChanged: () => { if (cur === 'musik') redraw(); }, toggle, notify, tick, netIn: onNet, groupIn, peersChanged, get number(){ return P.no; }, openGroup: () => { if (!open) toggle(true); lock.classList.add('gone'); drawHome(); openApp('pesan'); setTimeout(() => net.ready && groupThread(), 450); }, get open(){ return open; }, openApp: k => { if (!open) toggle(true); unlock(); setTimeout(() => openApp(k, home.querySelector(`[data-app="${k}"]`)), 350); }};
+  return {musicChanged: () => { if (cur === 'musik') redraw(); }, radioChanged: () => { if (radioRedraw) radioRedraw(); }, toggle, notify, tick, netIn: onNet, groupIn, peersChanged, get number(){ return P.no; }, openGroup: () => { if (!open) toggle(true); lock.classList.add('gone'); drawHome(); openApp('pesan'); setTimeout(() => net.ready && groupThread(), 450); }, get open(){ return open; }, openApp: k => { if (!open) toggle(true); unlock(); setTimeout(() => openApp(k, home.querySelector(`[data-app="${k}"]`)), 350); }};
 }

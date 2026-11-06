@@ -27,3 +27,15 @@ test('radio segments rotate: station, time & weather, traffic, ad, tip', () => {
   const S = {hour: 7.5, weather: 'cerah', rain: false, place: 'Cikampek', road: 'Tol Jakarta–Cikampek', jam: 9};
   assert.match(segment(0, S), /tujuh mit F M/); assert.match(segment(1, S), /07\.30/); assert.match(segment(2, S), /padat/); assert.ok(ADS.includes(segment(3, S)));
 });
+test('radio request line: one number, requests queue in the order they were sent, with limits', async () => {
+  const {createRequests, RADIO_NO, PLAYLIST, shuffled, VID} = await import('../radio.js');
+  assert.equal(RADIO_NO, '081313245123'); assert.ok(PLAYLIST.length >= 30); assert.equal(shuffled(PLAYLIST).length, PLAYLIST.length);
+  const q = createRequests({max: 3, perUser: 2});
+  assert.equal(q.add({id: 'AAAAAAAAAAA', by: 'Ani', t: 20, rid: 'a'}).pos, 1);
+  assert.equal(q.add({id: 'BBBBBBBBBBB', by: 'Budi', t: 10, rid: 'b'}).pos, 1);                 // sent earlier: plays first on every player's copy
+  assert.equal(q.add({id: 'AAAAAAAAAAA', by: 'Ani', t: 20, rid: 'a'}).why, 'dup');             // the same request arriving twice
+  assert.equal(q.add({id: 'CCCCCCCCCCC', by: 'Ani', t: 30, rid: 'c'}).ok, true);
+  assert.equal(q.add({id: 'DDDDDDDDDDD', by: 'Ani', t: 40, rid: 'd'}).why, 'full');
+  assert.equal(q.add({id: 'not an id', by: 'X'}).why, 'bad'); assert.ok(VID.test('dQw4w9WgXcQ'));
+  assert.deepEqual([q.shift().by, q.shift().by, q.shift().by, q.shift()], ['Budi', 'Ani', 'Ani', undefined]);
+});
