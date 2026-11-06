@@ -157,7 +157,7 @@ export function initFly(A){
           if (L > 2000) for (const xx of [150, 300, 600, 750]) for (const sd of [-1, 1]) for (const k of [0, 1]) quad(AM.white, R0, e*(hl - xx), sd*(W*0.25 + (k ? 3.6 : 0)), 22, 1.8, 0.36);
           // designator: number with its letter, readable from the approach
           const id = r.id.split('/')[e < 0 ? 0 : 1], c = document.createElement('canvas'); c.width = 128; c.height = 256; const g2 = c.getContext('2d'); g2.fillStyle = '#f2f2f2'; g2.textAlign = 'center';
-          g2.font = '700 120px Archivo, sans-serif'; g2.fillText(id.slice(0, 2), 64, 112); if (id[2]) g2.fillText(id[2], 64, 236);
+          g2.font = '700 120px Inter, system-ui, sans-serif'; g2.fillText(id.slice(0, 2), 64, 112); if (id[2]) g2.fillText(id[2], 64, 236);
           const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace; tx.anisotropy = 8;
           const dm = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(18, W*0.4), 36).rotateX(-Math.PI/2), new THREE.MeshLambertMaterial({map: tx, transparent: true, depthWrite: false}));
           dm.matrixAutoUpdate = false; dm.matrix.multiplyMatrices(R0, mtx(e*(hl - 80), 0.37, 0, e < 0 ? -Math.PI/2 : Math.PI/2)); G.add(dm); }
@@ -222,8 +222,8 @@ export function initFly(A){
 
   // ---------- labels (towns, airports, volcanoes): screen-sized sprites ----------
   function label(t, x, y, z, color = '#fff', s = 1){ const c = document.createElement('canvas'), g = c.getContext('2d'), f = 36;
-    g.font = `700 ${f}px Archivo, sans-serif`; const w = Math.ceil(g.measureText(t).width) + 24; c.width = w; c.height = f + 20;
-    g.font = `700 ${f}px Archivo, sans-serif`; g.textBaseline = 'middle'; g.lineWidth = 7; g.strokeStyle = 'rgba(0,0,0,.65)'; g.strokeText(t, 12, c.height/2); g.fillStyle = color; g.fillText(t, 12, c.height/2);
+    g.font = `700 ${f}px Inter, system-ui, sans-serif`; const w = Math.ceil(g.measureText(t).width) + 24; c.width = w; c.height = f + 20;
+    g.font = `700 ${f}px Inter, system-ui, sans-serif`; g.textBaseline = 'middle'; g.lineWidth = 7; g.strokeStyle = 'rgba(0,0,0,.65)'; g.strokeText(t, 12, c.height/2); g.fillStyle = color; g.fillText(t, 12, c.height/2);
     const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
     const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: tex, sizeAttenuation: false, depthWrite: false, transparent: true}));
     sp.userData.s = [w/c.height*0.034*s, 0.034*s]; sp.scale.set(...sp.userData.s, 1); sp.position.set(x, y, z); sp.center.set(0.5, 0); root.add(sp); labels.push(sp); return sp; }
@@ -313,7 +313,7 @@ export function initFly(A){
 
   // ---------- UI ----------
   const css = document.createElement('style'); css.textContent = `
-  #fly{position:fixed;inset:0;z-index:60;background:#9fc3e6;font-family:Archivo,system-ui,sans-serif;color:#fff;user-select:none;-webkit-user-select:none;touch-action:none}
+  #fly{position:fixed;inset:0;z-index:60;background:#9fc3e6;font-family:Inter,system-ui,sans-serif;color:#fff;user-select:none;-webkit-user-select:none;touch-action:none}
   #fly[hidden]{display:none} #flycv{position:absolute;inset:0;width:100%;height:100%;display:block}
   #fly .hud{position:absolute;inset:0;pointer-events:none} #fly .hud canvas{position:absolute;inset:0;width:100%;height:100%}
   #fly .bx{position:absolute;background:rgba(10,18,28,.55);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);border:1px solid rgba(255,255,255,.18);border-radius:10px;padding:6px 10px;text-shadow:0 1px 2px rgba(0,0,0,.5)}
@@ -533,13 +533,13 @@ export function initFly(A){
   function drawHud(){ const dpr = Math.min(2, devicePixelRatio), W = innerWidth, H = innerHeight; if (hc.width !== Math.round(W*dpr)) { hc.width = Math.round(W*dpr); hc.height = Math.round(H*dpr); }
     const x = hc.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, W, H);
     const hdg = (st.hd*R2D % 360 + 360) % 360, cx = W/2, tw = Math.min(420, W*0.6), y0 = W < 700 ? 58 : 16;
-    x.fillStyle = 'rgba(10,18,28,.5)'; x.fillRect(cx - tw/2, y0, tw, 34); x.strokeStyle = '#fff'; x.fillStyle = '#fff'; x.lineWidth = 1.5; x.font = '700 12px Archivo, sans-serif'; x.textAlign = 'center';
+    x.fillStyle = 'rgba(10,18,28,.5)'; x.fillRect(cx - tw/2, y0, tw, 34); x.strokeStyle = '#fff'; x.fillStyle = '#fff'; x.lineWidth = 1.5; x.font = '700 12px Inter, system-ui, sans-serif'; x.textAlign = 'center';
     for (let d = -60; d <= 60; d += 5) { const a = Math.round(hdg/5)*5 + d, px = cx + (a - hdg)*tw/120; if (px < cx - tw/2 + 6 || px > cx + tw/2 - 6) continue; const aa = (a % 360 + 360) % 360;
       x.beginPath(); x.moveTo(px, y0 + 34); x.lineTo(px, y0 + (aa % 10 ? 28 : 24)); x.stroke();
       if (aa % 30 === 0) x.fillText({0: 'U', 90: 'T', 180: 'S', 270: 'B'}[aa] || String(aa/10).padStart(2, '0'), px, y0 + 15); }
     x.fillStyle = '#ffd400'; x.beginPath(); x.moveTo(cx - 7, y0 + 34); x.lineTo(cx + 7, y0 + 34); x.lineTo(cx, y0 + 26); x.fill();
     if (st.cam !== 'cockpit') return;
-    x.save(); x.translate(cx, H/2); x.rotate(st.roll); const ppd = H/68; x.strokeStyle = '#7dff9a'; x.fillStyle = '#7dff9a'; x.lineWidth = 2; x.font = '700 12px Archivo, sans-serif';
+    x.save(); x.translate(cx, H/2); x.rotate(st.roll); const ppd = H/68; x.strokeStyle = '#7dff9a'; x.fillStyle = '#7dff9a'; x.lineWidth = 2; x.font = '700 12px Inter, system-ui, sans-serif';
     for (let p = -30; p <= 30; p += 5) { const py = (st.pitch*R2D - p)*ppd, w = p === 0 ? W*0.7 : 70; if (Math.abs(py) > H*0.36) continue;
       x.setLineDash(p < 0 ? [8, 6] : []); x.beginPath(); x.moveTo(-w/2, py); x.lineTo(-24, py); x.moveTo(24, py); x.lineTo(w/2, py); x.stroke(); if (p) { x.fillText(Math.abs(p), -w/2 - 14, py + 4); x.fillText(Math.abs(p), w/2 + 14, py + 4); } }
     x.restore(); x.setLineDash([]); x.strokeStyle = '#7dff9a'; x.lineWidth = 2.5; x.beginPath(); x.moveTo(cx - 40, H/2); x.lineTo(cx - 14, H/2); x.lineTo(cx - 7, H/2 + 7); x.lineTo(cx, H/2); x.lineTo(cx + 7, H/2 + 7); x.lineTo(cx + 14, H/2); x.lineTo(cx + 40, H/2); x.stroke();

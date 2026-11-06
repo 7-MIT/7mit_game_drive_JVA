@@ -206,7 +206,7 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
 
 | File | Contents |
 | --- | --- |
-| `index.html` | HUD, driving controls, route planner, settings panel (Modernist design system) |
+| `index.html` | HUD, driving controls, route planner, settings panel (design.7mit design system) |
 | `main.js` | 3D world, traffic simulation, player, cameras, UI wiring |
 | `phone.js` | The in-game phone: lock and home screens, apps, calls and SMS over the multiplayer channel |
 | `fly.js` | Mode Terbang: the flight simulator over Java and Madura (terrain, roads, airports, aircraft, flight model, HUD) |
@@ -214,7 +214,8 @@ Open `index.html` from any static web server, for example `python3 -m http.serve
 | `airports.js` | The airports of Java and Madura: real runways from OurAirports, terminal layouts |
 | `terbang/index.html` | The address /terbang: loads the game straight into Mode Terbang |
 | `network.js` | Toll network data (roads, exits, KM, coordinates, lanes, limits), routing, Java outline for the mini-map |
-| `ds/modernist.css` | Copy of the design-system stylesheet from the handoff bundle |
+| `ds/design7mit.css` | design.7mit tokens (maroon, cream, blush, peach; Lora + Inter; soft radii) and the component classes; the old `--color-*` names are aliases of these tokens |
+| `ds/modernist.css` | The previous (Modernist) stylesheet, no longer loaded |
 
 ## How the world is built
 
@@ -669,3 +670,13 @@ Kalau driving.7mit dibuka di dalam iframe halaman Wayyuh, `wayyuh.js` (dijalanka
 - **Saat dibuka:** `{type: 'wayyuh:load', requestId: 'load'}`. Balasan `wayyuh:result` dengan `state` yang lebih baru daripada simpanan di perangkat dipulihkan ke `localStorage`, lalu halaman dimuat ulang sekali.
 - **Saat progres berubah** (dicek tiap 15 detik, dan saat tab disembunyikan/ditutup): `{type: 'wayyuh:save', requestId: 'save-N', state: {level, score, cash, t, save}}`. `level` adalah level karier, `score` adalah XP, dan `save` berisi simpanan lengkap (kunci `tj_*`).
 - Hanya pesan dari `window.parent` yang dibaca. Di luar embed tidak terjadi apa-apa.
+
+## Design system: design.7mit
+
+The game uses the 7 MIT design system, design.7mit (https://claude.ai/artifact/CU3EmU8QfxLw8x6kwJPqfs), through `ds/design7mit.css`.
+- Colours: maroon `#7a1424` for buttons, active states and accents; cream and white surfaces; `alert` `#c8172f` for warnings (speeding, low fuel).
+- The welcome screen sits on the maroon banner gradient (`--ground`). Its main button is cream with maroon text.
+- Type: Lora 700 for headings, Inter for everything else. Road signs keep their own font (Highway Gothic / Overpass).
+- Shape: panels and cards `radius-lg` 22px with a soft shadow; buttons and fields `radius-sm` 8px; pills fully rounded. Control borders are `--edge` `#ae6f77` (3:1 on the surface).
+- `index.html` has a `#ds-7mit` style block with the shape rules. The account, bug report and photo-mode dialogs carry the same colours in their own CSS.
+- Car paints and in-world signs keep their colours.

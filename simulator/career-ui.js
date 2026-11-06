@@ -16,11 +16,11 @@ export function initCareerUI(G){
   .gar-tabs button{display:inline-flex;gap:6px;align-items:center;padding:6px 10px;border:2px solid var(--color-text);background:var(--color-surface,#fff);font:inherit;font-size:12px;cursor:pointer}
   .gar-tabs button[aria-selected=true]{background:var(--color-text);color:var(--color-surface,#fff)}.gar-tabs svg{width:15px;height:15px}
   .gar-lv{display:flex;gap:12px;align-items:center;margin-bottom:10px}.gar-lv big{font:700 30px/1 var(--font-sans,sans-serif)}.gar-bar{height:8px;border:2px solid var(--color-text);margin:4px 0}
-  .gar-bar b{display:block;height:100%;background:var(--color-accent,#ec3013)}.gar-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+  .gar-bar b{display:block;height:100%;background:var(--color-accent,#7a1424)}.gar-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
   .gar-row button{padding:5px 8px;border:2px solid var(--color-text);background:var(--color-surface,#fff);font:inherit;font-size:11px;cursor:pointer}.gar-row button:disabled{opacity:.4;cursor:default}
-  .gar-card{border:2px solid var(--color-text);padding:9px 10px;margin-bottom:8px}.gar-card.on{outline:3px solid var(--color-accent,#ec3013);outline-offset:-5px}
+  .gar-card{border:2px solid var(--color-text);padding:9px 10px;margin-bottom:8px}.gar-card.on{outline:3px solid var(--color-accent,#7a1424);outline-offset:-5px}
   .gar-card h3{margin:0;font-size:14px;display:flex;justify-content:space-between;gap:8px}.gar-card p{margin:2px 0;font-size:12px;opacity:.8}
-  .gar-pips{letter-spacing:2px;color:var(--color-accent,#ec3013)}.gar-ach{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px}
+  .gar-pips{letter-spacing:2px;color:var(--color-accent,#7a1424)}.gar-ach{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:6px}
   .gar-ach div{border:2px solid var(--color-text);padding:6px 8px;font-size:12px}.gar-ach div.no{opacity:.45;border-style:dashed}.gar-ach b{display:block;font-size:12px}
   .gar-key{font:700 15px/1.4 ui-monospace,monospace;padding:8px;border:2px dashed var(--color-text);user-select:all;word-break:break-all;margin:6px 0}
   .gar input{font:inherit;padding:6px 8px;border:2px solid var(--color-text);width:100%;box-sizing:border-box}`;

@@ -12,7 +12,7 @@ const SERVICES = ['112', '110', '118', '119', '113', '115', '133', '151'].map(n 
 
 const CSS = `
 #phone{position:fixed;right:max(16px,env(safe-area-inset-right));bottom:118px;z-index:7;width:300px;height:620px;transform-origin:100% 100%;
-  transform:translateY(calc(100% + 160px)) rotate(6deg) scale(var(--ps,1));transition:transform .55s cubic-bezier(.2,1.25,.35,1),opacity .3s;opacity:0;pointer-events:none;font-family:Archivo,system-ui,sans-serif;-webkit-user-select:none;user-select:none}
+  transform:translateY(calc(100% + 160px)) rotate(6deg) scale(var(--ps,1));transition:transform .55s cubic-bezier(.2,1.25,.35,1),opacity .3s;opacity:0;pointer-events:none;font-family:Inter,system-ui,sans-serif;-webkit-user-select:none;user-select:none}
 #phone.on{transform:translateY(0) rotate(0) scale(var(--ps,1));opacity:1;pointer-events:auto}
 #phone .case{position:absolute;inset:0;border-radius:46px;background:var(--case,#1b1c1f);padding:10px;box-shadow:0 30px 60px rgba(0,0,0,.45),inset 0 0 0 2px rgba(255,255,255,.14),inset 0 2px 6px rgba(255,255,255,.25)}
 #phone .case::after{content:'';position:absolute;inset:0;border-radius:46px;background:linear-gradient(115deg,rgba(255,255,255,.22),transparent 32%,transparent 70%,rgba(255,255,255,.08));pointer-events:none}
@@ -98,7 +98,7 @@ const CSS = `
 #phone .stnk{border-radius:20px;padding:12px;margin-bottom:12px;background:linear-gradient(150deg,#e9eef4,#c9d4df);color:#16171a;position:relative;overflow:hidden}
 #phone .stnk::before{content:'';position:absolute;right:-40px;bottom:-60px;width:180px;height:180px;border-radius:50%;background:rgba(255,255,255,.35)}
 #phone .stnk .hd{display:flex;justify-content:space-between;align-items:center;font-size:9.5px;font-weight:800;letter-spacing:.08em;opacity:.7;margin-bottom:8px}
-#phone .plate{display:inline-flex;flex-direction:column;align-items:center;border:3px solid var(--pf);background:var(--pb);color:var(--pf);border-radius:7px;padding:4px 12px 3px;font-family:Overpass,Archivo,sans-serif;box-shadow:0 3px 8px rgba(0,0,0,.25);position:relative}
+#phone .plate{display:inline-flex;flex-direction:column;align-items:center;border:3px solid var(--pf);background:var(--pb);color:var(--pf);border-radius:7px;padding:4px 12px 3px;font-family:Overpass,Inter,sans-serif;box-shadow:0 3px 8px rgba(0,0,0,.25);position:relative}
 #phone .plate b{font-size:22px;font-weight:800;letter-spacing:1.5px;line-height:1} #phone .plate small{font-size:9.5px;font-weight:700;opacity:.9}
 #phone .stnk dl{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:10px 0 0;font-size:11.5px;position:relative} #phone .stnk dt{opacity:.6;font-weight:600} #phone .stnk dd{margin:0;font-weight:700;display:flex;align-items:center;gap:5px}
 #phone .stnk dd i{width:12px;height:12px;border-radius:50%;border:1px solid rgba(0,0,0,.3);display:inline-block}

@@ -519,7 +519,7 @@ const SHARED = new Set([headMat, tailMat, brakeMat, glassMat, tyreMat, polRed, p
 function lightBar(g, w, y, z){ box(w, 0.12, 0.3, lbOff, 0, y, z, g); const a = box(w*0.45, 0.15, 0.32, polRed, -w*0.26, y + 0.01, z, g), b = box(w*0.45, 0.15, 0.32, polBlue, w*0.26, y + 0.01, z, g); a.visible = b.visible = false; return [a, b]; }
 const EMERG = new Set(['ambulance', 'damkar', 'police']);
 const towAmber = new THREE.MeshStandardMaterial({color: 0x553300, emissive: 0xffa000, emissiveIntensity: 3}); SHARED.add(towAmber);
-const taxiSignTex = canvasTex(1, 0.36, (x, w, h) => { x.fillStyle = '#fff9e0'; x.fillRect(0, 0, w, h); x.fillStyle = '#1e4f9a'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '900 230px Archivo, sans-serif'; x.fillText('TAXI', w/2, h/2 + 10); });
+const taxiSignTex = canvasTex(1, 0.36, (x, w, h) => { x.fillStyle = '#fff9e0'; x.fillRect(0, 0, w, h); x.fillStyle = '#1e4f9a'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = '900 230px Inter, system-ui, sans-serif'; x.fillText('TAXI', w/2, h/2 + 10); });
 const taxiSignMat = new THREE.MeshStandardMaterial({map: taxiSignTex, emissive: 0xffffff, emissiveMap: taxiSignTex, emissiveIntensity: 0.6}); SHARED.add(taxiSignMat);
 // the colours on Indonesian roads: mostly white, silver, black and grey, then red, dark blue, bronze, maroon, dark green
 const PAINT = [0xf2f3f1,0xf2f3f1,0xf2f3f1,0xf4f4f0,0xb9bdc1,0xb9bdc1,0xa7abaf,0x16171a,0x16171a,0x1d1f23,0x5f656c,0x4a5057,0x9e1d1a,0x1c2f52,0x6e5a46,0x5a1a22,0x2c463b,0xc9c0ac];
@@ -569,7 +569,7 @@ function plateCanvas(main, sub, cat){
   x.fillStyle = bg; x.fillRect(0, 0, 320, 92); x.strokeStyle = fg; x.lineWidth = 5; x.strokeRect(5, 5, 310, 82);
   if (cat === 'listrik') { x.fillStyle = '#1f5fbf'; x.fillRect(8, 70, 304, 14); }
   x.fillStyle = fg; x.textAlign = 'center'; x.textBaseline = 'middle'; fit(x, main, 290, 54, 800); x.fillText(main, 160, sub ? 36 : 47);
-  if (sub) { x.font = '700 20px Archivo, sans-serif'; x.fillStyle = cat === 'listrik' ? '#fff' : fg; x.fillText(sub, 160, 75); }
+  if (sub) { x.font = '700 20px Inter, system-ui, sans-serif'; x.fillStyle = cat === 'listrik' ? '#fff' : fg; x.fillText(sub, 160, 75); }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
 }
 // AI plates: a pool of ready-made plate materials per category + region, reused across vehicles
@@ -2761,7 +2761,7 @@ function towOnMap(x, P, big){ if (!tow || !tow.v || !PLR || !EV.length) return; 
   const r = big ? 9 : 6; x.save(); x.fillStyle = '#f2a20a'; x.strokeStyle = '#201e1d'; x.lineWidth = 2; x.beginPath(); x.roundRect(a - r, b - r, 2*r, 2*r, 3); x.fill(); x.stroke();
   drawIcon(x, 'Truck', a, b, r*1.5, '#201e1d');
   const dist = Math.abs(u - uOfV(PLR))*cfg.scale, txt = tow.phase === 'come' ? `Derek · ${dist >= 1000 ? (dist/1000).toFixed(1).replace('.', ',') + ' km' : Math.round(dist/10)*10 + ' m'}` : 'Derek';
-  x.font = `700 ${big ? 12 : 10}px Archivo, sans-serif`; x.textBaseline = 'middle'; x.lineWidth = 3; x.strokeStyle = 'rgba(255,255,255,0.9)'; x.strokeText(txt, a + r + 4, b); x.fillStyle = '#201e1d'; x.fillText(txt, a + r + 4, b); x.restore(); }
+  x.font = `700 ${big ? 12 : 10}px Inter, system-ui, sans-serif`; x.textBaseline = 'middle'; x.lineWidth = 3; x.strokeStyle = 'rgba(255,255,255,0.9)'; x.strokeText(txt, a + r + 4, b); x.fillStyle = '#2a0a10'; x.fillText(txt, a + r + 4, b); x.restore(); }
 function callTow(auto = false){
   if (ride) { if (!auto) { toast('Kamu penumpang: kendaraan ini bukan milikmu', 'warn'); return; } rideCancel(); }
   const P = PLR; if (!P || tow) return; if (foot) { toast('Masuk ke kendaraan dulu', 'warn'); return; }
@@ -3008,7 +3008,7 @@ function mpPlace(){
     if (p.tag) p.tag.rotation.y = Math.atan2(camera.position.x - p.v.g.position.x, camera.position.z - p.v.g.position.z) - p.v.g.rotation.y;
     if (p.audio) p.audio.volume = clamp(1 - Math.abs(z)/900, 0.3, 1); }
 }
-function mpDrawMap(x, P, big = false){ if (!mp.on) return; x.font = `${big ? 700 : 600} ${big ? 12 : 10}px Archivo, sans-serif`; x.textBaseline = 'alphabetic';
+function mpDrawMap(x, P, big = false){ if (!mp.on) return; x.font = `${big ? 700 : 600} ${big ? 12 : 10}px Inter, system-ui, sans-serif`; x.textBaseline = 'alphabetic';
   for (const p of mp.peers.values()) { if (!p.st || p.st.lat == null) continue; const [a, b] = P(p.st.lat, p.st.lon), r = big ? 6 : 4;
     x.fillStyle = '#1f5fbf'; x.strokeStyle = '#fff'; x.lineWidth = 2; x.beginPath(); x.arc(a, b, r, 0, Math.PI*2); x.fill(); x.stroke();
     if (big) { x.lineWidth = 3; x.strokeStyle = 'rgba(244,241,234,0.92)'; x.strokeText(p.name, a + r + 3, b + 4); }
@@ -4405,12 +4405,12 @@ function drawCluster(v, R = CKP){
   x.fillStyle = '#07090b'; x.fillRect(0, 0, W, H); x.strokeStyle = '#2b3138'; x.lineWidth = 4; x.strokeRect(2, 2, W - 4, H - 4);
   // speed arc
   x.lineWidth = 10; x.strokeStyle = '#1d2329'; x.beginPath(); x.arc(110, 120, 80, Math.PI, 2*Math.PI); x.stroke();
-  x.strokeStyle = kmh > KMH(limitAt(uOfV(v))) + 5 ? '#ec3013' : '#3ab0ff'; x.beginPath(); x.arc(110, 120, 80, Math.PI, Math.PI*(1 + Math.min(1, kmh/180))); x.stroke();
+  x.strokeStyle = kmh > KMH(limitAt(uOfV(v))) + 5 ? '#c8172f' : '#3ab0ff'; x.beginPath(); x.arc(110, 120, 80, Math.PI, Math.PI*(1 + Math.min(1, kmh/180))); x.stroke();
   x.fillStyle = '#f2f4f6'; x.textAlign = 'center'; x.textBaseline = 'alphabetic'; x.font = `800 58px ${SIGN_FONT}`; x.fillText(String(kmh), 110, 128);
   x.font = `600 18px ${SIGN_FONT}`; x.fillStyle = '#9aa4ad'; x.fillText('km/jam', 110, 152);
   x.textAlign = 'left'; x.fillStyle = '#f2c230'; x.font = `800 40px ${SIGN_FONT}`; x.fillText($('gear').textContent, 230, 70);
   const f = v.type==='bicycle'?clamp((v.stamina??100)/100,0,1):WAL.fuel != null ? clamp(WAL.fuel/tankOf(), 0, 1) : 1; x.fillStyle = '#9aa4ad'; x.font = `600 18px ${SIGN_FONT}`; x.fillText(v.type==='bicycle'?'ENERGI':'BBM', 230, 110);
-  x.fillStyle = '#1d2329'; x.fillRect(280, 96, 200, 16); x.fillStyle = f < 0.15 ? '#ec3013' : '#46c37b'; x.fillRect(280, 96, 200*f, 16);
+  x.fillStyle = '#1d2329'; x.fillRect(280, 96, 200, 16); x.fillStyle = f < 0.15 ? '#c8172f' : '#46c37b'; x.fillRect(280, 96, 200*f, 16);
   x.fillStyle = '#9aa4ad'; x.fillText(`${String(Math.floor(gameH)).padStart(2, '0')}:${String(Math.floor(gameH%1*60)).padStart(2, '0')}`, 330, 70);
   R.tex.needsUpdate = true;
 }
@@ -4623,7 +4623,7 @@ function drawMap(cv = map, big = mapBig){
   const dpr = Math.min(2, devicePixelRatio), W = cv.clientWidth, H = cv.clientHeight; if (!W) return;
   if (cv.width !== Math.round(W*dpr)) { cv.width = Math.round(W*dpr); cv.height = Math.round(H*dpr); }
   const x = cv === map ? mctx : cv.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0); x.clearRect(0, 0, W, H);
-  const cs = getComputedStyle(document.body), ink = cs.getPropertyValue('--color-text').trim() || '#201e1d', acc = cs.getPropertyValue('--color-accent').trim() || '#ec3013';
+  const cs = getComputedStyle(document.body), ink = cs.getPropertyValue('--ink').trim() || '#2a0a10', acc = cs.getPropertyValue('--maroon').trim() || '#7a1424';
   let lon0 = 105.2, lon1 = 114.7, lat0 = -5.7, lat1 = -8.9;
   // live map: centred on the car and moving with it (about 15 km across, 60 km when enlarged)
   const follow = !!(PLR && trip && EV.length);
@@ -4652,7 +4652,7 @@ function drawMap(cv = map, big = mapBig){
       // the car: an arrow pointing the way it is driving
       x.save(); x.translate(px, py); x.rotate(drawMap.hd || 0); x.fillStyle = acc; x.strokeStyle = '#fff'; x.lineWidth = 2; x.lineJoin = 'round';
       x.beginPath(); x.moveTo(0, -8); x.lineTo(6, 7); x.lineTo(0, 3); x.lineTo(-6, 7); x.closePath(); x.stroke(); x.fill(); x.restore(); } }
-  x.fillStyle = ink; x.font = '600 9px Archivo, sans-serif';
+  x.fillStyle = ink; x.font = '600 9px Inter, system-ui, sans-serif';
   const labels = follow ? [...new Set(EV.filter(e => e.kind !== 'n0' && e.lat != null).map(e => e.key))].map(k => NODES.get(k)) : ['JCT Cawang','GT Banyumanik','JCT Waru','Merak','JCT Pasir Koja','GT Palimanan','Colomadu','Malang','Ketapang'].map(k => NODES.get(k));
   for (const n of labels) { if (!n) continue; const [a, b] = P(mapNode(n).lat, mapNode(n).lon); if (a < 0 || b < 0 || a > W || b > H) continue;
     if (follow) { x.fillRect(a - 2, b - 2, 4, 4); x.lineWidth = 3; x.strokeStyle = 'rgba(255,255,255,0.85)'; x.strokeText(n.name, a + 5, b - 3); }
@@ -4917,7 +4917,7 @@ function fallbackRoads(x, P, W, H, w = 1){ x.save(); x.lineCap = x.lineJoin = 'r
     x.setLineDash(c.planned ? [4*w, 3*w] : []); x.lineWidth = (c.cls === 't' ? 1.8 : c.prov || c.cls === 'a' ? 0.8 : 1.3)*w;
     x.strokeStyle = c.cls === 't' ? OSM_STYLE.t : c.cls === 'a' ? 'rgba(80,88,94,0.6)' : c.prov ? OSM_STYLE.p : OSM_STYLE.n; strokeRoad(x, P, c.id); }
   x.restore(); }
-function osmAttrib(x, W, H){ x.save(); x.font = '600 9px Archivo, sans-serif'; x.textAlign = 'right'; x.textBaseline = 'bottom'; x.fillStyle = 'rgba(255,255,255,0.75)'; const t = DEM.size ? '© OpenStreetMap · elevasi Copernicus DEM' : '© OpenStreetMap', w = x.measureText(t).width + 6;
+function osmAttrib(x, W, H){ x.save(); x.font = '600 9px Inter, system-ui, sans-serif'; x.textAlign = 'right'; x.textBaseline = 'bottom'; x.fillStyle = 'rgba(255,255,255,0.75)'; const t = DEM.size ? '© OpenStreetMap · elevasi Copernicus DEM' : '© OpenStreetMap', w = x.measureText(t).width + 6;
   x.fillRect(W - w - 2, H - 13, w + 2, 13); x.fillStyle = '#3c4043'; x.fillText(t, W - 4, H - 2); x.restore(); }
 function drawAtlas(){
   if (atlas.hidden) return;
@@ -4944,7 +4944,7 @@ function drawAtlas(){
   x.setLineDash([]);
   drawFerries(x, atP, clamp(1.5 + z*0.6, 1.5, 4));
   // the route ahead (navigation or free driving plan)
-  const acc = '#ec3013';
+  const acc = '#7a1424';
   if (trip && PLR) { const u = uOfV(PLR), i0 = Math.max(0, evAt(u)), i1 = trip.destIdx >= 0 ? trip.destIdx : Math.min(EV.length - 1, i0 + 80), p = latLonMap(u);
     drawNavigation(x, atP, u, i1, clamp(3 + z*0.8, 3, 9)); }
   drawMapTraffic(x, atP, W, H, true);
@@ -4959,7 +4959,7 @@ function drawAtlas(){
   const boxes = []; x.textBaseline = 'middle';
   for (const {n, a, b} of pts.sort((p, q) => pri(p.n) - pri(q.n))) {
     const big = pri(n) === 0, txt = n.kind === 'j' ? n.name : n.kind === 'x' || n.kind === 't' || n.kind === 'g' ? (n.name.startsWith('GT ') ? n.name : 'GT ' + n.name) : n.name;
-    x.font = `${big ? 800 : 600} ${big ? 13 : 11}px Archivo, sans-serif`; const w = x.measureText(txt).width + 4, h = big ? 15 : 13;
+    x.font = `${big ? 800 : 600} ${big ? 13 : 11}px Inter, system-ui, sans-serif`; const w = x.measureText(txt).width + 4, h = big ? 15 : 13;
     const bx = [a + 7, b - h/2, w, h];
     if (boxes.some(q => bx[0] < q[0] + q[2] && bx[0] + bx[2] > q[0] && bx[1] < q[1] + q[3] && bx[1] + bx[3] > q[1])) continue;
     boxes.push(bx); x.lineWidth = 3; x.strokeStyle = 'rgba(244,241,234,0.92)'; x.strokeText(txt, a + 8, b); x.fillStyle = n.kind === 'j' ? '#0c6a3c' : '#201e1d'; x.fillText(txt, a + 8, b); }
@@ -4972,7 +4972,7 @@ function drawAtlas(){
   mpDrawMap(x, atP, true); towOnMap(x, atP, true);
   // scale bar
   const kmPx = k/111, nice = [1, 2, 5, 10, 20, 50, 100, 200].find(v => v*kmPx > 60) || 200; x.fillStyle = '#201e1d'; x.fillRect(W - 20 - nice*kmPx, H - 22, nice*kmPx, 3);
-  x.font = '600 11px Archivo, sans-serif'; x.textAlign = 'right'; x.fillText(`${nice} km`, W - 20, H - 32); x.textAlign = 'left';
+  x.font = '600 11px Inter, system-ui, sans-serif'; x.textAlign = 'right'; x.fillText(`${nice} km`, W - 20, H - 32); x.textAlign = 'left';
   legendText(); if (OSM.ready) osmAttrib(x, W, H - 40);
 }
 // tap: nearest place, otherwise nearest road
@@ -5778,7 +5778,7 @@ function drawGMap(cv, view){
   if (!view.noRoute) drawMapTraffic(x, P, W, H, true);
   // labels: towns (bold, bigger when zoomed in), gates and junctions when close
   x.textAlign = 'center'; x.textBaseline = 'middle'; const boxes = [];
-  const label = (t, a, b, size, wt, col) => { x.font = `${wt} ${size}px Archivo, sans-serif`; const w = x.measureText(t).width + 6, bx = [a - w/2, b - size/2 - 2, w, size + 4];
+  const label = (t, a, b, size, wt, col) => { x.font = `${wt} ${size}px Inter, system-ui, sans-serif`; const w = x.measureText(t).width + 6, bx = [a - w/2, b - size/2 - 2, w, size + 4];
     if (boxes.some(q => bx[0] < q[0] + q[2] && bx[0] + bx[2] > q[0] && bx[1] < q[1] + q[3] && bx[1] + bx[3] > q[1])) return; boxes.push(bx);
     x.lineWidth = 3.5; x.strokeStyle = 'rgba(255,255,255,0.95)'; x.strokeText(t, a, b); x.fillStyle = col; x.fillText(t, a, b); };
   if (z > .6) for (const n of NODES.values()) { if (n.poi !== 'jumay') continue; const [a, b] = P(n.lat, n.lon); if (!inV(a, b, 0)) continue;
@@ -5799,7 +5799,7 @@ function drawGMap(cv, view){
     x.shadowColor = 'rgba(0,0,0,0.3)'; x.shadowBlur = 4; x.fillStyle = '#fff'; x.beginPath(); x.arc(a, b, 9, 0, Math.PI*2); x.fill(); x.shadowBlur = 0;
     x.fillStyle = '#4285f4'; x.beginPath(); x.arc(a, b, 6.5, 0, Math.PI*2); x.fill(); }
   // scale bar
-  const kmPx = k/111, nice = [0.5, 1, 2, 5, 10, 20, 50, 100, 200].find(v => v*kmPx > 50) || 200; x.fillStyle = GM.ink; x.textAlign = 'left'; x.font = '600 10px Archivo, sans-serif';
+  const kmPx = k/111, nice = [0.5, 1, 2, 5, 10, 20, 50, 100, 200].find(v => v*kmPx > 50) || 200; x.fillStyle = GM.ink; x.textAlign = 'left'; x.font = '600 10px Inter, system-ui, sans-serif';
   x.fillRect(10, H - 14, nice*kmPx, 2.5); x.fillText(`${String(nice).replace('.', ',')} km`, 10, H - 22); if (OSM.ready) osmAttrib(x, W, H);
 }
 // the next manoeuvre on the route: a junction to take, a turn in a town, an exit, the destination
@@ -6097,7 +6097,7 @@ function arrestPlayer(){
 ARREST_DIALOG.addEventListener('cancel',e=>e.preventDefault());
 
 await window.TJ_BOOT?.stage(55,'Menyiapkan antarmuka dan huruf');
-try { await Promise.race([Promise.all(['700 64px Archivo', '600 64px Overpass', '700 64px Overpass', '800 64px Overpass'].map(f => document.fonts.load(f))), new Promise(r => setTimeout(r, 2500))]); } catch(e) {}
+try { await Promise.race([Promise.all(['700 64px Inter', '700 64px Lora', '600 64px Overpass', '700 64px Overpass', '800 64px Overpass'].map(f => document.fonts.load(f))), new Promise(r => setTimeout(r, 2500))]); } catch(e) {}
 setRoadStyle(); setView(); setClean(); setTod(null);
 await window.TJ_BOOT?.stage(70,'Membangun jalan dan lalu lintas');
 // The welcome page has already collected and validated the journey. Build only

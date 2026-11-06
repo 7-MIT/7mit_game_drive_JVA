@@ -21,12 +21,12 @@ export function initReport(G){
     <div class="br-acts"><button type="button" class="b" data-a="send">Kirim laporan</button><button type="button" class="b alt" data-a="dl">Unduh laporan</button></div>
     <p class="br-msg" role="status"></p><p class="br-note">Punya saran fitur? <a target="_blank" rel="noopener"></a> atau email <a data-mail></a>.</p></div></div>`;
   const css = document.createElement('style'); css.textContent = `#bugrep{position:fixed;inset:0;z-index:2000;display:grid;place-items:center;background:rgba(10,14,18,.55);padding:16px}#bugrep[hidden]{display:none}
-  .br-box{width:min(460px,100%);max-height:calc(100dvh - 32px);overflow:auto;background:#f4f1ea;color:#201e1d;border:2px solid #201e1d;font:14px/1.45 var(--font-sans,system-ui,sans-serif)}
-  .br-head{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:2px solid #201e1d}.br-head h2{margin:0;font-size:17px}.br-x{border:0;background:none;font-size:24px;cursor:pointer}
+  .br-box{border-radius:22px;box-shadow:0 12px 28px rgba(20,0,5,.25);width:min(460px,100%);max-height:calc(100dvh - 32px);overflow:auto;background:#fbf8f4;color:#2a0a10;border:1.5px solid #ae6f77;font:14px/1.45 var(--font-sans,system-ui,sans-serif)}
+  .br-head{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1.5px solid #ae6f77}.br-head h2{font-family:var(--font-display,Lora,serif);margin:0;font-size:17px}.br-x{border:0;background:none;font-size:24px;cursor:pointer}
   .br-body{padding:14px 16px;display:flex;flex-direction:column;gap:9px}.br-body label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600}.br-body .br-chk{flex-direction:row;align-items:center;gap:8px;font-weight:400}
-  .br-body textarea{font:inherit;padding:8px;border:2px solid #201e1d;resize:vertical}.br-img{width:100%;border:2px solid #201e1d;display:block}.br-acts{display:flex;gap:8px}
-  .br-body .b{flex:1;font:inherit;font-weight:700;padding:9px;border:2px solid #201e1d;background:#201e1d;color:#fff;cursor:pointer}.br-body .b.alt{background:#fff;color:#201e1d}.br-body .b:disabled{opacity:.5}
-  .br-msg{font-size:12px;margin:0;min-height:1em}.br-note{font-size:12px;opacity:.8;margin:0}.br-note a{color:#ec3013}`;
+  .br-body textarea{font:inherit;padding:8px;border:1.5px solid #ae6f77;resize:vertical}.br-img{width:100%;border:1.5px solid #ae6f77;display:block}.br-acts{display:flex;gap:8px}
+  .br-body .b{flex:1;font:inherit;font-weight:700;padding:9px;border:1.5px solid #ae6f77;background:#7a1424;color:#fff;cursor:pointer}.br-body .b.alt{background:#fff;color:#2a0a10}.br-body .b:disabled{opacity:.5}
+  .br-msg{font-size:12px;margin:0;min-height:1em}.br-note{font-size:12px;opacity:.8;margin:0}.br-note a{color:var(--maroon,#7a1424)}`;
   document.head.append(css); document.body.append(back);
   const $ = q => back.querySelector(q), msg = t => { $('.br-msg').textContent = t; };
   const fa = back.querySelector('.br-note a'), ma = back.querySelector('[data-mail]'); fa.href = G.feedback.form; fa.textContent = 'Kirim Saran & Kesan'; ma.href = `mailto:${G.feedback.mail}`; ma.textContent = G.feedback.mail;

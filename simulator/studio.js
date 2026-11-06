@@ -44,12 +44,12 @@ export function initPhotoUI(G){
     <label>Lensa<input type="range" data-k="fov" min="15" max="90" step="1"></label><label>Jam<input type="range" data-k="hour" min="0" max="23.9" step="0.1"></label>
     <div class="ph-filters"></div><div class="ph-acts"><button data-a="save">Simpan foto</button><button data-a="share">Bagikan</button></div></div>`;
   const css = document.createElement('style'); css.textContent = `#photo{position:fixed;inset:0;z-index:50;pointer-events:none;font:13px/1.35 var(--font-sans,system-ui,sans-serif)}#photo[hidden]{display:none}
-  #photo .ph-top{pointer-events:auto;position:absolute;top:12px;left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center;background:#f4f1eaee;color:#201e1d;border:2px solid #201e1d;padding:6px 10px;max-width:calc(100vw - 32px)}
+  #photo .ph-top{pointer-events:auto;position:absolute;top:12px;left:50%;transform:translateX(-50%);display:flex;gap:10px;align-items:center;background:#fbf8f4ee;color:#2a0a10;border:1.5px solid #ae6f77;padding:6px 10px;max-width:calc(100vw - 32px)}
   #photo .ph-top span{font-size:11px;opacity:.7}#photo .ph-top button{border:0;background:none;font-size:22px;cursor:pointer;line-height:1}
-  #photo .ph-panel{pointer-events:auto;position:absolute;right:12px;bottom:12px;width:min(280px,calc(100vw - 32px));background:#f4f1eaee;color:#201e1d;border:2px solid #201e1d;padding:10px;display:flex;flex-direction:column;gap:6px}
+  #photo .ph-panel{pointer-events:auto;position:absolute;right:12px;bottom:12px;width:min(280px,calc(100vw - 32px));background:#fbf8f4ee;color:#2a0a10;border:1.5px solid #ae6f77;padding:10px;display:flex;flex-direction:column;gap:6px}
   #photo label{display:flex;flex-direction:column;font-size:11px;font-weight:600}#photo input[type=range]{width:100%}
-  .ph-filters{display:flex;flex-wrap:wrap;gap:4px}.ph-filters button,.ph-acts button{font:inherit;font-size:11px;padding:5px 7px;border:2px solid #201e1d;background:#fff;cursor:pointer}.ph-filters button[aria-pressed=true]{background:#201e1d;color:#fff}
-  .ph-acts{display:flex;gap:6px}.ph-acts button{flex:1;font-weight:700;font-size:12px;padding:8px}.ph-acts button:first-child{background:#201e1d;color:#fff}
+  .ph-filters{display:flex;flex-wrap:wrap;gap:4px}.ph-filters button,.ph-acts button{font:inherit;font-size:11px;padding:5px 7px;border:1.5px solid #ae6f77;background:#fff;cursor:pointer}.ph-filters button[aria-pressed=true]{background:#7a1424;color:#fff}
+  .ph-acts{display:flex;gap:6px}.ph-acts button{flex:1;font-weight:700;font-size:12px;padding:8px}.ph-acts button:first-child{background:#7a1424;color:#fff}
   body.photo-on #simulator-shell>*:not(#stage){visibility:hidden}@media(max-width:600px){#photo .ph-top span{display:none}}`;
   document.head.append(css); document.body.append(box);
   const inp = k => box.querySelector(`[data-k=${k}]`);
