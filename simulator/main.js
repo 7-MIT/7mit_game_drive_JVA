@@ -5891,7 +5891,11 @@ function infoLine(kind){
     return `Tidak ada laporan banjir atau longsor di ${h.road || 'ruas ini'}. ${W.rain ? 'Hujan sedang turun: waspadai genangan dan jalan licin.' : 'Cuaca terpantau aman.'} Tim SAR tetap siaga, hubungi kami bila melihat bencana.`; }
   return ''; }
 async function dispatchCall(n, ui){
-  const D = DISPATCH[n]; if (!D) return ui.done(); const talk = async t => { if (!t || !ui.alive()) return; ui.caption(shown(t)); await VOX.say(t, {channel: 'phone'}); };
+  const D = DISPATCH[n]; if (!D) return ui.done(); // a line is shown as a caption and spoken; if the voice fails or never answers the call goes on to the next line by itself,
+  // after the time it takes to read the caption (and never waits longer than a cap for the voice)
+  const talk = async t => { if (!t || !ui.alive()) return; ui.caption(shown(t)); const t0 = Date.now();
+    let late = false; try { await Promise.race([VOX.say(t, {channel: 'phone'}), new Promise(r => setTimeout(() => { late = true; r(); }, 15000 + t.length*90))]); } catch (e) {}
+    if (!ui.alive()) return; if (late) VOX.stopChannel('phone'); const read = Math.min(7000, 900 + t.length*55) - (Date.now() - t0); if (read > 0) await new Promise(r => setTimeout(r, read)); };
   await talk(D.greet); if (!ui.alive()) return;
   // the institution's services; a sub-menu opens in place
   let menu = D.menu, it = null;

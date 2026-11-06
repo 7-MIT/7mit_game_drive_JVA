@@ -34,15 +34,17 @@ function playBuffer(buf, channel, gain){ return new Promise(done => { const c = 
   if (channel === 'phone') { const hp = c.createBiquadFilter(), lp = c.createBiquadFilter(), sh = c.createWaveShaper(); hp.type = 'highpass'; hp.frequency.value = 320; lp.type = 'lowpass'; lp.frequency.value = 3300;
     const k = new Float32Array(256); for (let i = 0; i < 256; i++) { const x = i/128 - 1; k[i] = Math.tanh(x*1.6); } sh.curve = k; node.connect(hp); hp.connect(lp); lp.connect(sh); node = sh; }
   const g = c.createGain(); g.gain.value = gain; node.connect(g); g.connect(c.destination); state.cur = {stop: () => { try { src.stop(); } catch (e) {} }};
-  src.onended = () => { state.cur = null; done(); }; src.start(); }); }
+  // if the audio never starts (a suspended audio context, a device without output) onended would never come: give up after the clip's length
+  let over = false; const fin = () => { if (over) return; over = true; clearTimeout(guard); state.cur = null; done(); }; const guard = setTimeout(fin, buf.duration*1000 + 2000);
+  src.onended = fin; try { src.start(); } catch (e) { fin(); } }); }
 function browserSay(text, channel){ return new Promise(done => { if (!('speechSynthesis' in window)) return done(); try { const ss = speechSynthesis, u = new SpeechSynthesisUtterance(text), vs = ss.getVoices();
   const v = vs.find(x => /^id(-|_|$)/i.test(x.lang) && /google|natural|neural|online/i.test(x.name)) || vs.find(x => /^id(-|_|$)/i.test(x.lang)) || vs.find(x => /^ms(-|_|$)/i.test(x.lang));
   u.lang = v ? v.lang : 'id-ID'; if (v) u.voice = v; u.rate = channel === 'phone' ? 1.05 : 1.02; u.pitch = channel === 'radio' ? 0.95 : 1; u.onend = u.onerror = () => done(); state.cur = {stop: () => ss.cancel()}; ss.speak(u);
   setTimeout(done, 4000 + text.length*120); } catch (e) { done(); } }); }
 async function pump(){
   if (state.busy) return; const item = queue.shift(); if (!item) return; state.busy = true; state.channel = item.channel;
-  // navigation must be on time: if Piper is not done within 1.5 s the browser voice says it (the Piper audio is still cached for next time)
-  try { const buf = item.channel === 'nav' ? await Promise.race([bufferFor(item.text), new Promise(r => setTimeout(() => r(null), 1500))]) : await bufferFor(item.text); if (item.stale && item.stale()) {} else if (buf) await playBuffer(buf, item.channel, item.gain); else await browserSay(item.text, item.channel); }
+  // navigation must be on time: if Piper is not done within 1.5 s (6 s on a phone call) the browser voice says it (the Piper audio is still cached for next time)
+  try { const buf = item.channel === 'nav' || item.channel === 'phone' ? await Promise.race([bufferFor(item.text), new Promise(r => setTimeout(() => r(null), item.channel === 'nav' ? 1500 : 6000))]) : await bufferFor(item.text); if (item.stale && item.stale()) {} else if (buf) await playBuffer(buf, item.channel, item.gain); else await browserSay(item.text, item.channel); }
   catch (e) {} finally { state.busy = false; item.done && item.done(); pump(); } }
 // say(text, {channel: 'nav' | 'radio' | 'phone', urgent, gain}) → resolves when it has been said
 export function say(text, {channel = 'nav', urgent = false, gain = 1, stale = null} = {}){
