@@ -26,7 +26,7 @@ import {createGlass} from './glass.js';
 import {initReport} from './report.js';
 import {getLang, setLang} from './i18n.js';
 import * as VOX from './voice.js';
-import {DISPATCH, shown, UNIT_NAME, UNIT_END, CANCEL, dispatchLocation, TOW_FREE, INFO_END, trafficInfo} from './voice-lines.js';
+import {DISPATCH, shown, UNIT_NAME, UNIT_END, CANCEL, dispatchLocation, TOW_FREE, INFO_END, trafficInfo, NOT_TOLL} from './voice-lines.js';
 import {initDEM} from './elevation.js';
 import {BICYCLE, isTwoWheeler, nonTollVehicle, bicycleAcceleration, staminaStep, springStep, ackermannAngle, roadResistance, FOOD_BICYCLE_JOB} from './vehicle-dynamics.js';
 import {buildBicycle, animateBicycle, buildBicycleView} from './bicycle.js';
@@ -3247,7 +3247,9 @@ const fmtDur = s => s ? `${Math.floor(s/60)}:${String(Math.floor(s % 60)).padSta
 const YT_MIRRORS = [q => `https://inv.nadeko.net/api/v1/search?type=video&q=${q}`, q => `https://invidious.nerdvpn.de/api/v1/search?type=video&q=${q}`, q => `https://pipedapi.kavin.rocks/search?filter=music_songs&q=${q}`, q => `https://api.piped.private.coffee/search?filter=videos&q=${q}`];
 // search YouTube through the mirrors: [{id, title, by, dur, img}] (empty when none answers); the radio uses it too
 async function ytFind(q){ const enc = encodeURIComponent(q);
-  for (const m of YT_MIRRORS) { try { const r = await fetchT(m(enc)); if (!r.ok) continue; const j = await r.json(); const arr = Array.isArray(j) ? j : j.items || [];
+  // first the game's own server (worker.js on Cloudflare: /api/yt-search), which reads YouTube's results page; the public mirrors below are a fallback and mostly dead
+  try { const r = await fetchT(`api/yt-search?q=${enc}`, 8000); if (r.ok && /json/.test(r.headers.get('content-type') || '')) { const j = await r.json(); if (Array.isArray(j) && j.length) return j.filter(v => v && /^[\w-]{11}$/.test(v.id)).map(v => ({...v, img: `https://i.ytimg.com/vi/${v.id}/default.jpg`})); } } catch (e) {}
+  for (const m of YT_MIRRORS) { try { const r = await fetchT(m(enc), 3000); if (!r.ok) continue; const j = await r.json(); const arr = Array.isArray(j) ? j : j.items || [];
       const items = arr.map(v => ({id: v.videoId || (v.url || '').split('v=')[1], title: v.title, by: v.author || v.uploaderName || '', dur: v.lengthSeconds || v.duration, img: (v.videoThumbnails && v.videoThumbnails[0] && v.videoThumbnails[0].url) || v.thumbnail}))
         .filter(v => v.id && /^[\w-]{11}$/.test(v.id)).slice(0, 10);
       if (items.length) return items; } catch (e) {} }
@@ -4270,7 +4272,7 @@ window.addEventListener('message', e => {
   if (d.event === 'onStateChange' && typeof d.info === 'number') RADIO.player(d.info);
   else if (d.event === 'onError') RADIO.player('error');
   else if (d.event === 'infoDelivery' && d.info && typeof d.info.playerState === 'number') RADIO.player(d.info.playerState); });
-function radioNow(t){ if (t) toast(`♪ ${t.title}${t.by ? ' · permintaan ' + t.by : ''}`); if (PHONE && PHONE.radioChanged) PHONE.radioChanged(); }
+function radioNow(t, why){ if (!t && why === 'nofind') toast('Radio: lagu tidak ditemukan (periksa koneksi internet)', 'warn'); if (t) toast(`♪ ${t.title}${t.by ? ' · permintaan ' + t.by : ''}`); if (PHONE && PHONE.radioChanged) PHONE.radioChanged(); }
 // a request: the video id comes from a YouTube link or from a search result; it joins the queue and goes to every other player
 const radioLast = {t: 0};
 function radioRequest(it){
@@ -5897,6 +5899,8 @@ async function dispatchCall(n, ui){
     let late = false; try { await Promise.race([VOX.say(t, {channel: 'phone'}), new Promise(r => setTimeout(() => { late = true; r(); }, 15000 + t.length*90))]); } catch (e) {}
     if (!ui.alive()) return; if (late) VOX.stopChannel('phone'); const read = Math.min(7000, 900 + t.length*55) - (Date.now() - t0); if (read > 0) await new Promise(r => setTimeout(r, read)); };
   await talk(D.greet); if (!ui.alive()) return;
+  // 133 is the toll road centre: off the toll roads it cannot help and points to Dishub 151 (all roads, all modes)
+  if (n === '133' && EV.length && !isToll(PLR ? uOfV(PLR) : camU)) { await talk(NOT_TOLL); return ui.done(); }
   // the institution's services; a sub-menu opens in place
   let menu = D.menu, it = null;
   for (;;) { const k = await ui.choose(menu.map(m => [m.k, m.label]).concat([['no', 'Tidak jadi']])); if (!ui.alive()) return;

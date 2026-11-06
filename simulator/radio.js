@@ -50,7 +50,7 @@ export function createRadio({ctx, out, state, yt, onNow = () => {}, onQueue = ()
     for (let tries = 0; tries < 3 && on; tries++) { const q = order[pi++ % order.length]; let hit = found.get(q);
       if (!hit) { try { hit = (await yt.find(q))[0]; } catch (e) { hit = null; } if (hit) found.set(q, hit); }
       if (hit) return {id: hit.id, title: q, by: ''}; }
-    return null; }
+    if (on) onNow(null, 'nofind'); return null; }
   async function advance(){
     if (!on || busy) return; busy = true; clearTimeout(watch); const t = await pickTrack(); if (!on) { busy = false; return; }
     const line = t && t.req ? `Lagu permintaan dari ${t.by}. ${t.title}. Selamat mendengarkan.` : n++ % 3 === 2 || !t ? segment(k++, state()) : '';

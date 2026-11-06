@@ -157,7 +157,8 @@ const CSS = `
 #phone .call.dsp .opts button{width:100%;text-align:left;padding:11px 14px;border-radius:12px;font:600 13.5px/1.3 inherit;flex:0 0 auto}
 #phone .call.dsp .opts button[data-k=no]{background:transparent;border:1.5px solid rgba(255,255,255,.35);text-align:center}
 #phone .call.radio .rq{width:100%;max-width:290px;display:flex;flex-direction:column;flex:1 1 auto;min-height:0}#phone .call.radio .rq[hidden]{display:none}
-#phone .call.radio .srch{margin:8px 0 0}#phone .call.radio .opts{margin:8px 0 0;max-height:150px;flex:0 1 auto}#phone .call.radio .opts button small{display:block;opacity:.65;font-weight:500;margin-top:2px}
+#phone .call.radio .srch{margin:8px 0 0;width:100%;flex:none}#phone .call.radio .inp{display:block;width:100%;height:42px;background:rgba(255,255,255,.2);color:#fff;border:1.5px solid rgba(255,255,255,.45);caret-color:#fff;pointer-events:auto}#phone .call.radio .inp::placeholder{color:rgba(255,255,255,.7)}#phone .call.radio .inp:focus{background:rgba(255,255,255,.28);border-color:#fff}
+#phone .call.radio .rq{flex:1 1 0;overflow-y:auto}#phone .call.radio .opts{margin:8px 0 0;max-height:150px;flex:0 1 auto}#phone .call.radio .opts button small{display:block;opacity:.65;font-weight:500;margin-top:2px}
 #phone .call.radio .rnow{font-size:12px;line-height:1.5;margin-top:8px;overflow-y:auto;opacity:.92}#phone .call.radio .rnow small{display:block;opacity:.65;margin-top:6px}#phone .call.radio .rnow b{display:block;font-size:13.5px}#phone .call.radio .rnow i{opacity:.6}
 #phone .call.dsp .end{position:static;flex:0 0 auto;margin:12px 0 30px}
 @keyframes phRing{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,.35)}70%{box-shadow:0 0 0 22px rgba(255,255,255,0)}}
