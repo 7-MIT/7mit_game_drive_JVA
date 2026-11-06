@@ -3,6 +3,9 @@ import {placeList,buildTrip,choicesAt,NODES,RULES,fmtKm} from './network.js';
 import {nonTollVehicle} from './vehicle-dynamics.js';
 import {TRIP_OPTIONS,ROUTE_OPTIONS,VEHICLE_OPTIONS,MOD_DEF,LIVERY,PRESETS} from './start-options.js';
 import {getLang,setLang,startI18n} from './i18n.js';
+import {initWayyuh} from './wayyuh.js';
+// embedded in the Wayyuh page: ask it for the account's progress as the page opens
+initWayyuh({log: m => console.log(m)});
 export function mountStartup({document:doc=globalThis.document,window:win=globalThis.window,load=()=>import('./main.js'),account=()=>import('./account.js'),paint=()=>new Promise(resolve=>win.requestAnimationFrame(()=>win.requestAnimationFrame(resolve)))}={}){
  const root=doc.getElementById('start-screen');if(!root)return null;
  const $=id=>doc.getElementById(id),home=$('start-home'),loading=$('start-loading'),play=$('start-play'),progress=$('start-progress'),status=$('start-load-status'),reload=$('start-reload');

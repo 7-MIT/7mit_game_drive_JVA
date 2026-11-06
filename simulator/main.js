@@ -15,6 +15,7 @@ import {initPhone, phIcon} from './phone.js';
 import {initFly} from './fly.js';
 import {initOSM} from './osm.js';
 import {createCareer, SHOP} from './career.js';
+import {setWayyuhSummary} from './wayyuh.js';
 import {initCareerUI} from './career-ui.js';
 import * as ACC from './account.js';
 import {cineShot, photoShot, createRecorder, initPhotoUI, lerpAngle} from './studio.js';
@@ -46,6 +47,8 @@ import {createPursuit} from './pursuit.js';
 import {snapCorridor, createMapNodes, collectMapTraffic, TRAFFIC_COLORS, navigationStrokes} from './map-data.js';
 import {DELIVERY_FACILITIES, setCorrRoute, corrPlaces, COAST, COAST_RINGS, REGIONS, regionOf, altAt, ALT_KM, CORR, CORRIDORS, NODES, placeList, buildTrip, findRoute, tripFromLegs, walkFree, choicesAt, edgesFrom, turnDeg, fmtKm, nodeLabel, JAVA, MADURA, corrGeo, corrLL, RULES} from './network.js';
 
+// the progress summary sent to the Wayyuh page when embedded there (wayyuh.js, started by startup.js)
+setWayyuhSummary(() => ({level: CAR.lvl().lvl, score: CAR.S.xp, cash: Math.round(WAL.cash)}));
 const MOBILE = matchMedia('(pointer:coarse)').matches || innerWidth < 700;
 // iPhone / iPad: Safari closes a tab that uses too much memory and never tells the RAM size, so assume a 3 GB phone there
 const IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);

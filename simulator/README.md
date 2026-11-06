@@ -658,3 +658,14 @@ Menepilah di penanda fasilitas dan berhenti sekitar 1,5 detik. Bayaran masuk set
 Fasilitas SPPG, sekolah dan koperasi pada fitur ini adalah lokasi simulasi, terhubung melalui jalan akses ke kota-kota dalam jaringan game; bukan daftar alamat fasilitas nyata.
 
 Tes: `node --test simulator/tests/*.mjs` (Three.js 0.160.0 dan jsdom diperlukan untuk menjalankan seluruh pemeriksaan).
+### Banner
+
+`banner/driving7mit-banner-1920x1080.png` dan `banner/driving7mit-banner-1500x500.png`: render asli dari game (Tol Jakarta–Cikampek saat senja, grafis Tinggi, kamera drone), dengan judul, tagline, dan alamat situs.
+
+### Progres akun lewat Wayyuh (game di-embed)
+
+Kalau driving.7mit dibuka di dalam iframe halaman Wayyuh, `wayyuh.js` (dijalankan dari `startup.js` saat halaman terbuka) memakai pesan `postMessage` ke `window.parent`:
+
+- **Saat dibuka:** `{type: 'wayyuh:load', requestId: 'load'}`. Balasan `wayyuh:result` dengan `state` yang lebih baru daripada simpanan di perangkat dipulihkan ke `localStorage`, lalu halaman dimuat ulang sekali.
+- **Saat progres berubah** (dicek tiap 15 detik, dan saat tab disembunyikan/ditutup): `{type: 'wayyuh:save', requestId: 'save-N', state: {level, score, cash, t, save}}`. `level` adalah level karier, `score` adalah XP, dan `save` berisi simpanan lengkap (kunci `tj_*`).
+- Hanya pesan dari `window.parent` yang dibaca. Di luar embed tidak terjadi apa-apa.
