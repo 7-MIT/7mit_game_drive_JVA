@@ -39,3 +39,9 @@ test('radio request line: one number, requests queue in the order they were sent
   assert.equal(q.add({id: 'not an id', by: 'X'}).why, 'bad'); assert.ok(VID.test('dQw4w9WgXcQ'));
   assert.deepEqual([q.shift().by, q.shift().by, q.shift().by, q.shift()], ['Budi', 'Ani', 'Ani', undefined]);
 });
+test('133 serves toll roads only; 151 (Dishub) serves every road and every mode of transport', async () => {
+  const {DISPATCH, NOT_TOLL, fixedLines} = await import('../voice-lines.js');
+  assert.match(DISPATCH['133'].greet, /hanya melayani ruas jalan tol/); assert.ok(!DISPATCH['133'].menu.some(m => m.k === 'modes'));
+  assert.match(DISPATCH['151'].greet, /semua ruas jalan.*seluruh moda transportasi/); assert.ok(DISPATCH['151'].menu.some(m => m.k === 'modes'));
+  assert.match(NOT_TOLL, /satu lima satu/); assert.ok(fixedLines().includes(NOT_TOLL));
+});

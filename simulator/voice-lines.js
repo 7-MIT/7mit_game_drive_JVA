@@ -46,6 +46,9 @@ export const TOW_FREE = 'Layanan derek ini gratis, tidak dipungut biaya apa pun.
 export const FUEL_HELP = 'Petugas kami membawa BBM darurat sepuluh liter. Jasa petugas gratis, BBM dibayar sesuai harga SPBU.';
 export const TIRE_HELP = 'Baik, petugas layanan dan derek kami kirim. Bila tidak bisa diperbaiki di tempat, kendaraan dibawa gratis ke bengkel terdekat.';
 export const REPORT_HELP = 'Terima kasih atas laporannya. Petugas patroli kami arahkan ke lokasi untuk mengamankan jalan.';
+// 133 only works on toll roads; off the toll road the caller is sent to Dishub 151, which covers every road and every mode of transport
+export const NOT_TOLL = 'Mohon maaf, layanan satu tiga tiga hanya melayani ruas jalan tol. Posisi Anda sekarang bukan di jalan tol. Silakan hubungi Dinas Perhubungan di nomor satu lima satu, yang melayani semua ruas jalan.';
+const MODES = {k: 'modes', label: 'Moda transportasi lain (kereta, bus, kapal, pesawat)', say: 'Kami melayani informasi seluruh moda transportasi: kereta api, bus, kapal penyeberangan, dan pesawat. Untuk jadwal dan tiket, kunjungi stasiun, terminal, pelabuhan atau bandara terdekat, dan pantau pengumuman resmi operator sebelum berangkat.'};
 const ROAD_SERVICES = [
   {k: 'tow', label: 'Derek (gratis)', say: TOW_FREE, units: ['tow']},
   {k: 'info', label: 'Informasi lalu lintas', info: 'traffic'},
@@ -82,8 +85,8 @@ export const DISPATCH = {
     {k: 'trap', label: 'Korban terjebak / kecelakaan berat', say: SAY.sar, units: ['sar']},
     {k: 'missing', label: 'Pencarian orang hilang', say: 'Laporan kami catat. Tim SAR kami arahkan ke lokasi yang Anda sampaikan.', units: ['sar']},
     {k: 'disaster', label: 'Info bencana (banjir / longsor)', info: 'disaster'}]},
-  '133': {name: 'Pusat Informasi Jalan Tol 133', g: 'derek', icon: 'Headset', greet: 'Pusat informasi jalan tol, satu tiga tiga. Kami melayani derek gratis, informasi lalu lintas, dan layanan lainnya. Ada yang bisa dibantu?', menu: ROAD_SERVICES},
-  '151': {name: 'Dinas Perhubungan (Dishub) 151', g: 'derek', icon: 'TrafficCone', greet: 'Call center Dinas Perhubungan, satu lima satu. Kami melayani derek gratis, informasi lalu lintas, dan layanan lainnya. Ada yang bisa dibantu?', menu: ROAD_SERVICES},
+  '133': {name: 'Pusat Informasi Jalan Tol 133', g: 'derek', icon: 'Headset', greet: 'Pusat informasi jalan tol, satu tiga tiga. Kami hanya melayani ruas jalan tol: derek gratis, informasi lalu lintas, dan layanan lainnya. Ada yang bisa dibantu?', menu: ROAD_SERVICES},
+  '151': {name: 'Dinas Perhubungan (Dishub) 151', g: 'derek', icon: 'TrafficCone', greet: 'Call center Dinas Perhubungan, satu lima satu. Kami melayani semua ruas jalan, baik jalan tol maupun jalan nasional, dan seluruh moda transportasi. Ada yang bisa dibantu?', menu: ROAD_SERVICES.concat([MODES])},
 };
 export const UNIT_NAME = {police: 'Patroli polisi', ambulance: 'Ambulans', damkar: 'Mobil pemadam kebakaran', sar: 'Tim SAR', tow: 'Mobil derek'};
 // the location read-back (synthesised on the device): road, km, the units, minutes
@@ -104,6 +107,6 @@ export const trafficInfo = ({road, jam, weather, rain, rest, restKm}) => `Inform
 // every menu item of every number, sub-menus included
 export function menuItems(menu){ const out = []; for (const m of menu || []) { out.push(m); if (m.sub) out.push(...menuItems(m.sub)); } return out; }
 // all fixed lines (for the clip builder)
-export function fixedLines(){ const s = new Set([STATION_ID, ...ADS, ...TIPS, CANCEL, INFO_END, ...Object.values(UNIT_END), TOW_FREE]);
+export function fixedLines(){ const s = new Set([STATION_ID, ...ADS, ...TIPS, CANCEL, INFO_END, NOT_TOLL, ...Object.values(UNIT_END), TOW_FREE]);
   for (const d of Object.values(DISPATCH)) { s.add(d.greet); for (const m of menuItems(d.menu)) if (m.say) s.add(m.say); }
   return [...s]; }

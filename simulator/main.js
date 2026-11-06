@@ -26,7 +26,7 @@ import {createGlass} from './glass.js';
 import {initReport} from './report.js';
 import {getLang, setLang} from './i18n.js';
 import * as VOX from './voice.js';
-import {DISPATCH, shown, UNIT_NAME, UNIT_END, CANCEL, dispatchLocation, TOW_FREE, INFO_END, trafficInfo} from './voice-lines.js';
+import {DISPATCH, shown, UNIT_NAME, UNIT_END, CANCEL, dispatchLocation, TOW_FREE, INFO_END, trafficInfo, NOT_TOLL} from './voice-lines.js';
 import {initDEM} from './elevation.js';
 import {BICYCLE, isTwoWheeler, nonTollVehicle, bicycleAcceleration, staminaStep, springStep, ackermannAngle, roadResistance, FOOD_BICYCLE_JOB} from './vehicle-dynamics.js';
 import {buildBicycle, animateBicycle, buildBicycleView} from './bicycle.js';
@@ -5897,6 +5897,8 @@ async function dispatchCall(n, ui){
     let late = false; try { await Promise.race([VOX.say(t, {channel: 'phone'}), new Promise(r => setTimeout(() => { late = true; r(); }, 15000 + t.length*90))]); } catch (e) {}
     if (!ui.alive()) return; if (late) VOX.stopChannel('phone'); const read = Math.min(7000, 900 + t.length*55) - (Date.now() - t0); if (read > 0) await new Promise(r => setTimeout(r, read)); };
   await talk(D.greet); if (!ui.alive()) return;
+  // 133 is the toll road centre: off the toll roads it cannot help and points to Dishub 151 (all roads, all modes)
+  if (n === '133' && EV.length && !isToll(PLR ? uOfV(PLR) : camU)) { await talk(NOT_TOLL); return ui.done(); }
   // the institution's services; a sub-menu opens in place
   let menu = D.menu, it = null;
   for (;;) { const k = await ui.choose(menu.map(m => [m.k, m.label]).concat([['no', 'Tidak jadi']])); if (!ui.alive()) return;
