@@ -1,0 +1,8 @@
+{
+  // driving.7mit: a static site (the simulator folder) served as Workers static assets.
+  // `previews` is required by `npx wrangler preview` (Workers Builds preview deployments for pull requests); it can stay empty.
+  "name": "7mit-game-drive-jva",
+  "compatibility_date": "2026-11-01",
+  "assets": { "directory": "./simulator" },
+  "previews": {}
+}
