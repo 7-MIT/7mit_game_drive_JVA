@@ -2937,6 +2937,7 @@ async function mpConnect(){
   ch.on('broadcast', {event: 'chat'}, ({payload}) => { if (payload && payload.id !== mp.id) { mpLine(`${mpEsc(payload.name)}: ${mpEsc(payload.text)}`); if (PHONE) PHONE.groupIn(mpEsc(payload.name), mpEsc(payload.text)); } });
   ch.on('broadcast', {event: 'ph'}, ({payload}) => { if (PHONE) PHONE.netIn(payload); });
   ch.on('broadcast', {event: 'rtc'}, ({payload}) => mpRtc(payload));
+  ch.on('broadcast', {event: 'radio'}, ({payload}) => { if (RADIO && payload) { const r = RADIO.request({id: payload.id, title: payload.title, by: payload.by, t: payload.t, rid: payload.rid}); if (r.ok && PHONE && PHONE.radioChanged) PHONE.radioChanged(); } });
   ch.on('broadcast', {event: 'srv'}, ({payload}) => srvApply(payload));
   ch.on('presence', {event: 'sync'}, () => mpSync());
   ch.on('presence', {event: 'join'}, ({key, newPresences}) => { if (key !== mp.id) { const nm = mpEsc((newPresences[0] || {}).name || 'Pemain'); mpLine(`${nm} bergabung`, 'sys'); if (PHONE) PHONE.groupIn(nm, `${nm} bergabung`, true); } });
@@ -3226,6 +3227,7 @@ function parseMusic(raw){
   return null;
 }
 function musPlay(item, label){
+  if (RADIO && RADIO.on) { RADIO.set(false); cfg.radio = false; saveCfg(); toast('Radio dimatikan: musik dari HP diputar'); }
   const box = $('mus-player'); box.textContent = '';
   if (item.kind === 'iframe') { const f = document.createElement('iframe'); f.src = item.src; f.height = item.h; f.allow = 'autoplay; encrypted-media; clipboard-write; picture-in-picture; fullscreen';
     f.referrerPolicy = 'strict-origin-when-cross-origin'; f.loading = 'eager'; f.title = label || item.title; box.append(f); }
@@ -3243,15 +3245,20 @@ const fetchT = (url, ms = 5000) => { const c = new AbortController(), t = setTim
 const fmtDur = s => s ? `${Math.floor(s/60)}:${String(Math.floor(s % 60)).padStart(2, '0')}` : '';
 // search: full songs from YouTube through public no-key mirrors; if none answers, 30-second previews from the iTunes catalogue
 const YT_MIRRORS = [q => `https://inv.nadeko.net/api/v1/search?type=video&q=${q}`, q => `https://invidious.nerdvpn.de/api/v1/search?type=video&q=${q}`, q => `https://pipedapi.kavin.rocks/search?filter=music_songs&q=${q}`, q => `https://api.piped.private.coffee/search?filter=videos&q=${q}`];
-async function musSearch(q){
-  const res = music.resEl || $('mus-results'), tok = music.tok = (music.tok || 0) + 1, stale = () => tok !== music.tok; res.textContent = 'Mencari…'; const enc = encodeURIComponent(q);
+// search YouTube through the mirrors: [{id, title, by, dur, img}] (empty when none answers); the radio uses it too
+async function ytFind(q){ const enc = encodeURIComponent(q);
   for (const m of YT_MIRRORS) { try { const r = await fetchT(m(enc)); if (!r.ok) continue; const j = await r.json(); const arr = Array.isArray(j) ? j : j.items || [];
       const items = arr.map(v => ({id: v.videoId || (v.url || '').split('v=')[1], title: v.title, by: v.author || v.uploaderName || '', dur: v.lengthSeconds || v.duration, img: (v.videoThumbnails && v.videoThumbnails[0] && v.videoThumbnails[0].url) || v.thumbnail}))
         .filter(v => v.id && /^[\w-]{11}$/.test(v.id)).slice(0, 10);
-      if (!items.length) continue; if (stale()) return; res.textContent = '';
+      if (items.length) return items; } catch (e) {} }
+  return []; }
+async function musSearch(q){
+  const res = music.resEl || $('mus-results'), tok = music.tok = (music.tok || 0) + 1, stale = () => tok !== music.tok; res.textContent = 'Mencari…'; const enc = encodeURIComponent(q);
+  const items = await ytFind(q);
+  if (items.length) { if (stale()) return; res.textContent = '';
       for (const v of items) res.append(musRow(v.img && !/^\//.test(v.img) ? v.img : `https://i.ytimg.com/vi/${v.id}/default.jpg`, v.title, `${v.by}${v.dur ? ' · ' + fmtDur(v.dur) : ''}`,
         [['Putar', () => musPlay({kind: 'iframe', h: 186, src: `https://www.youtube-nocookie.com/embed/${v.id}?autoplay=1&playsinline=1`, title: 'YouTube'}, v.title)]]));
-      return; } catch (e) {} }
+    return; }
   if (stale()) return;
   try { const r = await fetchT(`https://itunes.apple.com/search?media=music&entity=song&limit=10&term=${enc}`, 7000), j = await r.json(); if (stale()) return; res.textContent = '';
     const note = document.createElement('div'); note.className = 'mus-note'; note.textContent = 'Pencarian YouTube sedang tidak tersedia: ini cuplikan 30 detik. Untuk lagu penuh, tempel link YouTube/Spotify.'; res.append(note);
@@ -4213,7 +4220,7 @@ function audioStart(){
   const voice = () => { const o = AC.createOscillator(), g = AC.createGain(), p = AC.createStereoPanner ? AC.createStereoPanner() : AC.createGain(); o.type = 'triangle'; g.gain.value = 0; o.connect(g); g.connect(p); p.connect(master); o.start(); return {o, g, p}; };
   const lfo = AC.createOscillator(), lfoG = AC.createGain(); lfoG.gain.value = 0; lfo.connect(lfoG); lfoG.connect(eg.gain); lfo.start();
   const rOut = AC.createGain(); rOut.gain.value = 0.55; rOut.connect(AC.destination);
-  RADIO = createRadio({ctx: AC, out: rOut, state: radioState}); if (cfg.radio) RADIO.set(true);
+  RADIO = createRadio({ctx: AC, out: rOut, state: radioState, yt: RYT, onNow: radioNow, onQueue: () => PHONE && PHONE.radioChanged && PHONE.radioChanged()}); if (cfg.radio) RADIO.set(true);
   snd = {lfo, lfoG, master, eng, eng2, lp, eg, buf, wind: mk(500, 0.6), rain: mk(2500, 0.4), rainLo: mk(700, 0.5), tyre: mk(260, 0.7), traffic: mk(180, 0.6), hum: mk(90, 0.8, 'lowpass'), sir: [voice(), voice()]};
 }
 const panOf = o => { if (!PLR || o.x == null) return 0; return clamp((o.x - PLR.x)/22*(PLR.sd || 1), -1, 1); };
@@ -4247,6 +4254,40 @@ const ENGINE = {mbg:{mul:1.7,w:'sawtooth',lp:.85,g:1.1,trem:.3},kopdes:{mul:1.05
   taxi: {mul: 2, w: 'sawtooth', lp: 1, g: 1, trem: 0.15}, police: {mul: 2.1, w: 'sawtooth', lp: 1.15, g: 1.05, trem: 0.12}, ambulance: {mul: 1.8, w: 'sawtooth', lp: 0.9, g: 1, trem: 0.2},
   angkot: {mul: 2.3, w: 'square', lp: 1.1, g: 0.9, trem: 0.35}, moto: {mul: 3.2, w: 'square', lp: 1.6, g: 0.75, trem: 0.6},
   bus: {mul: 1.1, w: 'sawtooth', lp: 0.55, g: 1.3, trem: 0.45}, truck: {mul: 1.05, w: 'sawtooth', lp: 0.5, g: 1.35, trem: 0.5}, damkar: {mul: 1.1, w: 'sawtooth', lp: 0.55, g: 1.3, trem: 0.45}};
+// the radio's songs come from YouTube: a hidden embed that reports back when a song ends (or cannot be played), so the next one can start
+const RYT = {frame: null,
+  find: q => ytFind(q),
+  play(id){ RYT.stop(); const f = document.createElement('iframe'); f.allow = 'autoplay; encrypted-media'; f.title = 'Radio 7MIT FM'; f.referrerPolicy = 'strict-origin-when-cross-origin';
+    f.style.cssText = 'position:fixed;left:-10000px;top:0;width:268px;height:152px;border:0;opacity:.01;pointer-events:none';
+    f.src = `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
+    f.onload = () => { RYT.cmd({event: 'listening', id: 1, channel: 'widget'}); RYT.cmd({event: 'command', func: 'addEventListener', args: ['onStateChange']}); RYT.cmd({event: 'command', func: 'addEventListener', args: ['onError']}); };
+    document.body.append(f); RYT.frame = f; },
+  stop(){ if (RYT.frame) { RYT.frame.remove(); RYT.frame = null; } },
+  cmd(m){ try { RYT.frame && RYT.frame.contentWindow.postMessage(JSON.stringify(m), '*'); } catch (e) {} },
+  volume(v){ RYT.cmd({event: 'command', func: 'setVolume', args: [v]}); }};
+window.addEventListener('message', e => {
+  if (!RYT.frame || e.source !== RYT.frame.contentWindow || !RADIO) return; let d; try { d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch (x) { return; } if (!d) return;
+  if (d.event === 'onStateChange' && typeof d.info === 'number') RADIO.player(d.info);
+  else if (d.event === 'onError') RADIO.player('error');
+  else if (d.event === 'infoDelivery' && d.info && typeof d.info.playerState === 'number') RADIO.player(d.info.playerState); });
+function radioNow(t){ if (t) toast(`♪ ${t.title}${t.by ? ' · permintaan ' + t.by : ''}`); if (PHONE && PHONE.radioChanged) PHONE.radioChanged(); }
+// a request: the video id comes from a YouTube link or from a search result; it joins the queue and goes to every other player
+const radioLast = {t: 0};
+function radioRequest(it){
+  audioStart(); if (!RADIO || !it || !/^[\w-]{11}$/.test(it.id || '')) return {ok: false, why: 'bad'}; if (Date.now() - radioLast.t < 20000) return {ok: false, why: 'wait'};
+  const r = {id: it.id, title: String(it.title || 'Lagu pilihan').slice(0, 90), by: mpName(), t: Date.now(), rid: (mp.id || 'solo') + Date.now().toString(36)};
+  const res = RADIO.request(r); if (!res.ok) return res; radioLast.t = Date.now();
+  if (mp.ready && mp.ch) { try { mp.ch.send({type: 'broadcast', event: 'radio', payload: r}); } catch (e) {} }
+  if (!RADIO.on) { apply('radio', true); }
+  return res; }
+// what the caller typed: a YouTube link (one video) or a title to search for
+async function radioLookup(text){
+  const t = String(text || '').trim(); if (!t) return {items: []}; const it = parseMusic(t);
+  if (it) { const m = it.kind === 'iframe' && /youtube-nocookie\.com\/embed\/([\w-]{11})\?/.exec(it.src);
+    if (!m) return {items: [], err: /^https?:\/\/(www\.|m\.)?(youtube|youtu)/i.test(t) || /youtu/.test(t) ? 'Tempel link satu video YouTube, bukan playlist.' : 'Radio hanya menerima link YouTube.'};
+    let title = 'Lagu pilihan', by = ''; try { const r = await fetchT(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent('https://www.youtube.com/watch?v=' + m[1])}`, 5000); if (r.ok) { const j = await r.json(); title = j.title || title; by = j.author_name || ''; } } catch (e) {}
+    return {items: [{id: m[1], title, by}]}; }
+  const items = await ytFind(t); return {items}; }
 // the radio's view of the drive: time, weather, where you are, how busy the road is
 let RADIO = null, tiltStop = null;
 function radioState(){ const u = PLR ? uOfV(PLR) : camU, W = WEATHER[cfg.weather] || {}, t = townNear(u, 3000); let jam = 0; for (const o of vehicles) if (!o.player && o.vel < 2.5 && Math.abs(o.sd*o.p - u) < 200) jam++;
@@ -5962,6 +6003,8 @@ PHONE = TUT ? null : initPhone({cfg, saveCfg, toast, rp: rp$, rpS, sfx: phoneSfx
   openChat: () => { if (mp.on) PHONE.openGroup(); else { $('toggle').click(); toast('Sambungkan multiplayer di Pengaturan untuk chat', 'warn'); } },
   mp: {ready: () => !!(mp.on && mp.ready && mp.ch), peers: () => [...mp.peers.values()].map(p => ({no: p.no, name: p.name})),
     send: payload => mp.ch.send({type: 'broadcast', event: 'ph', payload}), say(t){ if (!mp.ready) return false; const c0 = mp.chatT; mpSay(t); return mp.chatT !== c0; }},
+  radio: {state: () => ({on: !!(RADIO && RADIO.on), now: RADIO ? RADIO.now : null, queue: RADIO ? RADIO.queue() : [], online: !!(mp.ready && mp.ch)}), lookup: radioLookup, request: radioRequest,
+    say: text => VOX.say(text, {channel: 'phone'})},
   openMusic: () => $('musb').click(), openSettings: () => $('toggle').click(),
   topUp(n){ if (WAL.cash < n) return 'Uang tunai tidak cukup'; WAL.cash -= n; WAL.etoll += n; uiNeeds(); walLog(-n, 'Isi saldo e-Toll'); toast(`Saldo e-Toll +${rp$(n)}`); return null; },
   walletLog: () => WLOG,
