@@ -4256,22 +4256,28 @@ const ENGINE = {mbg:{mul:1.7,w:'sawtooth',lp:.85,g:1.1,trem:.3},kopdes:{mul:1.05
   taxi: {mul: 2, w: 'sawtooth', lp: 1, g: 1, trem: 0.15}, police: {mul: 2.1, w: 'sawtooth', lp: 1.15, g: 1.05, trem: 0.12}, ambulance: {mul: 1.8, w: 'sawtooth', lp: 0.9, g: 1, trem: 0.2},
   angkot: {mul: 2.3, w: 'square', lp: 1.1, g: 0.9, trem: 0.35}, moto: {mul: 3.2, w: 'square', lp: 1.6, g: 0.75, trem: 0.6},
   bus: {mul: 1.1, w: 'sawtooth', lp: 0.55, g: 1.3, trem: 0.45}, truck: {mul: 1.05, w: 'sawtooth', lp: 0.5, g: 1.35, trem: 0.5}, damkar: {mul: 1.1, w: 'sawtooth', lp: 0.55, g: 1.3, trem: 0.45}};
-// the radio's songs come from YouTube: a hidden embed that reports back when a song ends (or cannot be played), so the next one can start
-const RYT = {frame: null,
+// the radio's songs come from YouTube, through the official IFrame API: ONE player that is created inside the tap or key press that switches
+// the radio on (phones and tablets only autoplay then) and is kept, so every later song is loaded into the same player without another tap.
+const RYT = {pl: null, ready: false, want: null, api: null, vol: 100, tap: false,
+  load(){ if (RYT.api) return RYT.api;
+    RYT.api = new Promise(res => { if (window.YT && window.YT.Player) return res(); const prev = window.onYouTubeIframeAPIReady; window.onYouTubeIframeAPIReady = () => { if (prev) prev(); res(); };
+      const sc = document.createElement('script'); sc.src = 'https://www.youtube.com/iframe_api'; sc.onerror = () => { RYT.api = null; res(); }; document.head.append(sc); }); return RYT.api; },
   find: q => ytFind(q),
-  play(id){ RYT.stop(); const f = document.createElement('iframe'); f.allow = 'autoplay; encrypted-media'; f.title = 'Radio 7MIT FM'; f.referrerPolicy = 'strict-origin-when-cross-origin';
-    f.style.cssText = 'position:fixed;left:-10000px;top:0;width:268px;height:152px;border:0;opacity:.01;pointer-events:none';
-    f.src = `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&playsinline=1&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
-    f.onload = () => { RYT.cmd({event: 'listening', id: 1, channel: 'widget'}); RYT.cmd({event: 'command', func: 'addEventListener', args: ['onStateChange']}); RYT.cmd({event: 'command', func: 'addEventListener', args: ['onError']}); };
-    document.body.append(f); RYT.frame = f; },
-  stop(){ if (RYT.frame) { RYT.frame.remove(); RYT.frame = null; } },
-  cmd(m){ try { RYT.frame && RYT.frame.contentWindow.postMessage(JSON.stringify(m), '*'); } catch (e) {} },
-  volume(v){ RYT.cmd({event: 'command', func: 'setVolume', args: [v]}); }};
-window.addEventListener('message', e => {
-  if (!RYT.frame || e.source !== RYT.frame.contentWindow || !RADIO) return; let d; try { d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch (x) { return; } if (!d) return;
-  if (d.event === 'onStateChange' && typeof d.info === 'number') RADIO.player(d.info);
-  else if (d.event === 'onError') RADIO.player('error');
-  else if (d.event === 'infoDelivery' && d.info && typeof d.info.playerState === 'number') RADIO.player(d.info.playerState); });
+  play(id){ RYT.want = id;
+    if (RYT.pl && RYT.ready) { try { RYT.pl.loadVideoById(id); RYT.pl.setVolume(RYT.vol); } catch (e) {} RYT.check(); return; }
+    if (RYT.pl) return;                                                    // still being created: onReady plays RYT.want
+    if (!(window.YT && window.YT.Player)) { RYT.load().then(() => { if (RYT.want && !RYT.pl && window.YT && window.YT.Player) RYT.play(RYT.want); }); return; }
+    const box = document.createElement('div'); box.style.cssText = 'position:fixed;left:0;bottom:0;width:200px;height:113px;opacity:.01;pointer-events:none;z-index:-1;overflow:hidden'; const slot = document.createElement('div'); box.append(slot); document.body.append(box);
+    RYT.pl = new YT.Player(slot, {width: 200, height: 113, videoId: id, playerVars: {autoplay: 1, playsinline: 1, controls: 0, rel: 0, origin: location.origin}, events: {
+      onReady: e => { RYT.ready = true; try { e.target.setVolume(RYT.vol); if (RYT.want) { if (RYT.want !== id) e.target.loadVideoById(RYT.want); else e.target.playVideo(); } } catch (x) {} RYT.check(); },
+      onStateChange: e => { if (RADIO) RADIO.player(e.data); },
+      onError: () => { if (RADIO) RADIO.player('error'); } }}); },
+  stop(){ RYT.want = null; try { RYT.pl && RYT.ready && RYT.pl.stopVideo(); } catch (e) {} },
+  volume(v){ RYT.vol = v; try { RYT.pl && RYT.ready && RYT.pl.setVolume(v); } catch (e) {} },
+  // a browser that refused to autoplay leaves the player waiting: the next tap anywhere starts it
+  check(){ clearTimeout(RYT.ct); RYT.ct = setTimeout(() => { let st = -9; try { st = RYT.pl.getPlayerState(); } catch (e) {} if (RYT.want && st !== 1 && st !== 3 && !RYT.tap) { RYT.tap = true; toast('Ketuk layar untuk memulai radio', 'warn');
+      addEventListener('pointerdown', () => { RYT.tap = false; try { RYT.pl.playVideo(); } catch (e) {} }, {once: true, capture: true}); } }, 4000); }};
+setTimeout(() => RYT.load(), 2500);                                       // have the player script ready before the radio is switched on
 function radioNow(t, why){ if (!t && why === 'nofind') toast('Radio: lagu tidak ditemukan (periksa koneksi internet)', 'warn'); if (t) toast(`♪ ${t.title}${t.by ? ' · permintaan ' + t.by : ''}`); if (PHONE && PHONE.radioChanged) PHONE.radioChanged(); }
 // a request: the video id comes from a YouTube link or from a search result; it joins the queue and goes to every other player
 const radioLast = {t: 0};

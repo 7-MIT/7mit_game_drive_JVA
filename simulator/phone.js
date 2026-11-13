@@ -1,6 +1,7 @@
 import {createPhoneHome, HOME_CSS} from './phone-home.js';
 import {createPhoneStore, STORE_CSS} from './phone-store.js';
 import {DISPATCH, RADIO_NO} from './voice-lines.js';
+import {INA_CSS, createInaDigital} from './phone-inadigital.js';
 const SERVICES = ['112', '110', '118', '119', '113', '115', '133', '151'].map(n => [n, DISPATCH[n].name, DISPATCH[n].g]).concat([[RADIO_NO, 'Radio 7MIT FM · request lagu', 'musik']]);
 // ================================================================
 // HANDPHONE: the player's phone, a full GUI with animated screens and apps.
@@ -216,12 +217,12 @@ const WALLS = {
 const WALL_NAME = {aurora: 'Aurora', senja: 'Senja', tol: 'Jalan tol', hutan: 'Hutan', malam: 'Malam', merah: 'Merah', pastel: 'Pastel', batik: 'Batik'};
 const CASES = ['#1b1c1f', '#c9ccd0', '#d4af37', '#1f3f73', '#b02020', '#2f5a4a', '#5b3a8a', '#e48aa8', '#f2f2ee', '#f07a1a'];
 const ACCS = ['#0a84ff', '#34c759', '#ff9f0a', '#ff375f', '#bf5af2', '#ec3013'];
-const G = {appstore: 'linear-gradient(145deg,#42b2ff,#1358c8)',ojek: 'linear-gradient(145deg,#2fdc6a,#00873a)', blue: 'linear-gradient(145deg,#4aa3ff,#0b3f9e)', kendaraan: 'linear-gradient(145deg,#ff8a4a,#d9361e)', peta: 'linear-gradient(145deg,#6ee7b7,#0e9f6e 55%,#3b82f6)',
+const G = {inadigital: 'linear-gradient(145deg,#196BCD,#022A5B)', appstore: 'linear-gradient(145deg,#42b2ff,#1358c8)',ojek: 'linear-gradient(145deg,#2fdc6a,#00873a)', blue: 'linear-gradient(145deg,#4aa3ff,#0b3f9e)', kendaraan: 'linear-gradient(145deg,#ff8a4a,#d9361e)', peta: 'linear-gradient(145deg,#6ee7b7,#0e9f6e 55%,#3b82f6)',
   dompet: 'linear-gradient(145deg,#ffd35a,#e08a00)', telepon: 'linear-gradient(145deg,#5df07a,#18a33a)', pesan: 'linear-gradient(145deg,#66e08a,#1fae4f)', musik: 'linear-gradient(145deg,#ff6a8a,#e3204d)',
   kamera: 'linear-gradient(145deg,#9aa3ad,#3a4048)', kontak: 'linear-gradient(145deg,#a0a7b2,#5f6773)', galeri: 'conic-gradient(from 45deg,#ff5f6d,#ffc371,#47e37a,#3fa9ff,#c26bff,#ff5f6d)', cuaca: 'linear-gradient(145deg,#7cc7ff,#2a6fd8)', terbang: 'linear-gradient(145deg,#8fe0ff,#0d5bd1)', setelan: 'linear-gradient(145deg,#b8bec6,#5d656e)',
   derek: 'linear-gradient(145deg,#ffcf3a,#e58a00)', polisi: 'linear-gradient(145deg,#4a6bd8,#1a2f80)', amb: 'linear-gradient(145deg,#ff6a6a,#c81e1e)'};
 const APPS = [
-  {k: 'appstore', name: 'App Store', icon: 'AppWindow'},
+  {k: 'appstore', name: 'App Store', icon: 'AppWindow'}, {k: 'inadigital', name: 'INADigital', icon: 'Landmark'},
   {k: 'ojek', name: 'Ojek', icon: 'Bike'}, {k: 'blue', name: 'Blue', icon: 'CarTaxiFront'}, {k: 'kendaraan', name: 'Kendaraan', icon: 'Car'}, {k: 'peta', name: 'Peta', icon: 'MapPinned'},
   {k: 'terbang', name: 'Terbang', icon: 'Plane'}, {k: 'dompet', name: 'Dompet', icon: 'Wallet'}, {k: 'cuaca', name: 'Cuaca', icon: 'CloudSun'}, {k: 'kamera', name: 'Kamera', icon: 'Camera'}, {k: 'galeri', name: 'Galeri', icon: 'Images'},
   {k: 'musik', name: 'Musik', icon: 'Music'}, {k: 'kontak', name: 'Kontak', icon: 'Contact'}, {k: 'setelan', name: 'Pengaturan', icon: 'Settings'}];
@@ -240,7 +241,7 @@ function ic(name){ const L = window.lucide && window.lucide.icons, node = L && L
 
 export const phIcon = name => ic(name);
 export function initPhone(A){
-  const st = document.createElement('style'); st.textContent = CSS + STORE_CSS + HOME_CSS; document.head.append(st);
+  const st = document.createElement('style'); st.textContent = CSS + STORE_CSS + HOME_CSS + INA_CSS; document.head.append(st);
   const P = Object.assign({wall: 'aurora', case: '#1b1c1f', theme: 'dark', acc: '#0a84ff', shape: 15, owner: 'Pengemudi 7MIT', photoWall: null, warn: true}, A.cfg.phone || {});
   const save = () => { A.cfg.phone = {...P, photoWall: null}; A.saveCfg(); };
   const el = document.createElement('div'); el.id = 'phone'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-label', 'Handphone');
@@ -333,6 +334,9 @@ export function initPhone(A){
     getApps: () => [...APPS, ...DOCK.filter(a => !APPS.some(b => a.k === b.k)), ...STORE.installed()],
     isInstalled: id => STORE.library.has(id), uninstall: id => STORE.uninstall(id)});
   APPS_IMPL.appstore = STORE.renderStore;
+  // INADigital is installed from the start: for a saved home layout that predates it, it is slotted in right after the App Store once
+  if (!P.inaPlaced) { P.inaPlaced = true; const lo = P.homeLayout; if (lo && Array.isArray(lo.order)) { lo.order = lo.order.filter(k => k !== 'inadigital'); lo.order.splice(Math.min(1, lo.order.length), 0, 'inadigital'); } save(); }
+  APPS_IMPL.inadigital = createInaDigital({A, P, save, esc, ic, push, back, redraw, dial: n => call(n), notify}).render;
   APPS_IMPL.stub = pg => { pg.innerHTML = head('Segera hadir'); };
 
   // Ojek: ride as a passenger, order food, or work as an ojol driver / food courier

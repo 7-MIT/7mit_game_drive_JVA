@@ -5,11 +5,44 @@ import * as VOX from './voice.js';
 export {STATION, ADS, TIPS, RADIO_NO};
 // The station plays songs from YouTube, in Indonesian, Javanese and English. Listeners cannot pick the next song from a menu:
 // the only way is to ring the request line (RADIO_NO) and send a song, which then queues behind everyone else's requests.
-// Songs are searched by name when they come up, so no video id here can go stale.
-export const PLAYLIST = [
-  'Tulus Hati-Hati di Jalan', 'Dewa 19 Kangen', 'Sheila on 7 Dan', 'NOAH Separuh Aku', 'Raisa Kali Kedua', 'Pamungkas To The Bone', 'Hindia Everything u are', 'Juicy Luicy Lantas', 'Nadin Amizah Bertaut', 'Mahalini Sial', 'Lyodra Sang Dewi', 'Andmesh Cinta Luar Biasa',
-  'Denny Caknan Kartonyono Medot Janji', 'Guyon Waton Pesan Terakhir', 'Happy Asmara Tak Ikhlasno', 'Didi Kempot Stasiun Balapan', 'Didi Kempot Cidro', 'Guyon Waton Lungset', 'Ndarboy Genk Kimcil Kepolen', 'Woro Widowati Mendung Tanpo Udan', 'Tri Suaka Prasasti Cintamu', 'Denny Caknan Satru',
-  'John Denver Take Me Home Country Roads', 'Coldplay Viva La Vida', 'Ed Sheeran Perfect', 'Bruno Mars Just The Way You Are', 'Adele Someone Like You', 'Imagine Dragons Believer', 'Queen Dont Stop Me Now', 'Journey Dont Stop Believin', 'Bon Jovi Livin on a Prayer', 'The Weeknd Blinding Lights', 'Maroon 5 Sunday Morning', 'Jason Mraz I Wont Give Up'];
+// The station's own songs are fixed [video id, label] pairs (each checked to be embeddable), so the first song can start the instant the radio
+// is switched on, inside the tap or key press: phones and tablets refuse to autoplay a video that was not started by the player's own gesture.
+export const TRACKS = [
+  ['9II3OGZETo4', 'Tulus Hati-Hati di Jalan'],
+  ['RYGgSRtYxd0', 'Dewa 19 Kangen'],
+  ['dGcGbF4ex5o', 'Sheila on 7 Dan'],
+  ['b0ZBBjViV8Y', 'NOAH Separuh Aku'],
+  ['SHj2kJzVi_g', 'Raisa Kali Kedua'],
+  ['oIYWenB637c', 'Pamungkas To The Bone'],
+  ['lB8ASupNtlw', 'Hindia Everything u are'],
+  ['ba-XAIskH_g', 'Juicy Luicy Lantas'],
+  ['HyhLsy6b0XI', 'Nadin Amizah Bertaut'],
+  ['QSWYyoF79oE', 'Mahalini Sial'],
+  ['jzxCaNGJcPE', 'Lyodra Sang Dewi'],
+  ['FcOctsNXyjk', 'Andmesh Cinta Luar Biasa'],
+  ['WlmWXoP0C0s', 'Denny Caknan Kartonyono Medot Janji'],
+  ['_1UlylSfSTk', 'Guyon Waton Pesan Terakhir'],
+  ['E3dZs0kJ4w4', 'Happy Asmara Tak Ikhlasno'],
+  ['zOUkeXEEHvo', 'Didi Kempot Stasiun Balapan'],
+  ['0ADwyqBL5ds', 'Didi Kempot Cidro'],
+  ['3TQu9MClbcM', 'Guyon Waton Lungset'],
+  ['6n8PQ3ERdGk', 'Ndarboy Genk Kimcil Kepolen'],
+  ['Bl9mcrJ-GG4', 'Woro Widowati Mendung Tanpo Udan'],
+  ['SG1yc8yLwWs', 'Tri Suaka Prasasti Cintamu'],
+  ['fKVgm3_x-OI', 'Denny Caknan Satru'],
+  ['1vrEljMfXYo', 'John Denver Take Me Home Country Roads'],
+  ['dvgZkm1xWPE', 'Coldplay Viva La Vida'],
+  ['2Vv-BfVoq4g', 'Ed Sheeran Perfect'],
+  ['LjhCEhWiKXk', 'Bruno Mars Just The Way You Are'],
+  ['hLQl3WQQoQ0', 'Adele Someone Like You'],
+  ['7wtfhZwyrcc', 'Imagine Dragons Believer'],
+  ['HgzGwKwLmgM', 'Queen Dont Stop Me Now'],
+  ['1k8craCGpgs', 'Journey Dont Stop Believin'],
+  ['lDK9QqIzhwk', 'Bon Jovi Livin on a Prayer'],
+  ['4NRXx6U8ABQ', 'The Weeknd Blinding Lights'],
+  ['S2Cti12XBw4', 'Maroon 5 Sunday Morning'],
+  ['O1-4u9W-bns', 'Jason Mraz I Wont Give Up']];
+export const PLAYLIST = TRACKS.map(t => t[1]);
 export const shuffled = (a, rnd = Math.random) => { const b = a.slice(); for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(rnd()*(i + 1)); [b[i], b[j]] = [b[j], b[i]]; } return b; };
 // the request queue, shared by every player: a request carries a unique rid and its time, so each player's copy sorts the same way
 export const VID = /^[\w-]{11}$/;
@@ -35,7 +68,7 @@ export function createRadio({ctx, out, state, yt, onNow = () => {}, onQueue = ()
   const g = ctx.createGain(); g.gain.value = 0; g.connect(out); const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 1800; f.connect(g);
   const CH = [[220, 277.2, 329.6], [196, 246.9, 293.7], [174.6, 220, 261.6], [196, 246.9, 329.6]];
   let on = false, beat = 0, timer = 0, retry = 0, n = 0, k = 0, speaking = false, busy = false, cur = null, watch = 0, last = null, pi = 0;
-  const req = createRequests(), order = shuffled(PLAYLIST), found = new Map();
+  const req = createRequests(), order = shuffled(TRACKS);
   function note(fr, t, d, type = 'triangle', gain = 0.05){ const o = ctx.createOscillator(), e = ctx.createGain(); o.type = type; o.frequency.value = fr; e.gain.setValueAtTime(0, t); e.gain.linearRampToValueAtTime(gain, t + 0.08); e.gain.exponentialRampToValueAtTime(0.001, t + d); o.connect(e); e.connect(f); o.start(t); o.stop(t + d + 0.05); }
   function bar(){ const t = ctx.currentTime + 0.05, c = CH[beat % 4]; beat++; for (const fr of c) note(fr, t, 2.3, 'sine', 0.035); note(c[0]/2, t, 0.5, 'triangle', 0.07); note(c[0]/2, t + 1.2, 0.5, 'triangle', 0.05);
     for (let i = 0; i < 4; i++) note(c[(i + beat) % 3]*2, t + i*0.6, 0.25, 'square', 0.008); }
@@ -45,24 +78,19 @@ export function createRadio({ctx, out, state, yt, onNow = () => {}, onQueue = ()
   function say(text){ speaking = true; g.gain.setTargetAtTime(bedLevel(), ctx.currentTime, 0.3); yt.volume(30);
     return VOX.say(text, {channel: 'radio', gain: 0.9}).then(() => { speaking = false; if (on) { g.gain.setTargetAtTime(bedLevel(), ctx.currentTime, 0.8); yt.volume(100); } }); }
   // the next song: a request first (in the order they came in), otherwise the next one of the station's own list
-  async function pickTrack(){
-    const r = req.shift(); if (r) { onQueue(req.list()); return {...r, req: true}; }
-    for (let tries = 0; tries < 3 && on; tries++) { const q = order[pi++ % order.length]; let hit = found.get(q);
-      if (!hit) { try { hit = (await yt.find(q))[0]; } catch (e) { hit = null; } if (hit) found.set(q, hit); }
-      if (hit) return {id: hit.id, title: q, by: ''}; }
-    if (on) onNow(null, 'nofind'); return null; }
+  function pickTrack(){ const r = req.shift(); if (r) { onQueue(req.list()); return {...r, req: true}; } const t = order[pi++ % order.length]; return {id: t[0], title: t[1], by: ''}; }
+  // put a song on the air: the player is told to play it, and if it never starts (blocked, removed) the next one follows
+  function air(t){ cur = t; g.gain.setTargetAtTime(0, ctx.currentTime, 0.3); last = null; yt.play(t.id); onNow(t); clearTimeout(watch);
+    watch = setTimeout(() => { if (on && cur === t && last !== 1) { cur = null; advance(); } }, 30000); }
   async function advance(){
-    if (!on || busy) return; busy = true; clearTimeout(watch); const t = await pickTrack(); if (!on) { busy = false; return; }
-    const line = t && t.req ? `Lagu permintaan dari ${t.by}. ${t.title}. Selamat mendengarkan.` : n++ % 3 === 2 || !t ? segment(k++, state()) : '';
+    if (!on || busy) return; busy = true; clearTimeout(watch); const t = pickTrack();
+    const line = t.req ? `Lagu permintaan dari ${t.by}. ${t.title}. Selamat mendengarkan.` : n++ % 3 === 2 ? segment(k++, state()) : '';
     if (line) { if (k % 5 === 1) jingle(); await say(line); }
-    busy = false; if (!on) return;
-    if (t) { cur = t; g.gain.setTargetAtTime(0, ctx.currentTime, 0.3); last = null; yt.play(t.id); onNow(t);
-      watch = setTimeout(() => { if (on && cur === t && last !== 1) { cur = null; advance(); } }, 25000); }   // never started (blocked, removed): on to the next
-    else { cur = null; g.gain.setTargetAtTime(bedLevel(), ctx.currentTime, 0.4); retry = 25; onNow(null); } }
+    busy = false; if (on) air(t); }
   return {
     get on(){ return on; }, get now(){ return cur; }, queue: () => req.list(),
-    set(v){ on = v; if (v) { g.gain.setTargetAtTime(cur ? 0 : 1, ctx.currentTime, 0.4); jingle(); retry = 3; if (cur) yt.play(cur.id); } else { g.gain.setTargetAtTime(0, ctx.currentTime, 0.4); VOX.stopChannel('radio'); clearTimeout(watch); yt.stop(); busy = false; speaking = false; const was = cur; cur = null; if (was) onNow(null); } },
-    tick(dt){ if (!on) return; if (!cur && (timer -= dt) <= 0) { timer = 2.4; bar(); } if (!cur && !busy && (retry -= dt) <= 0) { retry = 25; advance(); } },
+    set(v){ on = v; if (v) { jingle(); retry = 30; busy = false; air(pickTrack()); } else { g.gain.setTargetAtTime(0, ctx.currentTime, 0.4); VOX.stopChannel('radio'); clearTimeout(watch); yt.stop(); busy = false; speaking = false; const was = cur; cur = null; if (was) onNow(null); } },
+    tick(dt){ if (!on) return; if (!cur && (timer -= dt) <= 0) { timer = 2.4; bar(); } if (!cur && !busy && (retry -= dt) <= 0) { retry = 5; advance(); } },
     duck(k2){ f.frequency.setTargetAtTime(k2 ? 900 : 1800, ctx.currentTime, 0.3); },
     // a request from this player or (through the server) from another one: {id, title, by, t, rid}; the result says where it queued
     request(r){ const res = req.add(r); if (res.ok) onQueue(req.list()); return res; },

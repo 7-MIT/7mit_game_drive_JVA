@@ -45,3 +45,16 @@ test('133 serves toll roads only; 151 (Dishub) serves every road and every mode 
   assert.match(DISPATCH['151'].greet, /semua ruas jalan.*seluruh moda transportasi/); assert.ok(DISPATCH['151'].menu.some(m => m.k === 'modes'));
   assert.match(NOT_TOLL, /satu lima satu/); assert.ok(fixedLines().includes(NOT_TOLL));
 });
+test('radio station songs are fixed embeddable video ids, so the first one can start inside the tap that turns the radio on', async () => {
+  const {TRACKS} = await import('../radio.js');
+  assert.ok(TRACKS.length >= 30); assert.equal(new Set(TRACKS.map(t => t[0])).size, TRACKS.length); assert.ok(TRACKS.every(([id, label]) => /^[\w-]{11}$/.test(id) && label));
+});
+test('INADigital: services, game numbers, request status, fictional identity and QR pattern', async () => {
+  const ina = await import('../phone-inadigital.js'), {DISPATCH} = await import('../voice-lines.js');
+  assert.ok(ina.INA_SERVICES.length >= 15); assert.equal(new Set(ina.INA_SERVICES.map(s => s.id)).size, ina.INA_SERVICES.length);
+  const cats = new Set(ina.INA_CATS.map(c => c[0])); for (const s of ina.INA_SERVICES) { assert.ok(cats.has(s.cat), s.id); assert.ok(s.game || (s.steps && s.steps.length && s.docs && s.docs.length), s.id); if (s.game) assert.ok(DISPATCH[s.game[0]], s.id); }
+  assert.deepEqual([ina.inaStatus(3)[0], ina.inaStatus(20)[0], ina.inaStatus(90)[0]], ['Diterima', 'Diverifikasi', 'Selesai']);
+  const n = ina.inaNik('081200001111'); assert.match(n, /^31\d{14}$/); assert.equal(n, ina.inaNik('081200001111')); assert.match(ina.maskNik(n), /^31\d\d •••• •••• \d{4}$/);
+  const a = ina.qrCells('x:1'), b = ina.qrCells('x:2'); assert.ok(a.length > 150 && a.length < 330); assert.notDeepEqual(a, b); assert.ok(a.some(([x, y]) => x === 0 && y === 0));
+  assert.ok(!/(^|\})\s*\.ina/.test(ina.INA_CSS) && ina.INA_CSS.includes('#phone .ina .btn'));
+});
