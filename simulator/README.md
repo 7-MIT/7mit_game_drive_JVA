@@ -687,3 +687,14 @@ The game uses the 7 MIT design system, design.7mit (https://claude.ai/artifact/C
 - Pemain tidak bisa memilih lagu dari menu. Satu-satunya jalan: telepon **Radio 7MIT FM, 0813-1324-5123** (aplikasi Telepon, "Nomor penting", atau ketik nomornya di papan tombol). Penyiar menjawab dan muncul kotak teks: cari judul lagu/video atau tempel link YouTube (satu video).
 - Nomornya sama untuk semua pemain. Request masuk ke satu antrean, urut waktu kirim, dan dikirim ke pemain lain lewat multiplayer (event `radio`). Batas: 20 antrean, 3 per pemain, jeda 20 detik per request. Tanpa multiplayer antreannya hanya milikmu.
 - Lagu request diputar lebih dulu daripada lagu stasiun. Jika video tidak bisa diputar (diblokir atau dihapus), radio lanjut ke lagu berikutnya. Memutar musik dari aplikasi Musik mematikan radio.
+
+## INADigital: aplikasi layanan publik di HP
+
+- Aplikasi **INADigital** sudah terpasang di HP game (urutan kedua setelah App Store; layar utama lama otomatis disisipi sekali). Ini simulasi di dalam game, bukan aplikasi resmi, dan semua data di dalamnya fiktif. Kode di `phone-inadigital.js`.
+- Tampilan mengikuti INA Digital Design System (design.inadigital.go.id): font Inter, skala biru, merah brand, abu netral, spasi 2/4/8/12/16/24/32, tombol tinggi 44–48 px, bayangan "focused" untuk kartu dan "float" untuk elemen mengambang, serta pola chip, badge, stepper, accordion, toggle dan empty state.
+- Isi: **Beranda** (kartu INA PAS dengan kode yang berganti tiap 30 detik, kategori, layanan lalu lintas dan darurat, kabar), **Layanan** (cari, filter kategori, detail beralur dan persyaratan, ajukan), **Riwayat** (status Diterima → Diverifikasi → Selesai, dengan notifikasi) dan **Akun** (verifikasi berlapis, notifikasi, tautan ke inadigital.go.id).
+- Layanan lalu lintas dan darurat tersambung ke nomor penting di game: Dishub 151, Jalan Tol 133, Polisi 110 (cek ETLE), Darurat 112 dan Kemenkes 119.
+
+## Lagu radio di iPad dan HP
+
+Radio memutar lagu lewat YouTube IFrame API resmi. Satu pemutar dibuat tepat saat radio dinyalakan (ketukan atau tombol Y), dengan lagu pertama dari daftar tetap `TRACKS` di `radio.js` (setiap ID sudah dicek bisa disematkan). Lagu berikutnya dimuat ke pemutar yang sama tanpa ketukan lagi. Browser seluler menolak memutar otomatis video yang tidak dimulai langsung oleh gerakan pengguna; jika tetap ditolak, muncul "Ketuk layar untuk memulai radio". Pencarian untuk request lewat telepon memakai `/api/yt-search` di Worker.
